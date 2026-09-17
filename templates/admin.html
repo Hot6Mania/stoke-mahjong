@@ -405,7 +405,7 @@
 
             <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
                 스트리머가 기습적으로 개장하여 시청자들의 도파민을 폭발시키는 이벤트 도박장입니다. 
-                <strong style="color: #facc15;">777 대박 시 국고 잔고의 30%를 즉시 독식</strong>하며, 패배 시 배팅금은 전액 국고로 환수되어 채굴 및 다음 대박 상금으로 누적됩니다!
+                <strong style="color: #facc15;">777 대박 시 국고 잔고의 10%(최대 10만P)를 즉시 독식</strong>하며, 패배 시 배팅금은 전액 국고로 환수되어 채굴 및 다음 대박 상금으로 누적됩니다!
             </p>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px;">
@@ -418,8 +418,8 @@
                     <strong id="admin-casino-pool" style="color: #facc15; font-size: 16px;">500,000P</strong>
                 </div>
                 <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
-                    <span>🔥 777 대박 상금 (30%):</span>
-                    <strong id="admin-casino-jackpot-pot" style="color: #fb923c; font-size: 16px;">150,000P</strong>
+                    <span>🔥 777 대박 상금 (10% | 최대 10만):</span>
+                    <strong id="admin-casino-jackpot-pot" style="color: #fb923c; font-size: 16px;">50,000P</strong>
                 </div>
                 <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
                     <span>⏳ 개장 잔여 시간:</span>
@@ -763,7 +763,7 @@
                     const poolEl = document.getElementById("admin-casino-pool");
                     const potEl = document.getElementById("admin-casino-jackpot-pot");
                     if (poolEl) poolEl.textContent = `${Math.round(pool).toLocaleString()}P`;
-                    if (potEl) potEl.textContent = `${Math.round(pool * 0.3).toLocaleString()}P`;
+                    if (potEl) potEl.textContent = `${Math.min(100000, Math.round(pool * 0.1)).toLocaleString()}P`;
                     updateCasinoDisplay();
                 }
 
@@ -1468,7 +1468,7 @@
                     const poolEl = document.getElementById("admin-casino-pool");
                     const potEl = document.getElementById("admin-casino-jackpot-pot");
                     if (poolEl) poolEl.textContent = `${Math.round(pool).toLocaleString()}P`;
-                    if (potEl) potEl.textContent = `${Math.round(pool * 0.3).toLocaleString()}P`;
+                    if (potEl) potEl.textContent = `${Math.min(100000, Math.round(pool * 0.1)).toLocaleString()}P`;
                     updateCasinoDisplay();
                 }
             } catch (e) {

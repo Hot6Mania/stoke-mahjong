@@ -647,9 +647,9 @@
                 const d = data.data;
                 if (d) {
                     if (d.gamble_type === "slot_jackpot") {
-                        showTickerToast(`👑🚨 [MEGA JACKPOT!] ${d.username}님이 777 대박으로 국고 30% (+${Number(d.payout).toLocaleString()}P) 독식 달성! 🎉`, 'settle', 12000);
+                        showTickerToast(`👑🚨 [MEGA JACKPOT!] ${d.username}님이 777 대박으로 잭팟 상금 (+${Number(d.payout).toLocaleString()}P) 독식 달성! 🎉`, 'settle', 12000);
                     } else {
-                        showTickerToast(`⚡🎲 [CRITICAL JACKPOT!] ${d.username}님이 주사위 더블 잭팟으로 5배 (+${Number(d.payout).toLocaleString()}P) 대박! 🎉`, 'settle', 10000);
+                        showTickerToast(`⚡🎲 [CRITICAL JACKPOT!] ${d.username}님이 주사위 더블 잭팟으로 2.5배 (+${Number(d.payout).toLocaleString()}P) 대박! 🎉`, 'settle', 10000);
                     }
                     if (d.treasury_pool !== undefined && treasuryValEl) {
                         treasuryValEl.textContent = `${Math.floor(d.treasury_pool).toLocaleString()}P`;

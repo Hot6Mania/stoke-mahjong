@@ -775,9 +775,9 @@
                         if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
                         if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
                         if (msg.data.gamble_type === "slot_jackpot") {
-                            showTickerMessage("settle", `👑🚨 [MEGA JACKPOT!] <strong>${msg.data.username}</strong>님이 777 대박으로 국고 30% (+${Number(msg.data.payout).toLocaleString()}P) 독식 달성! 🎉`, 12000);
+                            showTickerMessage("settle", `👑🚨 [MEGA JACKPOT!] <strong>${msg.data.username}</strong>님이 777 대박으로 잭팟 상금 (+${Number(msg.data.payout).toLocaleString()}P) 독식 달성! 🎉`, 12000);
                         } else {
-                            showTickerMessage("settle", `⚡🎲 [CRITICAL JACKPOT!] <strong>${msg.data.username}</strong>님이 주사위 더블 잭팟으로 5배 (+${Number(msg.data.payout).toLocaleString()}P) 대박! 🎉`, 10000);
+                            showTickerMessage("settle", `⚡🎲 [CRITICAL JACKPOT!] <strong>${msg.data.username}</strong>님이 주사위 더블 잭팟으로 2.5배 (+${Number(msg.data.payout).toLocaleString()}P) 대박! 🎉`, 10000);
                         }
                     }
 
