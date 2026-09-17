@@ -1003,17 +1003,23 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
 
     # PoS Victory Dividend: 1st place pays 5%, 2nd place pays 1% to all 1X holders
     dividends_distributed: List[Dict[str, Any]] = []
-    div_rate = 0.05 if rank == 1 else (0.01 if rank == 2 else 0.0)
+    try:
+        r = int(rank)
+    except (ValueError, TypeError):
+        r = 0
+    div_rate = 0.05 if r == 1 else (0.01 if r == 2 else 0.0)
 
     if div_rate > 0:
-        one_x_positions = db.query(Position).filter(
-            Position.product_type == ProductType.ONE_X,
-            Position.quantity > 0
-        ).all()
-        for p in one_x_positions:
-            u = p.user
-            if u:
-                payout = int(round(p.quantity * new_price * div_rate))
+        all_positions = db.query(Position).filter(Position.quantity > 0).all()
+        for p in all_positions:
+            is_one_x = (
+                p.product_type == ProductType.ONE_X or
+                p.product_type == "1X" or
+                getattr(p.product_type, "value", None) == "1X"
+            )
+            if is_one_x and p.user:
+                u = p.user
+                payout = max(1, int(round(p.quantity * new_price * div_rate))) if (p.quantity > 0 and new_price > 0) else 0
                 if payout > 0:
                     u.points += payout
                     u.total_dividends = (u.total_dividends or 0) + payout

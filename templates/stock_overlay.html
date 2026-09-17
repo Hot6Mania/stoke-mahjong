@@ -616,8 +616,9 @@
 
                 let settleMsg = `[경기 정산] ${data.rank}위 (${deltaSign}${data.point_delta}pt) -> 주가 ${data.new_price}P (${data.price_change_pct >= 0 ? '+' : ''}${data.price_change_pct}%)`;
                 if (data.dividends && data.dividends.length > 0) {
-                    const totalDiv = data.dividends.reduce((acc, cur) => acc + cur.payout, 0);
-                    settleMsg += ` | 🎁 승리배당 총 ${totalDiv.toLocaleString()}P 지급!`;
+                    const totalDiv = data.dividends.reduce((acc, cur) => acc + (cur.payout || 0), 0);
+                    const divPct = data.rank === 1 ? '5%' : (data.rank === 2 ? '1%' : '');
+                    settleMsg += ` | 🎁 ${data.rank}위 승리배당(${divPct}) 총 ${totalDiv.toLocaleString()}P 지급!`;
                 }
                 showTickerToast(settleMsg, 'settle', 10000);
 

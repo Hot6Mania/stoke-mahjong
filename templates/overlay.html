@@ -677,8 +677,11 @@
                         showTickerMessage("settle", `📢 [정산 완료] ${msg.rank}위 (${sign}${msg.point_delta}pt) | 주가: ${msg.new_price}P | 5분 자유 거래 시작!`);
 
                         if (msg.dividends && msg.dividends.length > 0) {
+                            const totalDiv = msg.dividends.reduce((acc, cur) => acc + (cur.payout || 0), 0);
+                            const divPct = msg.rank === 1 ? '5%' : (msg.rank === 2 ? '1%' : '');
+                            const rankTitle = msg.rank === 1 ? '🥇 1위' : (msg.rank === 2 ? '🥈 2위' : `${msg.rank}위`);
                             setTimeout(() => {
-                                showTickerMessage("trade", `🎉 [승리 배당] 1위 달성 기념! 1X 주주 전원에게 5% 승리 배당 지급 완료!`, 7000);
+                                showTickerMessage("trade", `🎉 [승리 배당] ${rankTitle} 달성! 1X 주주 ${msg.dividends.length}명에게 ${divPct} 배당금(+${totalDiv.toLocaleString()}P) 지급 완료!`, 8000);
                             }, 3000);
                         }
 

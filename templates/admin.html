@@ -896,7 +896,10 @@
                 });
                 const data = await res.json();
                 const signStr = point_delta >= 0 ? "+" + point_delta : point_delta;
-                appendLog("system", `📢 정산 완료: ${rank}위 (${signStr}pt) | 새 주가: ${data.new_price}P | 청산: ${data.liquidations.length}건`);
+                const divCount = (data.dividends || []).length;
+                const divTotal = (data.dividends || []).reduce((acc, cur) => acc + (cur.payout || 0), 0);
+                const divStr = divCount > 0 ? ` | 배당: ${divCount}명(+${divTotal.toLocaleString()}P)` : '';
+                appendLog("system", `📢 정산 완료: ${rank}위 (${signStr}pt) | 새 주가: ${data.new_price}P${divStr} | 청산: ${data.liquidations.length}건`);
                 fetchMarketState();
             } catch (e) {
                 alert("정산 오류: " + e);

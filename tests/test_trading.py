@@ -233,6 +233,23 @@ def test_victory_dividend_and_treasury(db_session):
     assert user_after.points > points_before
     assert user_after.total_dividends > 0
 
+def test_second_place_dividend_1pct(db_session):
+    u = "investor_2nd"
+    te.execute_buy(db_session, u, "존버러", "1X", "10") # 10 shares of 1X
+    user_before = db_session.query(User).filter_by(id=u).first()
+    points_before = user_before.points
+
+    # Streamer finishes 2nd place (rank 2)
+    settle_res = te.settle_match(db_session, rank=2, point_delta=20)
+    assert len(settle_res["dividends"]) >= 1
+    d = next(item for item in settle_res["dividends"] if item["user_id"] == u)
+    assert d["rate_pct"] == 1.0
+    assert d["payout"] > 0
+
+    user_after = db_session.query(User).filter_by(id=u).first()
+    assert user_after.points == points_before + d["payout"]
+    assert user_after.total_dividends >= d["payout"]
+
 def test_command_handler_mining_and_treasury(db_session):
     reply, evt = ch.handle_chat_command(db_session, "u_mine", "마이너", "!채굴")
     assert "채굴 완료" in reply

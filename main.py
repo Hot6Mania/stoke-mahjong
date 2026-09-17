@@ -642,12 +642,24 @@ async def sync_tracker_loop():
 
                                         if state.current_rank_point != pts:
                                             delta = pts - state.current_rank_point
-                                            rank = 1 if delta > 0 else (3 if delta < 0 else 2)
+                                            rec_str = str(data.get("record", "") or "")
+                                            rec_digits = [int(c) for c in rec_str if c in "1234"]
+                                            if rec_digits:
+                                                rank = rec_digits[-1]
+                                            else:
+                                                rank = 1 if delta > 0 else (3 if delta < 0 else 2)
                                             settle_res = te.settle_match(db, rank=rank, point_delta=delta)
                                             leaderboard = te.get_leaderboard(db, top_n=3)
 
                                             # 5분 자유 거래 시간 자동 오픈 (300초 카운트다운 후 자동 마감)
                                             await start_free_trading_window(300)
+
+                                            if settle_res.get("dividends"):
+                                                div_count = len(settle_res["dividends"])
+                                                total_div = sum(d["payout"] for d in settle_res["dividends"])
+                                                pct_label = "5%" if rank == 1 else ("1%" if rank == 2 else "")
+                                                div_chat = f"🎁 [{rank}위 승리 배당] 1X(기본주) 주주 총 {div_count}명에게 {pct_label} 배당금(총 +{total_div:,}P) 지급 완료!"
+                                                asyncio.create_task(dispatch_chat_notice(div_chat, fallback_bot=bot_instance))
 
                                             if settle_res.get("liquidations"):
                                                 liq_count = len(settle_res["liquidations"])
@@ -977,6 +989,13 @@ async def api_settle_match(req: SettleMatchRequest, db=Depends(get_db)):
         "market_state": serialize_market_state(state)
     }
     await manager.broadcast(settlement_event)
+
+    if result.get("dividends"):
+        div_count = len(result["dividends"])
+        total_div = sum(d["payout"] for d in result["dividends"])
+        pct_label = "5%" if req.rank == 1 else ("1%" if req.rank == 2 else "")
+        div_chat = f"🎁 [{req.rank}위 승리 배당] 1X(기본주) 주주 총 {div_count}명에게 {pct_label} 배당금(총 +{total_div:,}P) 지급 완료!"
+        asyncio.create_task(dispatch_chat_notice(div_chat, fallback_bot=bot_instance))
 
     if result.get("liquidations"):
         liq_count = len(result["liquidations"])

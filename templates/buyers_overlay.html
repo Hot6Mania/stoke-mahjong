@@ -35,25 +35,26 @@
 
         /* Main Container Card */
         .overlay-card {
-            width: 520px;
+            width: 620px;
             max-width: 95vw;
             max-height: 92vh;
-            background: rgba(15, 23, 42, 0.88);
-            border: 1.5px solid rgba(255, 255, 255, 0.16);
+            background: rgba(15, 23, 42, 0.50);
+            border: 1.5px solid rgba(255, 255, 255, 0.18);
             border-radius: 16px;
-            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 24px rgba(56, 189, 248, 0.1);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 24px rgba(56, 189, 248, 0.08);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             display: flex;
             flex-direction: column;
             overflow: hidden;
             transition: all 0.3s ease;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
         }
 
         /* Header */
         .card-header {
-            padding: 14px 18px 12px;
-            background: linear-gradient(180deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.6) 100%);
+            padding: 14px 20px 12px;
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.30) 100%);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             flex-direction: column;
@@ -69,16 +70,16 @@
         .title-group {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
 
         .title-icon {
-            font-size: 20px;
+            font-size: 24px;
             filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.5));
         }
 
         .title-text {
-            font-size: 17px;
+            font-size: 21px;
             font-weight: 900;
             letter-spacing: -0.5px;
             background: linear-gradient(90deg, #ffffff 0%, #cbd5e1 100%);
@@ -90,19 +91,19 @@
             display: inline-flex;
             align-items: center;
             gap: 5px;
-            background: rgba(34, 197, 94, 0.15);
-            border: 1px solid rgba(34, 197, 94, 0.4);
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.5);
             color: #4ade80;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 800;
-            padding: 2px 8px;
+            padding: 2px 9px;
             border-radius: 9999px;
             text-transform: uppercase;
         }
 
         .live-dot {
-            width: 7px;
-            height: 7px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background-color: #22c55e;
             box-shadow: 0 0 8px #22c55e;
@@ -119,46 +120,46 @@
         .stock-price-pill {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 12px;
+            gap: 10px;
+            font-size: 14px;
             font-weight: 700;
         }
 
         .price-val {
             color: #f8fafc;
-            font-size: 14px;
+            font-size: 17px;
             font-weight: 900;
         }
 
         .diff-tag {
-            padding: 1px 6px;
-            border-radius: 4px;
-            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-size: 13px;
             font-weight: 800;
         }
 
         .diff-up {
-            background: rgba(239, 68, 68, 0.2);
+            background: rgba(239, 68, 68, 0.25);
             color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.4);
+            border: 1px solid rgba(239, 68, 68, 0.5);
         }
 
         .diff-down {
-            background: rgba(59, 130, 246, 0.2);
+            background: rgba(59, 130, 246, 0.25);
             color: #60a5fa;
-            border: 1px solid rgba(59, 130, 246, 0.4);
+            border: 1px solid rgba(59, 130, 246, 0.5);
         }
 
         .diff-same {
-            background: rgba(148, 163, 184, 0.2);
+            background: rgba(148, 163, 184, 0.25);
             color: #94a3b8;
-            border: 1px solid rgba(148, 163, 184, 0.3);
+            border: 1px solid rgba(148, 163, 184, 0.4);
         }
 
         /* Summary Stats & Long/Short Bar */
         .summary-bar {
-            padding: 10px 18px;
-            background: rgba(15, 23, 42, 0.4);
+            padding: 10px 20px;
+            background: rgba(15, 23, 42, 0.22);
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             display: flex;
             flex-direction: column;
@@ -168,27 +169,27 @@
         .stats-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            gap: 10px;
         }
 
         .stat-item {
-            background: rgba(30, 41, 59, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            padding: 6px 10px;
-            border-radius: 8px;
+            background: rgba(30, 41, 59, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 8px 12px;
+            border-radius: 9px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
         .stat-label {
-            font-size: 11px;
+            font-size: 13px;
             color: #94a3b8;
             font-weight: 700;
         }
 
         .stat-value {
-            font-size: 13px;
+            font-size: 16px;
             font-weight: 900;
             color: #f1f5f9;
         }
@@ -203,7 +204,7 @@
         .sentiment-labels {
             display: flex;
             justify-content: space-between;
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 800;
         }
 
@@ -211,24 +212,24 @@
             color: #f87171;
             display: flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
         }
 
         .short-label {
             color: #60a5fa;
             display: flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
         }
 
         .sentiment-bar-track {
             width: 100%;
-            height: 7px;
+            height: 8px;
             background: #1e293b;
             border-radius: 9999px;
             overflow: hidden;
             display: flex;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
         .sentiment-bar-long {
@@ -247,30 +248,30 @@
         .buyers-list-wrapper {
             flex: 1;
             overflow-y: auto;
-            padding: 10px 14px;
+            padding: 10px 16px;
             display: flex;
             flex-direction: column;
-            gap: 7px;
+            gap: 8px;
             max-height: 480px;
             scrollbar-width: thin;
             scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
         }
 
         .buyers-list-wrapper::-webkit-scrollbar {
-            width: 4px;
+            width: 5px;
         }
 
         .buyers-list-wrapper::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.25);
             border-radius: 4px;
         }
 
         /* Buyer Row Card */
         .buyer-row {
-            background: rgba(30, 41, 59, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 10px;
-            padding: 8px 12px;
+            background: rgba(30, 41, 59, 0.40);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-radius: 11px;
+            padding: 9px 14px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -278,8 +279,8 @@
         }
 
         .buyer-row:hover {
-            background: rgba(51, 65, 85, 0.7);
-            border-color: rgba(255, 255, 255, 0.25);
+            background: rgba(51, 65, 85, 0.55);
+            border-color: rgba(255, 255, 255, 0.30);
             transform: translateX(2px);
         }
 
@@ -288,30 +289,30 @@
         }
 
         @keyframes flashAnimation {
-            0% { background: rgba(250, 204, 21, 0.35); border-color: #facc15; }
-            100% { background: rgba(30, 41, 59, 0.6); border-color: rgba(255, 255, 255, 0.08); }
+            0% { background: rgba(250, 204, 21, 0.40); border-color: #facc15; }
+            100% { background: rgba(30, 41, 59, 0.40); border-color: rgba(255, 255, 255, 0.10); }
         }
 
         .buyer-left {
             display: flex;
             align-items: center;
-            gap: 9px;
+            gap: 11px;
             min-width: 0;
         }
 
         .rank-badge {
-            width: 24px;
-            height: 24px;
-            border-radius: 6px;
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 900;
             flex-shrink: 0;
             background: #1e293b;
             color: #94a3b8;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
         .rank-1 {
@@ -339,42 +340,42 @@
         .user-info {
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 3px;
             min-width: 0;
         }
 
         .user-name-line {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
         }
 
         .user-name {
-            font-size: 13px;
+            font-size: 16px;
             font-weight: 800;
             color: #ffffff;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 140px;
+            max-width: 175px;
         }
 
         .debt-tag {
-            font-size: 9px;
+            font-size: 11px;
             font-weight: 900;
-            padding: 1px 4px;
-            border-radius: 3px;
-            background: rgba(239, 68, 68, 0.25);
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: rgba(239, 68, 68, 0.30);
             color: #fca5a5;
-            border: 1px solid rgba(239, 68, 68, 0.4);
+            border: 1px solid rgba(239, 68, 68, 0.5);
             flex-shrink: 0;
         }
 
         .user-subinfo {
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-size: 10px;
+            gap: 7px;
+            font-size: 13px;
             color: #94a3b8;
         }
 
@@ -382,20 +383,20 @@
         .prod-tag {
             display: inline-flex;
             align-items: center;
-            padding: 2px 6px;
+            padding: 2px 7px;
             border-radius: 4px;
-            font-size: 10px;
+            font-size: 12px;
             font-weight: 900;
             flex-shrink: 0;
         }
 
-        .prod-10x { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
-        .prod-5x { background: rgba(249, 115, 22, 0.25); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.5); }
-        .prod-1x { background: rgba(16, 185, 129, 0.25); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.5); }
-        .prod-inv10 { background: rgba(59, 130, 246, 0.25); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.5); }
-        .prod-inv5 { background: rgba(14, 165, 233, 0.25); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.5); }
-        .prod-inv2 { background: rgba(139, 92, 246, 0.25); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.5); }
-        .prod-default { background: rgba(100, 116, 139, 0.25); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.4); }
+        .prod-10x { background: rgba(239, 68, 68, 0.3); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.55); }
+        .prod-5x { background: rgba(249, 115, 22, 0.3); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.55); }
+        .prod-1x { background: rgba(16, 185, 129, 0.3); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.55); }
+        .prod-inv10 { background: rgba(59, 130, 246, 0.3); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.55); }
+        .prod-inv5 { background: rgba(14, 165, 233, 0.3); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.55); }
+        .prod-inv2 { background: rgba(139, 92, 246, 0.3); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.55); }
+        .prod-default { background: rgba(100, 116, 139, 0.3); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.45); }
 
         .buyer-right {
             display: flex;
@@ -407,18 +408,18 @@
         }
 
         .current-val {
-            font-size: 13px;
+            font-size: 17px;
             font-weight: 900;
             color: #facc15;
             letter-spacing: -0.3px;
         }
 
         .pnl-badge {
-            font-size: 10.5px;
+            font-size: 13px;
             font-weight: 800;
             display: flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
         }
 
         .pnl-up {
@@ -438,33 +439,33 @@
             padding: 36px 20px;
             text-align: center;
             color: #94a3b8;
-            font-size: 13px;
+            font-size: 14px;
             line-height: 1.6;
         }
 
         .empty-icon {
-            font-size: 32px;
+            font-size: 36px;
             margin-bottom: 8px;
             opacity: 0.8;
         }
 
         /* Recent Trade Footer Bar */
         .card-footer {
-            padding: 8px 14px;
-            background: rgba(15, 23, 42, 0.95);
+            padding: 10px 18px;
+            background: rgba(15, 23, 42, 0.55);
             border-top: 1px solid rgba(255, 255, 255, 0.08);
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 11px;
+            gap: 10px;
+            font-size: 13px;
         }
 
         .footer-badge {
             background: #2563eb;
             color: #ffffff;
-            font-size: 10px;
+            font-size: 12px;
             font-weight: 900;
-            padding: 2px 6px;
+            padding: 2px 7px;
             border-radius: 4px;
             flex-shrink: 0;
             text-transform: uppercase;
@@ -489,7 +490,7 @@
 
         /* Compact Mode Override (?compact=true) */
         body.compact-mode .overlay-card {
-            width: 380px;
+            width: 440px;
         }
         body.compact-mode .stats-grid {
             display: none;
@@ -563,6 +564,35 @@
             document.body.classList.add('compact-mode');
         }
         const limitParam = parseInt(urlParams.get('limit')) || 100;
+
+        // Custom transparency and scale options from URL query (?opacity=0.3, ?bg=transparent, ?scale=1.2)
+        const customOpacity = urlParams.get('opacity');
+        const customBg = urlParams.get('bg');
+        if (customBg === 'transparent' || customBg === 'none') {
+            const card = document.getElementById('overlay-card');
+            if (card) {
+                card.style.background = 'rgba(15, 23, 42, 0.25)';
+                card.style.backdropFilter = 'none';
+                card.style.webkitBackdropFilter = 'none';
+            }
+        } else if (customOpacity !== null) {
+            const op = parseFloat(customOpacity);
+            if (!isNaN(op)) {
+                const card = document.getElementById('overlay-card');
+                if (card) card.style.background = `rgba(15, 23, 42, ${op})`;
+            }
+        }
+        const customScale = urlParams.get('scale');
+        if (customScale) {
+            const sc = parseFloat(customScale);
+            if (!isNaN(sc)) {
+                const card = document.getElementById('overlay-card');
+                if (card) {
+                    card.style.transform = `scale(${sc})`;
+                    card.style.transformOrigin = 'top left';
+                }
+            }
+        }
 
         let lastDataHash = "";
         let previousBuyersMap = new Map();
@@ -666,7 +696,7 @@
                             <span class="pnl-badge mono ${pnlClass}">
                                 <span>${pnlIcon}</span>
                                 <span>${pnlSign}${pnl.toFixed(1)}%</span>
-                                <span style="font-size: 9px; opacity: 0.8;">(${b.unrealized_pnl >= 0 ? '+' : ''}${Number(b.unrealized_pnl).toLocaleString()}P)</span>
+                                <span style="font-size: 12px; opacity: 0.85;">(${b.unrealized_pnl >= 0 ? '+' : ''}${Number(b.unrealized_pnl).toLocaleString()}P)</span>
                             </span>
                         </div>
                     </div>

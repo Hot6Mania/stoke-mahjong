@@ -258,6 +258,35 @@ def test_chat_flow_and_settlement(client):
     assert res_liq.status_code == 200
     assert "전량 청산 완료" in res_liq.json()["reply"]
 
+def test_second_place_settlement_api(client):
+    # Grant points and buy 1X
+    client.post("/api/admin/grant-points", json={
+        "user_id": "div_user_2nd",
+        "username": "이등주주",
+        "points": 50000,
+        "mode": "set"
+    })
+    res_buy = client.post("/api/chat/command", json={
+        "user_id": "div_user_2nd",
+        "username": "이등주주",
+        "message": "!매수 1X 10"
+    })
+    assert res_buy.status_code == 200
+
+    # Settle match for 2nd place (rank 2)
+    res_settle = client.post("/api/admin/settle-match", json={
+        "rank": 2,
+        "point_delta": 20
+    })
+    assert res_settle.status_code == 200
+    data = res_settle.json()
+    assert data["rank"] == 2
+    assert "dividends" in data
+    assert len(data["dividends"]) >= 1
+    d = next(item for item in data["dividends"] if item["user_id"] == "div_user_2nd")
+    assert d["rate_pct"] == 1.0
+    assert d["payout"] > 0
+
 def test_refill_treasury_and_day_open(client):
     # Test market state includes day_open_price, day_diff, day_diff_pct, treasury_pool
     res_state = client.get("/api/market/state")
