@@ -127,3 +127,34 @@ class DonationRecord(Base):
 
     user = relationship("User", backref="donations")
 
+class UserEquipment(Base):
+    __tablename__ = "user_equipments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    equipment_type = Column(String, default="PICKAXE", nullable=False)
+    name = Column(String, nullable=False)
+    starforce = Column(Integer, default=0, nullable=False)
+    is_equipped = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    user = relationship("User", backref="equipments")
+
+class EquipmentListing(Base):
+    __tablename__ = "equipment_listings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    seller_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    seller_name = Column(String, nullable=False)
+    buyer_id = Column(String, nullable=True, index=True) # None for public market, or specific user_id
+    buyer_name = Column(String, nullable=True)
+    equipment_id = Column(Integer, ForeignKey("user_equipments.id"), nullable=False, index=True)
+    price = Column(Integer, nullable=False)
+    tax_fee = Column(Integer, default=0, nullable=False)
+    status = Column(String, default="ACTIVE", nullable=False) # ACTIVE, SOLD, CANCELLED
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+
+    equipment = relationship("UserEquipment")
+    seller = relationship("User", foreign_keys=[seller_id])
+

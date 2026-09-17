@@ -35,7 +35,14 @@ from trading_engine import (
     execute_pickaxe_upgrade,
     get_user_pickaxe_status,
     get_pickaxe_table_guide,
-    get_pickaxe_info
+    get_pickaxe_info,
+    execute_buy_equipment,
+    execute_equip_item,
+    execute_list_equipment,
+    execute_buy_equipment_listing,
+    execute_cancel_equipment_listing,
+    get_equipment_market_listings,
+    get_user_inventory_status
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -43,7 +50,8 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴 (곡괭이: !곡괭이, !강화, 확률: !채굴확률), !국고, !남은시간
+• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !국고, !남은시간
+• 장비: !내장비, !장착 [번호], !강화 [번호], !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -547,19 +555,77 @@ def handle_chat_command(
     if cmd in ["!채굴확률", "!채굴안내", "!채굴정보", "!광맥", "!채굴배율"]:
         return GUIDE_MINING, None
 
-    # 8-2. Pickaxe / Equipment Status (!곡괭이)
-    if cmd in ["!곡괭이", "!채굴기", "!장비", "!아이템", "!내곡괭이", "!내장비", "!pickaxe"]:
+    # 8-2. Pickaxe / Equipment Status / Inventory (!곡괭이, !내장비, !인벤토리)
+    if cmd in ["!곡괭이", "!채굴기", "!장비", "!아이템", "!내곡괭이", "!내장비", "!인벤토리", "!인벤", "!pickaxe", "!inventory"]:
         return get_user_pickaxe_status(db, user_id, username), None
 
-    # 8-3. Pickaxe Upgrade (!강화, !업그레이드)
+    # 8-3. Pickaxe Upgrade (!강화, !업그레이드 [장비번호])
     if cmd in ["!강화", "!업그레이드", "!곡괭이강화", "!곡괭이업그레이드", "!upgrade"]:
-        success, reply, details = execute_pickaxe_upgrade(db, user_id, username)
+        target_token = tokens[1] if len(tokens) >= 2 else None
+        success, reply, details = execute_pickaxe_upgrade(db, user_id, username, target_token)
         event = {"type": "pickaxe_upgrade", "data": details} if success and details else None
         return reply, event
 
     # 8-4. Pickaxe Tier Guide (!강화표, !곡괭이목록)
     if cmd in ["!곡괭이목록", "!곡괭이표", "!강화표", "!강화목록"]:
         return get_pickaxe_table_guide(), None
+
+    # 8-5. Store Buy Equipment (!곡괭이구매, !새장비, !장비상점)
+    if cmd in ["!곡괭이구매", "!새장비", "!장비상점", "!장비상점구매"]:
+        tier_str = tokens[1] if len(tokens) >= 2 else "0"
+        success, reply, details = execute_buy_equipment(db, user_id, username, tier_str)
+        event = {"type": "equipment_buy", "data": details} if success and details else None
+        return reply, event
+
+    # 8-6. Equip Item (!장착, !장비장착, !장비교체)
+    if cmd in ["!장착", "!장비장착", "!장비교체", "!equip"]:
+        if len(tokens) < 2:
+            return "⛏️ [장비 장착] 사용법: !장착 [장비번호] (예: !장착 2, !장비장착 3 | 내 장비 번호 확인: !내장비)", None
+        success, reply, details = execute_equip_item(db, user_id, username, tokens[1])
+        event = {"type": "equipment_equip", "data": details} if success and details else None
+        return reply, event
+
+    # 8-7. Equipment P2P Trade / Market Listing (!장비판매, !장비제안, !직거래, !장비등록)
+    if cmd in ["!장비판매", "!장비제안", "!직거래", "!장비등록"]:
+        if cmd == "!장비등록":
+            if len(tokens) < 3:
+                return "🏪 [장비 거래소 등록] 사용법: !장비등록 [내장비번호] [가격] (예: !장비등록 2 50000 | 5% 수수료 국고 환원)", None
+            success, reply, details = execute_list_equipment(db, user_id, username, tokens[1], tokens[2], None)
+        else:
+            if len(tokens) >= 4:
+                # Direct trade to buyer: !장비판매 [구매자] [장비번호] [가격]
+                success, reply, details = execute_list_equipment(db, user_id, username, tokens[2], tokens[3], tokens[1])
+            elif len(tokens) == 3:
+                # Public listing: !장비판매 [장비번호] [가격]
+                success, reply, details = execute_list_equipment(db, user_id, username, tokens[1], tokens[2], None)
+            else:
+                return "🤝 [장비 판매] 사용법: !장비판매 [구매자닉네임] [내장비번호] [가격] 또는 !장비등록 [내장비번호] [가격] (수수료 5% 국고 환원)", None
+        event = {"type": "equipment_list", "data": details} if success and details else None
+        return reply, event
+
+    # 8-8. Equipment Marketplace View (!장비장터, !장비거래소, !장비마켓, !장터)
+    if cmd in ["!장비장터", "!장비거래소", "!장비마켓", "!장터"]:
+        return get_equipment_market_listings(db), None
+
+    # 8-9. Equipment Buy / Accept Trade (!장비구매, !장비수락, !장터구매)
+    if cmd in ["!장비구매", "!장비수락", "!장터구매"]:
+        if len(tokens) < 2:
+            return "🏪 [장비 구매] 사용법: !장비구매 [거래번호] (장터 매물 확인: !장비장터 | 상점 새 곡괭이는 !곡괭이구매 [종류])", None
+        arg = tokens[1]
+        if arg in ["나무", "돌", "철", "wood", "stone", "iron", "기본", "상점"]:
+            success, reply, details = execute_buy_equipment(db, user_id, username, arg)
+            event = {"type": "equipment_buy", "data": details} if success and details else None
+            return reply, event
+        success, reply, details = execute_buy_equipment_listing(db, user_id, username, arg)
+        event = {"type": "equipment_trade", "data": details} if success and details else None
+        return reply, event
+
+    # 8-10. Cancel Market Listing (!장비회수, !장비등록취소, !장비취소)
+    if cmd in ["!장비회수", "!장비등록취소", "!장비취소"]:
+        if len(tokens) < 2:
+            return "📦 [장비 등록 취소] 사용법: !장비회수 [거래번호] (예: !장비회수 1)", None
+        success, reply, details = execute_cancel_equipment_listing(db, user_id, username, tokens[1])
+        return reply, None
 
     # 9. Treasury Info Query
     if cmd in ["!국고", "!풀", "!채굴풀"]:

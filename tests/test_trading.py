@@ -1826,6 +1826,149 @@ def test_pickaxe_chat_commands(db_session, monkeypatch):
     assert "15강까진 절대 안 터집니다" in r_guide
     assert "국고 채굴풀로 환원" in r_guide
 
+def test_multi_equipment_buy_swap_upgrade_and_p2p_trade(db_session, monkeypatch):
+    """Test purchasing multiple equipments, swapping active equipment, enhancing selected equipment, and P2P marketplace trading with 5% tax."""
+    import random
+    alice_id = "trader_alice"
+    alice = te.get_or_create_user(db_session, alice_id, "엘리스")
+    alice.points = 1000000 # 100만P
+
+    bob_id = "trader_bob"
+    bob = te.get_or_create_user(db_session, bob_id, "밥")
+    bob.points = 1000000 # 100만P
+
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 500000
+    db_session.commit()
+
+    # 1. Check initial equipment for Alice (starts with 1 default pickaxe)
+    alice_items = te.ensure_user_equipment(db_session, alice)
+    assert len(alice_items) == 1
+    default_eq = alice_items[0]
+    assert default_eq.is_equipped is True
+
+    # 2. Alice buys a new equipment (5성 돌 곡괭이 for 60,000P)
+    ok_b, rep_b, det_b = te.execute_buy_equipment(db_session, alice_id, "엘리스", "5")
+    assert ok_b is True
+    assert det_b["cost"] == 60000
+    assert det_b["starforce"] == 5
+    assert det_b["is_equipped"] is False # Goes to inventory since Alice already had equipped item
+    assert state.treasury_pool == 560000
+    db_session.refresh(alice)
+    assert alice.points == 940000
+
+    alice_items = te.ensure_user_equipment(db_session, alice)
+    assert len(alice_items) == 2
+    stone_eq = next(it for it in alice_items if it.starforce == 5)
+    assert stone_eq.id != default_eq.id
+
+    # 3. Alice swaps equipment: equips the 5-star stone pickaxe
+    ok_eq, rep_eq, det_eq = te.execute_equip_item(db_session, alice_id, "엘리스", str(stone_eq.id))
+    assert ok_eq is True
+    db_session.refresh(default_eq)
+    db_session.refresh(stone_eq)
+    assert default_eq.is_equipped is False
+    assert stone_eq.is_equipped is True
+    db_session.refresh(alice)
+    assert alice.pickaxe_level == 5
+
+    # 4. Enhance selected equipment: enhance default_eq (currently in inventory, not equipped)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 1.0) # Force success
+    ok_up, rep_up, det_up = te.execute_pickaxe_upgrade(db_session, alice_id, "엘리스", str(default_eq.id))
+    assert ok_up is True
+    db_session.refresh(default_eq)
+    assert default_eq.starforce == 2
+    # Stone eq is still 5 stars and remains equipped
+    db_session.refresh(stone_eq)
+    assert stone_eq.starforce == 5
+    assert alice.pickaxe_level == 5 # Still 5 since stone_eq is equipped
+
+    # 5. Check Inventory string format
+    inv_str = te.get_user_inventory_status(db_session, alice_id, "엘리스")
+    assert "내 장비 인벤토리" in inv_str
+    assert "🟢장착중" in inv_str
+    assert "📦보관" in inv_str
+
+    # 6. Public Marketplace Listing: Alice lists stone_eq for 100,000P
+    ok_list, rep_list, det_list = te.execute_list_equipment(db_session, alice_id, "엘리스", str(stone_eq.id), "100000")
+    assert ok_list is True
+    listing_id = det_list["listing_id"]
+    assert det_list["price"] == 100000
+    assert det_list["tax_fee"] == 5000 # 5% tax
+    # Since stone_eq was equipped, default_eq (2성) should be automatically equipped
+    db_session.refresh(default_eq)
+    db_session.refresh(stone_eq)
+    assert stone_eq.is_equipped is False
+    assert default_eq.is_equipped is True
+    db_session.refresh(alice)
+    assert alice.pickaxe_level == 2
+
+    # 7. Check listed item cannot be enhanced while on sale
+    ok_blocked, rep_blocked, _ = te.execute_pickaxe_upgrade(db_session, alice_id, "엘리스", str(stone_eq.id))
+    assert ok_blocked is False
+    assert "판매 등록 중" in rep_blocked
+
+    # 8. Check Marketplace listings
+    market_str = te.get_equipment_market_listings(db_session)
+    assert "나베 장비 거래소" in market_str
+    assert "100,000P" in market_str
+    assert f"거래 #{listing_id}" in market_str
+
+    # 9. Alice cannot buy her own listing
+    ok_self, rep_self, _ = te.execute_buy_equipment_listing(db_session, alice_id, "엘리스", str(listing_id))
+    assert ok_self is False
+    assert "본인이 등록한 장비" in rep_self
+
+    # 10. Bob buys Alice's listing from the marketplace
+    bob_initial_points = bob.points
+    alice_points_before_sale = alice.points
+    treasury_before = state.treasury_pool
+
+    ok_buy, rep_buy, det_buy = te.execute_buy_equipment_listing(db_session, bob_id, "밥", str(listing_id))
+    assert ok_buy is True
+    assert "장비 거래 성사" in rep_buy
+
+    db_session.refresh(bob)
+    db_session.refresh(alice)
+    db_session.refresh(state)
+    db_session.refresh(stone_eq)
+
+    # Bob paid 100,000P
+    assert bob.points == bob_initial_points - 100000
+    # Treasury received 5,000P (5% tax)
+    assert state.treasury_pool == treasury_before + 5000
+    # Alice received 95,000P (net)
+    assert alice.points == alice_points_before_sale + 95000
+    # stone_eq ownership transferred to Bob
+    assert stone_eq.user_id == bob_id
+
+    # 11. 1:1 Direct Trade: Bob sells stone_eq directly to Alice for 50,000P
+    ok_dir, rep_dir, det_dir = te.execute_list_equipment(db_session, bob_id, "밥", str(stone_eq.id), "50000", target_buyer_token="엘리스")
+    assert ok_dir is True
+    assert "1:1 직거래" in rep_dir
+    dir_listing_id = det_dir["listing_id"]
+
+    # Charlie tries to buy it -> blocked because it is reserved for Alice
+    charlie = te.get_or_create_user(db_session, "trader_charlie", "찰리")
+    charlie.points = 100000
+    db_session.commit()
+    ok_blocked_c, rep_blocked_c, _ = te.execute_buy_equipment_listing(db_session, "trader_charlie", "찰리", str(dir_listing_id))
+    assert ok_blocked_c is False
+    assert "전용 1:1 직거래" in rep_blocked_c
+
+    # Alice buys the reserved trade
+    ok_alice_buy, rep_alice_buy, _ = te.execute_buy_equipment_listing(db_session, alice_id, "엘리스", str(dir_listing_id))
+    assert ok_alice_buy is True
+    db_session.refresh(stone_eq)
+    assert stone_eq.user_id == alice_id
+
+    # 12. Chat command integration test
+    r_chat_inv, _ = ch.handle_chat_command(db_session, alice_id, "엘리스", "!내장비")
+    assert "내 장비 인벤토리" in r_chat_inv
+
+    r_chat_market, _ = ch.handle_chat_command(db_session, alice_id, "엘리스", "!장비장터")
+    assert "나베 장비 거래소" in r_chat_market
+
 
 
 

@@ -29,7 +29,10 @@ def get_db():
         db.close()
 
 def init_db():
-    from models import MarketState, User, Position, LimitOrder, BankruptcyApplication, DonationRecord
+    from models import (
+        MarketState, User, Position, LimitOrder, BankruptcyApplication,
+        DonationRecord, UserEquipment, EquipmentListing
+    )
     Base.metadata.create_all(bind=engine)
     
     # Ensure backup directory is ready

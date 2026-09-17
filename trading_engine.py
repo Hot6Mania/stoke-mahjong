@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from models import (
     User, Position, MarketState, LimitOrder, ProductType,
     OrderType, OrderStatus, BankruptcyApplication, BankruptcyStatus,
-    DonationRecord
+    DonationRecord, UserEquipment, EquipmentListing
 )
 
 PRODUCT_MULTIPLIERS: Dict[ProductType, float] = {
@@ -1507,6 +1507,52 @@ def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
         t["multiplier"] = round(random.uniform(low, high), 2)
     return t
 
+def ensure_user_equipment(db: Session, user: User) -> List[UserEquipment]:
+    """Ensures user has at least one equipment in user_equipments table, with one equipped."""
+    items = db.query(UserEquipment).filter_by(user_id=user.id).order_by(UserEquipment.id.asc()).all()
+    if not items:
+        star = max(0, min(25, int(getattr(user, "pickaxe_level", 0) or 0)))
+        info = get_pickaxe_info(star)
+        item = UserEquipment(
+            user_id=user.id,
+            equipment_type="PICKAXE",
+            name=info["name"],
+            starforce=star,
+            is_equipped=True
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        items = [item]
+    else:
+        equipped = [i for i in items if i.is_equipped]
+        if not equipped:
+            items[0].is_equipped = True
+            equipped = [items[0]]
+            db.commit()
+        elif len(equipped) > 1:
+            for eq in equipped[1:]:
+                eq.is_equipped = False
+            db.commit()
+        # If user.pickaxe_level was updated directly outside and there is only 1 item, sync it
+        if len(items) == 1 and getattr(user, "pickaxe_level", None) is not None and user.pickaxe_level != equipped[0].starforce:
+            equipped[0].starforce = max(0, min(25, int(user.pickaxe_level)))
+            equipped[0].name = get_pickaxe_info(equipped[0].starforce)["name"]
+            db.commit()
+        else:
+            user.pickaxe_level = equipped[0].starforce
+    return items
+
+def get_user_equipped_item(db: Session, user: User) -> UserEquipment:
+    """Returns the currently equipped item for user."""
+    items = ensure_user_equipment(db, user)
+    for it in items:
+        if it.is_equipped:
+            return it
+    items[0].is_equipped = True
+    db.commit()
+    return items[0]
+
 def execute_mining(
     db: Session,
     user_id: str,
@@ -1519,10 +1565,13 @@ def execute_mining(
     user = get_or_create_user(db, user_id, username)
     now_utc = datetime.now(timezone.utc)
 
-    # 1. Pickaxe Item Info
-    curr_level = getattr(user, "pickaxe_level", 0)
+    # 1. Pickaxe Item Info from equipped equipment
+    equipped_item = get_user_equipped_item(db, user)
+    curr_level = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
     if curr_level is None:
         curr_level = 0
+    curr_level = max(0, min(25, int(curr_level)))
+    user.pickaxe_level = curr_level
     pickaxe = get_pickaxe_info(curr_level)
     cooldown_sec = pickaxe["cooldown_seconds"]
     cooldown_min = pickaxe["cooldown_minutes"]
@@ -1755,13 +1804,37 @@ def execute_mining(
         "is_forced_labor": False
     }
 
+def find_user_equipment(db: Session, user: User, item_id_or_index: Optional[str]) -> Optional[UserEquipment]:
+    """Finds user equipment by ID (#123) or 1-based inventory index (1, 2, 3...). Defaults to equipped item if None."""
+    items = ensure_user_equipment(db, user)
+    if not items:
+        return None
+    if not item_id_or_index or str(item_id_or_index).strip() in ["", "현재", "기본", "장착", "equipped"]:
+        for it in items:
+            if it.is_equipped:
+                return it
+        return items[0]
+
+    clean_arg = str(item_id_or_index).strip().lstrip("#")
+    # 1. Match by equipment primary key ID
+    for it in items:
+        if str(it.id) == clean_arg:
+            return it
+    # 2. Match by 1-based index in user's inventory
+    if clean_arg.isdigit():
+        idx = int(clean_arg) - 1
+        if 0 <= idx < len(items):
+            return items[idx]
+    return None
+
 def execute_pickaxe_upgrade(
     db: Session,
     user_id: str,
-    username: str
+    username: str,
+    item_id_or_index: Optional[str] = None
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Execute !강화 / !업그레이드 (MapleStory Star Force pickaxe enhancement).
+    Execute !강화 / !업그레이드 [장비번호/슬롯] (MapleStory Star Force pickaxe enhancement).
     - 0성 ~ 14성: 파괴 확률 없음 (0%)
     - 15성 ~ 24성: 파괴 확률 존재 (파괴 시 메이플 룰에 따라 12성 장비의 흔적으로 복원)
     - 10성, 15성, 20성: 실패 시 하락 없는 안전 방지턱
@@ -1769,14 +1842,21 @@ def execute_pickaxe_upgrade(
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
-    curr_level = getattr(user, "pickaxe_level", 0)
-    if curr_level is None:
-        curr_level = 0
-    curr_level = max(0, min(25, int(curr_level)))
+    target_item = find_user_equipment(db, user, item_id_or_index)
+
+    if not target_item:
+        return False, f"⚠️ 지정한 장비('{item_id_or_index}')를 보유하고 있지 않습니다! (내 장비 확인: !내장비, !인벤토리)", None
+
+    # Check if item is listed in an active marketplace trade
+    active_listing = db.query(EquipmentListing).filter_by(equipment_id=target_item.id, status="ACTIVE").first()
+    if active_listing:
+        return False, f"⚠️ [장비 #{target_item.id}]은(는) 현재 거래소/직거래에 판매 등록 중입니다! 거래 취소(!장비회수) 후 강화해주세요.", None
+
+    curr_level = max(0, min(25, int(target_item.starforce or 0)))
 
     if curr_level >= 25:
         max_item = get_pickaxe_info(25)
-        return False, f"✨ 이미 최고 등급 종결 장비인 [{max_item['name']}]을(를) 장착하고 있습니다!", None
+        return False, f"✨ [장비 #{target_item.id}]은(는) 이미 최고 등급 종결 장비인 [{max_item['name']}]입니다!", None
 
     current_item = get_pickaxe_info(curr_level)
     cost = current_item["upgrade_cost"]
@@ -1804,52 +1884,60 @@ def execute_pickaxe_upgrade(
     if roll < s_rate:
         outcome = "success"
         new_level = curr_level + 1
-        user.pickaxe_level = new_level
+        target_item.starforce = new_level
         new_item = get_pickaxe_info(new_level)
+        target_item.name = new_item["name"]
         bp_info = f" + 확정 +{new_item['bonus_points']:,}P" if new_item.get('bonus_points', 0) > 0 else ""
         reply = (
-            f"🔨✨ [스타포스 강화 대성공!!] {user.username}님 {cost:,}P를 소모하여 [{new_item['name']}] 강화에 성공했습니다! "
+            f"🔨✨ [스타포스 강화 대성공!!] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id} {new_item['name']}] 강화에 성공했습니다! "
             f"(채굴량: {new_item['yield_multiplier']}배{bp_info} | 크리: +{new_item['crit_bonus']}% | 쿨: {new_item['cooldown_minutes']}분 | "
             f"국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     elif roll < (s_rate + m_rate):
         outcome = "maintain"
         new_level = curr_level
-        user.pickaxe_level = new_level
+        target_item.starforce = new_level
         new_item = current_item
         reply = (
-            f"🔨💨 [강화 실패 (등급 유지)] {user.username}님 {cost:,}P를 소모하였으나 강화에 실패했습니다. (방지턱/안전 구간으로 등급 유지) "
+            f"🔨💨 [강화 실패 (등급 유지)] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화에 실패했습니다. (방지턱/안전 구간으로 등급 유지) "
             f"(현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     elif roll < (s_rate + m_rate + d_rate):
         outcome = "drop"
         new_level = max(0, curr_level - 1)
-        user.pickaxe_level = new_level
+        target_item.starforce = new_level
         new_item = get_pickaxe_info(new_level)
+        target_item.name = new_item["name"]
         reply = (
-            f"🔨📉 [강화 실패 (등급 하락!)] {user.username}님 {cost:,}P를 소모하였으나 강화 실패로 1성 하락했습니다! ㅠㅠ "
+            f"🔨📉 [강화 실패 (등급 하락!)] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화 실패로 1성 하락했습니다! ㅠㅠ "
             f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     else:
         # Destroyed / Blown up! (Only possible at 15성+)
         outcome = "destroyed"
         new_level = 12  # 메이플 스타포스 룰: 장비의 흔적 12성 복원!
-        user.pickaxe_level = 12
+        target_item.starforce = 12
         new_item = get_pickaxe_info(12)
+        target_item.name = new_item["name"]
         reply = (
-            f"💥💥 [곡괭이 폭발 파괴!!] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [{current_item['name']}]이(가) "
+            f"💥💥 [곡괭이 폭발 파괴!!] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [장비 #{target_item.id} {current_item['name']}]이(가) "
             f"폭발 파괴되어 메이플 장비의 흔적 룰에 따라 [{new_item['name']}]으로 복원되었습니다! (국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
         )
 
+    if target_item.is_equipped:
+        user.pickaxe_level = target_item.starforce
+
     db.commit()
     db.refresh(user)
+    db.refresh(target_item)
     db.refresh(state)
 
     details = {
         "user_id": user.id,
         "username": user.username,
+        "equipment_id": target_item.id,
         "previous_level": curr_level,
-        "new_level": user.pickaxe_level,
+        "new_level": target_item.starforce,
         "outcome": outcome,
         "pickaxe_name": new_item["name"],
         "cost": cost,
@@ -1858,12 +1946,444 @@ def execute_pickaxe_upgrade(
     }
     return True, reply, details
 
-def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
-    """Returns detailed pickaxe status for a user."""
+def execute_buy_equipment(
+    db: Session,
+    user_id: str,
+    username: str,
+    tier_token: str = "0"
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Buy a new equipment/pickaxe from the store for points.
+    Available options:
+    - 0성 나무 곡괭이 (10,000P)
+    - 5성 돌 곡괭이 (60,000P)
+    - 10성 철 곡괭이 (250,000P)
+    """
     user = get_or_create_user(db, user_id, username)
-    curr_lvl = getattr(user, "pickaxe_level", 0)
-    if curr_lvl is None:
-        curr_lvl = 0
+    state = get_market_state(db)
+
+    clean_tier = str(tier_token).strip().lower()
+    shop_options = {
+        "0": (0, 10000), "나무": (0, 10000), "기본": (0, 10000), "wood": (0, 10000), "": (0, 10000),
+        "5": (5, 60000), "돌": (5, 60000), "stone": (5, 60000),
+        "10": (10, 250000), "철": (10, 250000), "iron": (10, 250000)
+    }
+
+    if clean_tier not in shop_options:
+        return False, (
+            "⛏️ [장비 상점 안내] 구매할 곡괭이 종류를 입력해주세요: '!곡괭이구매 [종류]'\n"
+            "• 🪵 0성 나무 곡괭이: 10,000P (!곡괭이구매 0 또는 !곡괭이구매 나무)\n"
+            "• 🪨 5성 돌 곡괭이: 60,000P (!곡괭이구매 5 또는 !곡괭이구매 돌)\n"
+            "• ⛓️ 10성 철 곡괭이: 250,000P (!곡괭이구매 10 또는 !곡괭이구매 철)"
+        ), None
+
+    target_star, cost = shop_options[clean_tier]
+
+    user_debt = getattr(user, "debt", 0) or 0
+    if user_debt > 0 and (user.points - cost) < user_debt:
+        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여 현금을 남기는 장비 구매를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
+
+    if user.points < cost:
+        return False, f"⚠️ 포인트가 부족합니다! (필요: {cost:,}P | 보유: {user.points:,}P | 부족: {cost - user.points:,}P)", None
+
+    user.points -= cost
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += cost
+
+    user_items = ensure_user_equipment(db, user)
+    has_equipped = any(it.is_equipped for it in user_items)
+    auto_equip = not has_equipped
+
+    info = get_pickaxe_info(target_star)
+    new_eq = UserEquipment(
+        user_id=user.id,
+        equipment_type="PICKAXE",
+        name=info["name"],
+        starforce=target_star,
+        is_equipped=auto_equip
+    )
+    db.add(new_eq)
+    db.commit()
+    db.refresh(new_eq)
+
+    if auto_equip:
+        user.pickaxe_level = target_star
+        db.commit()
+        equip_msg = " [현재 주 장비로 자동 장착됨 🟢]"
+    else:
+        equip_msg = f" [인벤토리 보관 📦 | 장착: !장착 {new_eq.id}]"
+
+    reply = (
+        f"⛏️✨ [새 장비 구매 완료!] {user.username}님이 {cost:,}P로 [장비 #{new_eq.id} {info['name']}]{equip_msg}을(를) 구매했습니다! "
+        f"(국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P | 강화: !강화 {new_eq.id} | 목록: !내장비)"
+    )
+
+    details = {
+        "equipment_id": new_eq.id,
+        "name": info["name"],
+        "starforce": target_star,
+        "cost": cost,
+        "is_equipped": auto_equip,
+        "user_id": user.id,
+        "username": user.username,
+        "remaining_points": user.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+def execute_equip_item(
+    db: Session,
+    user_id: str,
+    username: str,
+    item_id_or_index: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Equip / Swap active pickaxe for mining.
+    """
+    user = get_or_create_user(db, user_id, username)
+    user_items = ensure_user_equipment(db, user)
+    target_item = find_user_equipment(db, user, item_id_or_index)
+
+    if not target_item:
+        return False, f"⚠️ 장비 '{item_id_or_index}'를 보유하고 있지 않습니다! (!내장비 또는 !인벤토리로 확인)", None
+
+    if target_item.is_equipped:
+        return False, f"💡 이미 [장비 #{target_item.id} {target_item.name}]을(를) 장착 중입니다.", None
+
+    active_listing = db.query(EquipmentListing).filter_by(equipment_id=target_item.id, status="ACTIVE").first()
+    if active_listing:
+        return False, f"⚠️ [장비 #{target_item.id}]은(는) 현재 거래소에 판매 등록 중입니다! 등록 취소(!장비회수 {active_listing.id}) 후 장착해주세요.", None
+
+    for it in user_items:
+        it.is_equipped = (it.id == target_item.id)
+
+    user.pickaxe_level = target_item.starforce
+    db.commit()
+    db.refresh(user)
+    db.refresh(target_item)
+
+    info = get_pickaxe_info(target_item.starforce)
+    bp_str = f" | 확정: +{info['bonus_points']:,}P" if info.get("bonus_points", 0) > 0 else ""
+    reply = (
+        f"⛏️🔄 [장비 교체 완료!] {user.username}님이 [장비 #{target_item.id} {info['name']}]을(를) 주 장비로 장착했습니다! "
+        f"(채굴량 {info['yield_multiplier']}배{bp_str} | 크리 +{info['crit_bonus']}% | 쿨 {info['cooldown_minutes']}분)"
+    )
+
+    details = {
+        "equipment_id": target_item.id,
+        "name": info["name"],
+        "starforce": target_item.starforce,
+        "user_id": user.id,
+        "username": user.username
+    }
+    return True, reply, details
+
+def execute_list_equipment(
+    db: Session,
+    user_id: str,
+    username: str,
+    item_id_token: str,
+    price_token: str,
+    target_buyer_token: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    List equipment for sale on the marketplace or as a 1:1 direct trade to a specific player.
+    5% transaction fee is charged upon sale and credited to Treasury.
+    """
+    user = get_or_create_user(db, user_id, username)
+    user_items = ensure_user_equipment(db, user)
+    target_item = find_user_equipment(db, user, item_id_token)
+
+    if not target_item:
+        return False, f"⚠️ 판매할 장비 '{item_id_token}'를 보유하고 있지 않습니다! (!내장비로 장비번호 확인)", None
+
+    active_listing = db.query(EquipmentListing).filter_by(equipment_id=target_item.id, status="ACTIVE").first()
+    if active_listing:
+        return False, f"⚠️ [장비 #{target_item.id}]은(는) 이미 거래소(거래번호: #{active_listing.id})에 등록되어 있습니다!", None
+
+    clean_price = re.sub(r"[^0-9]", "", str(price_token))
+    if not clean_price:
+        return False, f"⚠️ 올바른 판매 가격을 입력해주세요: '{price_token}' (예: !장비등록 2 50000)", None
+
+    price = int(clean_price)
+    if price < 1000:
+        return False, "⚠️ 최소 판매 등록 가격은 1,000P입니다.", None
+    if price > 1000000000:
+        return False, "⚠️ 최대 판매 등록 가격은 1,000,000,000P입니다.", None
+
+    target_buyer_id = None
+    target_buyer_name = None
+    if target_buyer_token:
+        clean_buyer = str(target_buyer_token).strip().lstrip("@")
+        buyer_user = db.query(User).filter(func.lower(User.username) == clean_buyer.lower()).first()
+        if not buyer_user:
+            return False, f"⚠️ 구매 대상 유저 '{clean_buyer}'님을 찾을 수 없습니다.", None
+        if buyer_user.id == user.id:
+            return False, "⚠️ 본인에게는 장비를 직거래로 판매할 수 없습니다.", None
+        target_buyer_id = buyer_user.id
+        target_buyer_name = buyer_user.username
+
+    # Calculate 5% transaction tax fee
+    tax_fee = max(50, int(round(price * 0.05)))
+
+    # If item was equipped, unequip it and equip another item if available
+    if target_item.is_equipped:
+        target_item.is_equipped = False
+        remaining = [it for it in user_items if it.id != target_item.id]
+        if remaining:
+            remaining.sort(key=lambda x: x.starforce, reverse=True)
+            remaining[0].is_equipped = True
+            user.pickaxe_level = remaining[0].starforce
+        else:
+            user.pickaxe_level = 0
+
+    listing = EquipmentListing(
+        seller_id=user.id,
+        seller_name=user.username,
+        buyer_id=target_buyer_id,
+        buyer_name=target_buyer_name,
+        equipment_id=target_item.id,
+        price=price,
+        tax_fee=tax_fee,
+        status="ACTIVE",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(listing)
+    db.commit()
+    db.refresh(listing)
+
+    if target_buyer_name:
+        reply = (
+            f"🤝📦 [장비 1:1 직거래 등록!] {user.username}님이 {target_buyer_name}님 전용으로 "
+            f"[장비 #{target_item.id} {target_item.name}]을(를) {price:,}P (거래세 5%: {tax_fee:,}P 국고 환원)에 등록했습니다! (거래번호: #{listing.id})\n"
+            f"👉 {target_buyer_name}님 구매: '!장비수락 {listing.id}' 또는 '!장비구매 {listing.id}' | 취소: '!장비회수 {listing.id}'"
+        )
+    else:
+        reply = (
+            f"🏪📦 [장비 거래소 등록 완료!] {user.username}님이 [장비 #{target_item.id} {target_item.name}]을(를) "
+            f"거래소에 {price:,}P (판매 시 5% 수수료: {tax_fee:,}P 국고 환원)에 등록했습니다! (거래번호: #{listing.id})\n"
+            f"👉 누구나 구매: '!장비구매 {listing.id}' | 등록 취소: '!장비회수 {listing.id}' | 장터 확인: '!장비장터'"
+        )
+
+    details = {
+        "listing_id": listing.id,
+        "equipment_id": target_item.id,
+        "seller_id": user.id,
+        "seller_name": user.username,
+        "buyer_id": target_buyer_id,
+        "buyer_name": target_buyer_name,
+        "price": price,
+        "tax_fee": tax_fee,
+        "equipment_name": target_item.name,
+        "starforce": target_item.starforce
+    }
+    return True, reply, details
+
+def execute_buy_equipment_listing(
+    db: Session,
+    buyer_id: str,
+    buyer_name: str,
+    listing_id_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Buy an equipment from the marketplace or accept a 1:1 direct trade offer.
+    Deducts price from buyer, credits 5% fee to Treasury, pays net price to seller, and transfers equipment.
+    """
+    clean_id = re.sub(r"[^0-9]", "", str(listing_id_token))
+    if not clean_id:
+        return False, f"⚠️ 올바른 거래 번호를 입력해주세요: '{listing_id_token}' (예: !장비구매 1 | 장터 확인: !장비장터)", None
+
+    listing_id = int(clean_id)
+    listing = db.query(EquipmentListing).filter_by(id=listing_id).first()
+    if not listing or listing.status != "ACTIVE":
+        return False, f"⚠️ 해당 거래(#{listing_id})가 존재하지 않거나 이미 판매 완료/취소되었습니다.", None
+
+    if buyer_id == listing.seller_id:
+        return False, f"⚠️ 본인이 등록한 장비는 직접 구매할 수 없습니다! (등록 취소: !장비회수 {listing.id})", None
+
+    if listing.buyer_id and buyer_id != listing.buyer_id:
+        return False, f"⚠️ 이 거래는 {listing.buyer_name}님 전용 1:1 직거래입니다! 다른 유저는 구매할 수 없습니다.", None
+
+    buyer = get_or_create_user(db, buyer_id, buyer_name)
+    state = get_market_state(db)
+
+    # Debt check: cannot buy if points below debt
+    buyer_debt = getattr(buyer, "debt", 0) or 0
+    if buyer_debt > 0 and (buyer.points - listing.price) < buyer_debt:
+        return False, f"⚠️ 채무(빚: {buyer_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여금을 남기는 장비 구매를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
+
+    if buyer.points < listing.price:
+        return False, f"⚠️ 포인트가 부족합니다! (필요: {listing.price:,}P | 보유: {buyer.points:,}P | 부족: {listing.price - buyer.points:,}P)", None
+
+    eq = db.query(UserEquipment).filter_by(id=listing.equipment_id).first()
+    if not eq:
+        listing.status = "CANCELLED"
+        db.commit()
+        return False, "⚠️ 등록된 장비 데이터를 찾을 수 없어 거래가 자동 취소되었습니다.", None
+
+    seller = db.query(User).filter_by(id=listing.seller_id).first()
+    tax_fee = listing.tax_fee
+    seller_payout = listing.price - tax_fee
+
+    # Financial transfers
+    buyer.points -= listing.price
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += tax_fee
+    if seller:
+        seller.points += seller_payout
+
+    # Transfer equipment ownership
+    eq.user_id = buyer.id
+    eq.is_equipped = False
+
+    # Auto equip if buyer currently has no equipped items
+    buyer_items = db.query(UserEquipment).filter_by(user_id=buyer.id).all()
+    if not any(it.is_equipped for it in buyer_items):
+        eq.is_equipped = True
+        buyer.pickaxe_level = eq.starforce
+
+    # Mark listing as sold
+    listing.status = "SOLD"
+    listing.resolved_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(buyer)
+    if seller:
+        db.refresh(seller)
+    db.refresh(eq)
+    db.refresh(state)
+
+    reply = (
+        f"🎉🤝 [장비 거래 성사!] {buyer.username}님이 {listing.seller_name}님의 [장비 #{eq.id} {eq.name}]을(를) {listing.price:,}P에 인수했습니다! "
+        f"(국고 거래세: +{tax_fee:,}P | 판매자 정산: +{seller_payout:,}P | 내 잔여: {buyer.points:,}P | 장착: !장착 {eq.id})"
+    )
+
+    details = {
+        "listing_id": listing.id,
+        "equipment_id": eq.id,
+        "equipment_name": eq.name,
+        "starforce": eq.starforce,
+        "seller_id": listing.seller_id,
+        "seller_name": listing.seller_name,
+        "buyer_id": buyer.id,
+        "buyer_name": buyer.username,
+        "price": listing.price,
+        "tax_fee": tax_fee,
+        "seller_payout": seller_payout,
+        "remaining_points": buyer.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+def execute_cancel_equipment_listing(
+    db: Session,
+    user_id: str,
+    username: str,
+    listing_id_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Cancel an active equipment marketplace listing and reclaim the item.
+    """
+    clean_id = re.sub(r"[^0-9]", "", str(listing_id_token))
+    if not clean_id:
+        return False, f"⚠️ 올바른 거래 번호를 입력해주세요: '{listing_id_token}' (예: !장비회수 1)", None
+
+    listing_id = int(clean_id)
+    listing = db.query(EquipmentListing).filter_by(id=listing_id).first()
+    if not listing or listing.status != "ACTIVE":
+        return False, f"⚠️ 거래 #{listing_id}는 존재하지 않거나 이미 마감/취소된 거래입니다.", None
+
+    if listing.seller_id != user_id:
+        return False, "⚠️ 본인이 등록한 거래만 취소할 수 있습니다!", None
+
+    listing.status = "CANCELLED"
+    listing.resolved_at = datetime.now(timezone.utc)
+    db.commit()
+
+    eq_name = listing.equipment.name if listing.equipment else "장비"
+    reply = f"📦↩️ [장비 등록 취소] 거래 #{listing.id}의 [{eq_name}] 판매 등록이 취소되어 인벤토리로 안전하게 회수되었습니다!"
+    return True, reply, {"listing_id": listing.id}
+
+def get_equipment_market_listings(db: Session, target_user_id: Optional[str] = None) -> str:
+    """Returns active marketplace listings."""
+    query = db.query(EquipmentListing).filter_by(status="ACTIVE").order_by(EquipmentListing.id.desc())
+    listings = query.limit(10).all()
+
+    if not listings:
+        return (
+            "🏪 [나베 장비 거래소 (수수료 5% 국고 환원)]\n"
+            "현재 등록된 판매 매물이 없습니다!\n"
+            "💡 내 장비 판매 등록: !장비등록 [장비번호] [가격] | 1:1 직거래: !장비판매 [유저] [장비번호] [가격]"
+        )
+
+    lines = ["🏪 [나베 장비 거래소 매물 목록 (수수료 5% 국고 환원)]"]
+    for l in listings:
+        eq = l.equipment
+        eq_name = eq.name if eq else "곡괭이"
+        star = eq.starforce if eq else 0
+        info = get_pickaxe_info(star)
+        target_tag = f"🔒 [{l.buyer_name} 전용]" if l.buyer_name else "🌐 [공개]"
+        lines.append(
+            f"• [거래 #{l.id}] {target_tag} 판매자: {l.seller_name} | {eq_name} (★{star}성, {info['yield_multiplier']}배) | "
+            f"가격: {l.price:,}P (수수료: {l.tax_fee:,}P) 👉 구매: !장비구매 {l.id}"
+        )
+    lines.append("💡 명령어: !장비구매 [거래번호] | !장비등록 [내장비번호] [가격] | !장비회수 [거래번호]")
+    return "\n".join(lines)
+
+def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
+    """Returns full inventory of equipments for a user."""
+    user = get_or_create_user(db, user_id, username)
+    items = ensure_user_equipment(db, user)
+
+    active_listing_map = {
+        l.equipment_id: l.id for l in
+        db.query(EquipmentListing).filter(EquipmentListing.seller_id == user.id, EquipmentListing.status == "ACTIVE").all()
+    }
+
+    lines = [f"🎒 [내 장비 인벤토리] {user.username}님의 보유 장비 ({len(items)}개):"]
+    for idx, it in enumerate(items, start=1):
+        info = get_pickaxe_info(it.starforce)
+        bp_str = f" +{info['bonus_points']:,}P" if info.get("bonus_points", 0) > 0 else ""
+        tags = []
+        if it.is_equipped:
+            tags.append("🟢장착중")
+        else:
+            tags.append("📦보관")
+        if it.id in active_listing_map:
+            tags.append(f"🏷️거래#{active_listing_map[it.id]}판매중")
+        tag_str = "[" + "/".join(tags) + "]"
+
+        if it.starforce >= 25:
+            next_str = "MAX"
+        else:
+            next_str = f"다음강화 {info['upgrade_cost']:,}P"
+
+        lines.append(
+            f"• #{it.id} {tag_str} {it.name} | 채굴 {info['yield_multiplier']}배{bp_str}, 크리+{info['crit_bonus']}%, 쿨{info['cooldown_minutes']}분 ({next_str})"
+        )
+
+    lines.append(
+        "💡 명령어 안내:\n"
+        "• 장비 교체: !장착 [장비번호]\n"
+        "• 선택 강화: !강화 [장비번호] (비어있으면 장착 장비 강화)\n"
+        "• 새 곡괭이 구매: !곡괭이구매 [0/5/10]\n"
+        "• 장비 거래: !장비판매 [유저] [장비번호] [가격] | 거래소: !장비장터, !장비등록 [번호] [가격]"
+    )
+    return "\n".join(lines)
+
+def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
+    """Returns detailed pickaxe status or inventory for a user."""
+    user = get_or_create_user(db, user_id, username)
+    items = ensure_user_equipment(db, user)
+
+    # If user has multiple equipments, return full inventory view
+    if len(items) > 1:
+        return get_user_inventory_status(db, user_id, username)
+
+    equipped = get_user_equipped_item(db, user)
+    curr_lvl = equipped.starforce if equipped else 0
     curr_lvl = max(0, min(25, int(curr_lvl)))
     item = get_pickaxe_info(curr_lvl)
     bp = item.get("bonus_points", 0)
@@ -1871,9 +2391,10 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
 
     if curr_lvl >= 25:
         return (
-            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']}\n"
+            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
-            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동)"
+            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동)\n"
+            f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 인벤토리: !내장비 | 거래소: !장비장터"
         )
     else:
         next_item = get_pickaxe_info(curr_lvl + 1)
@@ -1896,12 +2417,12 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
         destroy_warning = "\n  ⚠️ 15성 이상: 파괴(터짐) 위험 존재! (파괴 시 12성 복원)" if dest_rate > 0 else " (15성 미만: 절대 안 터짐!)"
 
         return (
-            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']}\n"
+            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
             f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost:,}P]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
             f"  └ 다음 효과: {next_item['desc']}\n"
-            f"💡 강화 명령어: !강화 또는 !업그레이드"
+            f"💡 명령어: !강화 [장비번호], !장착 [장비번호], !곡괭이구매 [0/5/10], !내장비, !장비장터"
         )
 
 def get_pickaxe_table_guide() -> str:
