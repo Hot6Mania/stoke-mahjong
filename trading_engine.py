@@ -359,8 +359,8 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "unit": "%",
         "icon": "🛡️",
         "tiers": {
-            "UNIQUE": (20.0, "15성 이상 강화 실패 시 20% 확률 파괴 방지"),
-            "LEGENDARY": (50.0, "15성 이상 강화 실패 시 50% 확률 파괴 방지"),
+            "UNIQUE": (30.0, "15성 이상 강화 실패 시 30% 확률 파괴 방지"),
+            "LEGENDARY": (65.0, "15성 이상 강화 실패 시 65% 확률 파괴 방지"),
         }
     },
     "AUTO_MINING_DURATION": {
@@ -385,13 +385,13 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         }
     },
     "STARFORCE_SUCCESS_BOOST": {
-        "name": "스타포스 성공률 증가",
+        "name": "강화 성공률 증가 & 실패율 감소",
         "unit": "%",
         "icon": "⭐",
         "tiers": {
-            "EPIC": (1.5, "스타포스 강화 성공률 +1.5%"),
-            "UNIQUE": (3.0, "스타포스 강화 성공률 +3.0%"),
-            "LEGENDARY": (6.0, "스타포스 강화 성공률 +6.0%"),
+            "EPIC": (2.0, "스타포스 성공률 +2.0% 증가 & 실패 확률 -2.0% 감소"),
+            "UNIQUE": (4.0, "스타포스 성공률 +4.0% 증가 & 실패 확률 -4.0% 감소"),
+            "LEGENDARY": (8.0, "스타포스 성공률 +8.0% 증가 & 실패 확률 -8.0% 감소"),
         }
     },
     "MINING_CD_REDUCTION": {
@@ -3185,15 +3185,25 @@ def execute_pickaxe_upgrade(
 
     pot_success_boost = min(20.0, float(pot_effects.get("starforce_success_boost", 0.0)))
     if pot_success_boost > 0 and s_rate < 100.0:
-        s_rate = min(99.0, s_rate + pot_success_boost)
+        boost = min(pot_success_boost, 99.0 - s_rate)
+        s_rate += boost
+        if d_rate >= boost:
+            d_rate -= boost
+        else:
+            rem = boost - d_rate
+            d_rate = 0.0
+            m_rate = max(0.0, m_rate - rem)
+
+    pot_suffix = ""
+    if pot_discount_pct > 0:
+        pot_suffix += f" (🔨잠재 {int(pot_discount_pct)}%할인)"
+    if pot_success_boost > 0:
+        pot_suffix += f" (⭐성공률 +{pot_success_boost:.1f}% / 실패율 -{pot_success_boost:.1f}%)"
 
     fever_suffix = ""
     if current_item.get("is_discounted"):
         fever_suffix = " (🔥30% 할인 피버 적용)"
-    if pot_discount_pct > 0:
-        fever_suffix += f" (🔨잠재 {int(pot_discount_pct)}%할인)"
-    if pot_success_boost > 0:
-        fever_suffix += f" (⭐성공률 +{pot_success_boost:.1f}%)"
+    fever_suffix += pot_suffix
 
     if roll < s_rate:
         outcome = "success"
@@ -3210,7 +3220,7 @@ def execute_pickaxe_upgrade(
             success_tag = "🔨✨ [스타포스 강화 대성공!!]"
 
         reply = (
-            f"{success_tag} {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id} {new_item['name']}] 강화에 성공했습니다! "
+            f"{success_tag} {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id} {new_item['name']}] 강화에 성공했습니다!{pot_suffix} "
             f"(채굴량: {new_item['yield_multiplier']}배{bp_info} | 크리: +{new_item['crit_bonus']}% | 쿨: {new_item['cooldown_minutes']}분 | "
             f"국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
@@ -3244,19 +3254,19 @@ def execute_pickaxe_upgrade(
             new_item = get_pickaxe_info(new_level, event_state=sf_state)
             target_item.name = new_item["name"]
             reply = (
-                f"🛡️✨ [잠재능력 파괴 방지 발동!{fever_suffix}] 굉음과 함께 곡괭이가 폭발 파괴될 뻔했으나, "
-                f"장비에 깃든 잠재 세이프가드({int(safeguard_pct)}%)가 발동하여 파괴를 막아냈습니다! "
-                f"(1성 하락으로 방어: [{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
+                f"🛡️✨ [강화 파괴 방지 성공! (세이프가드 {safeguard_pct:.0f}% 발동!){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 "
+                f"[장비 #{target_item.id}] 강화가 폭발 파괴될 위기였으나, 잠재능력 파괴 방지(★1성 하락 보호)가 발동하여 장비 폭발을 막아냈습니다! "
+                f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
             )
         else:
             outcome = "destroyed"
-            new_level = 12  # 메이플 스타포스 룰: 장비의 흔적 12성 복원!
+            # MapleStory Starforce rule: Destroys into Equipment Trace (장비의 흔적, 12성 복원)
             target_item.starforce = 12
             new_item = get_pickaxe_info(12, event_state=sf_state)
             target_item.name = new_item["name"]
             reply = (
-                f"💥💥 [곡괭이 폭발 파괴!!{fever_suffix}] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [장비 #{target_item.id} {current_item['name']}]이(가) "
-                f"폭발 파괴되어 메이플 장비의 흔적 룰에 따라 [{new_item['name']}]으로 복원되었습니다! (국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
+                f"💥💀 [스타포스 강화 실패: 장비 파괴!{fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴되었습니다! ㅠㅠ "
+                f"(메이플 스타포스 규칙에 따라 [장비의 흔적(★12성 {new_item['name']})]으로 복원되었습니다. | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
             )
 
     if target_item.is_equipped:
@@ -3281,7 +3291,9 @@ def execute_pickaxe_upgrade(
         "treasury_pool": state.treasury_pool,
         "event_type": sf_state.get("event_type"),
         "discount_applied": current_item.get("is_discounted", False),
-        "guaranteed_100": current_item.get("is_guaranteed_100", False)
+        "guaranteed_100": current_item.get("is_guaranteed_100", False),
+        "pot_success_boost": pot_success_boost,
+        "pot_discount_pct": pot_discount_pct,
     }
     return True, reply, details
 
@@ -4136,8 +4148,15 @@ def get_user_pickaxe_status(
 
         pot_sb = min(20.0, float(pot_effects.get("starforce_success_boost", 0.0)))
         if pot_sb > 0 and s_rate < 100.0:
-            s_rate = min(99.0, s_rate + pot_sb)
-            s_tag = f"성공 {s_rate:.2f}%(⭐+{pot_sb:.1f}%)" if s_rate % 1 else f"성공 {int(s_rate)}%(⭐+{pot_sb:.1f}%)"
+            boost = min(pot_sb, 99.0 - s_rate)
+            s_rate += boost
+            if d_rate >= boost:
+                d_rate -= boost
+            else:
+                rem = boost - d_rate
+                d_rate = 0.0
+                m_rate = max(0.0, m_rate - rem)
+            s_tag = f"성공 {s_rate:.2f}%(⭐+{boost:.1f}%)" if s_rate % 1 else f"성공 {int(s_rate)}%(⭐+{boost:.1f}%)"
         else:
             s_tag = f"성공 {s_rate:.2f}%" if s_rate % 1 else f"성공 {int(s_rate)}%"
 

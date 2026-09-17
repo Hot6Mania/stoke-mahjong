@@ -2907,6 +2907,69 @@ def test_leverage_20x_unlock_and_mechanics(db_session):
     det_settle = te.settle_match(db_session, rank=4, point_delta=-50)
     assert any(liq["user_id"] == uid and liq["product_type"] == "20X" for liq in det_settle["liquidations"])
 
+def test_starforce_safeguard_65_and_failure_reduction(db_session, monkeypatch):
+    """Test STARFORCE_SAFEGUARD (Unique 30%, Legendary 65%) and failure rate reduction by success boost."""
+    opt_sg = te.POTENTIAL_OPTIONS["STARFORCE_SAFEGUARD"]
+    assert opt_sg["tiers"]["UNIQUE"][0] == 30.0
+    assert opt_sg["tiers"]["LEGENDARY"][0] == 65.0
+
+    opt_sb = te.POTENTIAL_OPTIONS["STARFORCE_SUCCESS_BOOST"]
+    assert opt_sb["tiers"]["EPIC"][0] == 2.0
+    assert opt_sb["tiers"]["UNIQUE"][0] == 4.0
+    assert opt_sb["tiers"]["LEGENDARY"][0] == 8.0
+
+    uid = "sf_safeguard_tester"
+    uname = "세이프가드테스터"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 10000000
+    user.pickaxe_level = 16
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+    eq.starforce = 16
+    eq.potential_tier = "LEGENDARY"
+    eq.potential_line_1 = json.dumps({"code": "STARFORCE_SAFEGUARD", "val": 65.0, "text": "65%"})
+    eq.potential_line_2 = json.dumps({"code": "STARFORCE_SUCCESS_BOOST", "val": 8.0, "text": "+8.0%"})
+    db_session.commit()
+
+    # Check status display reflects success boost and failure rate deduction
+    status_msg = te.get_user_pickaxe_status(db_session, uid, uname)
+    assert "+8.0%" in status_msg or "39.5%" in status_msg
+
+    mstate = te.get_market_state(db_session)
+    mstate.sf_next_event_time = time.time() + 99999
+    db_session.commit()
+
+    # Base at 16성: success=31.5, maintain=0.0, drop=66.445, destroy=2.055
+    # With boost +8.0%:
+    # success becomes 39.5%, drop becomes 66.445 - 8.0 = 58.445%
+    # destroy threshold is at 39.5 + 0.0 + 58.445 = 97.945% (same 2.055% width)
+    # 1. Roll 98.5 (above 97.945 -> destruction)
+    # Safeguard roll < 65.0 -> protected! (safeguarded_drop, drops to 15 instead of 12)
+    uniform_vals = [98.5, 50.0]
+    monkeypatch.setattr(random, "uniform", lambda a, b: uniform_vals.pop(0))
+
+    ok_up, reply_up, det_up = te.execute_pickaxe_upgrade(db_session, uid, uname)
+    assert ok_up is True
+    assert det_up["outcome"] == "safeguarded_drop"
+    assert det_up["previous_level"] == 16
+    assert det_up["new_level"] == 15
+    assert "파괴 방지" in reply_up
+
+    # 2. Test success boost allowing success in the boosted range [31.5, 39.5)
+    # Roll 35.0: Base 31.5% would fail/drop, but with +8.0% boost (39.5%), it succeeds!
+    user.pickaxe_level = 16
+    eq.starforce = 16
+    db_session.commit()
+
+    uniform_vals = [35.0]
+    ok_boost, reply_boost, det_boost = te.execute_pickaxe_upgrade(db_session, uid, uname)
+    assert ok_boost is True
+    assert det_boost["outcome"] == "success"
+    assert det_boost["previous_level"] == 16
+    assert det_boost["new_level"] == 17
+    assert "성공률 +8.0% / 실패율 -8.0%" in reply_boost
+
+
 
 
 

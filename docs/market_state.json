@@ -5,7 +5,7 @@
   "day_open_price": 3055,
   "is_trading_locked": true,
   "last_settlement_delta": 292,
-  "treasury_pool": 21694039.0,
+  "treasury_pool": 20788102.0,
   "free_trading_remaining": 0,
   "free_trading_end_time": 0.0,
   "casino_is_open": false,
@@ -17,5 +17,5 @@
   "sf_remaining": 0,
   "day_diff": -802,
   "day_diff_pct": -26.25,
-  "updated_at": "2026-09-18 05:20:38"
+  "updated_at": "2026-09-18 05:28:50"
 }
