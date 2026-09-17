@@ -1009,9 +1009,10 @@ async def api_admin_users(db=Depends(get_db)):
         uid_lower = (u.id or "").lower()
         uname_lower = (u.username or "").lower()
         if (
-            any(uid_lower.startswith(p) for p in ("fresh_", "test_", "viewer_", "strictly_", "dummy_", "sim_", "bug_"))
-            or any(uname_lower.startswith(p) for p in ("테스터", "유저_", "새유저", "철통잠금", "더미", "테스트"))
-            or uname_lower in ("테스트유저", "시청자1", "타이머만료유저", "후원테스터", "마진유저")
+            any(uid_lower.startswith(p) for p in ("fresh_", "test_", "viewer_", "strictly_", "dummy_", "sim_", "bug_", "user_temp", "u_"))
+            or any(uname_lower.startswith(p) for p in ("테스터", "유저_", "새유저", "철통잠금", "더미", "테스트", "임시유저", "임시"))
+            or uname_lower in ("테스트유저", "시청자1", "타이머만료유저", "후원테스터", "마진유저", "임시유저")
+            or uid_lower in ("user_temp_123", "u_매수_10x_올인")
         ):
             continue
         res.append({

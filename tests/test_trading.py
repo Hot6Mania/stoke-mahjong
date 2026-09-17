@@ -685,12 +685,15 @@ def test_leaderboard_dummy_filtering(db_session):
     """Ensure dummy/tester users are strictly excluded from leaderboard rankings."""
     te.get_or_create_user(db_session, "fresh_uid_2", "유저_2")
     te.get_or_create_user(db_session, "test_user_dummy", "테스터")
+    te.get_or_create_user(db_session, "user_temp_123", "임시유저")
     te.get_or_create_user(db_session, "real_user_999", "진짜주주")
 
     # Give them points/positions
     ok, _, _ = te.execute_buy(db_session, "fresh_uid_2", "유저_2", "10X", "5")
     assert ok is True
     ok, _, _ = te.execute_buy(db_session, "test_user_dummy", "테스터", "10X", "5")
+    assert ok is True
+    ok, _, _ = te.execute_buy(db_session, "user_temp_123", "임시유저", "10X", "5")
     assert ok is True
     ok, _, _ = te.execute_buy(db_session, "real_user_999", "진짜주주", "1X", "5")
     assert ok is True
@@ -700,6 +703,7 @@ def test_leaderboard_dummy_filtering(db_session):
 
     assert "유저_2" not in usernames
     assert "테스터" not in usernames
+    assert "임시유저" not in usernames
     assert "진짜주주" in usernames
 
 def test_full_buy_command_and_mention_syntax(db_session):

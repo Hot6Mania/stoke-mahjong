@@ -94,5 +94,29 @@ def init_db():
                 updated = True
             if updated:
                 db.commit()
+
+        # Automatically purge legacy dummy/test users from production DB
+        import sqlalchemy
+        dummy_users = db.query(User).filter(
+            sqlalchemy.or_(
+                User.id.like("user_temp%"),
+                User.id.like("fresh_%"),
+                User.id.like("test_%"),
+                User.id.like("dummy_%"),
+                User.id.like("sim_%"),
+                User.id.like("strictly_%"),
+                User.id.like("u_매수%"),
+                User.username.like("임시%"),
+                User.username.like("유저_%"),
+                User.username.like("테스터%"),
+                User.username.like("더미%")
+            )
+        ).all()
+        if dummy_users:
+            for du in dummy_users:
+                for dp in du.positions:
+                    db.delete(dp)
+                db.delete(du)
+            db.commit()
     finally:
         db.close()
