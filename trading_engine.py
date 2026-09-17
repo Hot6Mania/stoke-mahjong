@@ -3161,6 +3161,7 @@ def execute_pickaxe_upgrade(
     # Potential effects: cost discount & safeguard
     pot_effects = get_equipment_potential_effects(target_item)
     pot_discount_pct = min(50.0, float(pot_effects.get("starforce_discount_pct", 0.0)))
+    safeguard_pct = min(90.0, float(pot_effects.get("safeguard_pct", 0.0)))
     if pot_discount_pct > 0:
         cost = max(100, int(round(cost * (1.0 - pot_discount_pct / 100.0))))
 
@@ -3246,7 +3247,6 @@ def execute_pickaxe_upgrade(
         )
     else:
         # Destroyed / Blown up! (Only possible at 15성+)
-        safeguard_pct = min(90.0, float(pot_effects.get("safeguard_pct", 0.0)))
         if safeguard_pct > 0 and random.uniform(0, 100) < safeguard_pct:
             # Safeguarded! Drop 1 star instead of falling to 12
             outcome = "safeguarded_drop"
@@ -3295,6 +3295,7 @@ def execute_pickaxe_upgrade(
         "guaranteed_100": current_item.get("is_guaranteed_100", False),
         "pot_success_boost": pot_success_boost,
         "pot_discount_pct": pot_discount_pct,
+        "safeguard_pct": safeguard_pct,
     }
     return True, reply, details
 
@@ -4107,7 +4108,7 @@ def get_user_pickaxe_status(
                     val = data.get('val')
                     if code == "STARFORCE_SUCCESS_BOOST" and "& 실패" not in line_text and val:
                         line_text = f"⭐ 강화 성공률 증가 & 실패율 감소 (성공 +{float(val):.1f}% / 실패 -{float(val):.1f}%)"
-                    elif code == "STARFORCE_SAFEGUARD" and "방지" in line_text and "%" in line_text and "15성" not in line_text:
+                    elif code == "STARFORCE_SAFEGUARD" and "15성" not in line_text and val:
                         line_text = f"🛡️ 15성+ 파괴 방지 (15성 이상 강화 실패 시 {float(val):.0f}% 확률 파괴 방어)"
                     pot_lines.append(f"  • 줄 {i}: {line_text}")
                 except Exception:
@@ -4203,16 +4204,24 @@ def get_user_pickaxe_status(
             else:
                 rate_parts.append(f"하락 {d_val_str}")
 
+        safeguard_pct = min(90.0, float(pot_effects.get("safeguard_pct", 0.0)))
         if dest_rate > 0:
             dest_val_str = _fmt_pct(dest_rate)
-            rate_parts.append(f"💥파괴 {dest_val_str}")
+            if safeguard_pct > 0:
+                eff_dest = dest_rate * (1.0 - safeguard_pct / 100.0)
+                rate_parts.append(f"💥파괴 {dest_val_str}(🛡️방어 {int(safeguard_pct)}% / 실질 {_fmt_pct(eff_dest)})")
+            else:
+                rate_parts.append(f"💥파괴 {dest_val_str}")
 
         rate_str = " | ".join(rate_parts)
 
         if item.get("is_guaranteed_100"):
             destroy_warning = " (⭐피버 이벤트: 파괴/하락 0% 확정 성공!)"
         elif dest_rate > 0:
-            destroy_warning = "\n  ⚠️ 15성 이상: 파괴(터짐) 위험 존재! (파괴 시 12성 복원)"
+            if safeguard_pct > 0:
+                destroy_warning = f"\n  ⚠️ 15성 이상: 파괴 위험 존재 (🛡️잠재 세이프가드 {int(safeguard_pct)}% 발동 시 파괴 방어 & 1성 하락 보호!)"
+            else:
+                destroy_warning = "\n  ⚠️ 15성 이상: 파괴(터짐) 위험 존재! (파괴 시 12성 복원)"
         else:
             destroy_warning = " (15성 미만: 절대 안 터짐!)"
 

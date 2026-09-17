@@ -2931,10 +2931,13 @@ def test_starforce_safeguard_65_and_failure_reduction(db_session, monkeypatch):
     eq.potential_line_2 = json.dumps({"code": "STARFORCE_SUCCESS_BOOST", "val": 8.0, "text": "+8.0%"})
     db_session.commit()
 
-    # Check status display reflects success boost and failure rate deduction
+    # Check status display reflects success boost and failure rate deduction & safeguard defense
     status_msg = te.get_user_pickaxe_status(db_session, uid, uname)
     assert "+8.0%" in status_msg or "39.5%" in status_msg
     assert "🔻-8.0%" in status_msg
+    assert "🛡️방어 65%" in status_msg
+    assert "실질 0.719%" in status_msg
+    assert "세이프가드 65%" in status_msg
 
     mstate = te.get_market_state(db_session)
     mstate.sf_next_event_time = time.time() + 1000.0
