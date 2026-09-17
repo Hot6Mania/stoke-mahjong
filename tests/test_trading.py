@@ -2738,6 +2738,23 @@ def test_cube_chat_commands(db_session):
     assert ev_frag["type"] == "cube_fragment_exchange"
 
 
+def test_status_window_aliases(db_session):
+    """Test !상태창, !스테이터스, !스펙, !status command aliases."""
+    uid = "status_window_user"
+    uname = "상태창유저"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 200000
+    items = te.ensure_user_equipment(db_session, user)
+
+    for alias in ["!상태창", "!스테이터스", "!스펙", "!status", "!spec"]:
+        reply, event = ch.handle_chat_command(db_session, uid, uname, alias)
+        assert "상태창" in reply or "내 곡괭이 정보" in reply
+        assert "장비:" in reply
+        assert "채굴량" in reply
+        assert "보유 큐브:" in reply
+        assert event is None
+
+
 
 
 

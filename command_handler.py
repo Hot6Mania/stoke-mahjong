@@ -63,7 +63,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
 • 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간, !쿨타임
-• 장비: !내장비, !장착 [번호], !강화 [번호], !큐브구매 [수량], !큐브 [번호], !큐브조각, !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
+• 장비: !상태창, !내장비, !장착 [번호], !강화 [번호], !큐브구매 [수량], !큐브 [번호], !큐브조각, !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -631,9 +631,17 @@ def handle_chat_command(
         else:
             return get_auto_mining_status(db, user_id, username), None
 
-    # 8-2. Pickaxe / Equipment Status / Inventory (!곡괭이, !내장비, !인벤토리)
-    if cmd in ["!곡괭이", "!채굴기", "!장비", "!아이템", "!내곡괭이", "!내장비", "!인벤토리", "!인벤", "!pickaxe", "!inventory"]:
-        return get_user_pickaxe_status(db, user_id, username), None
+    # 8-2. Pickaxe / Equipment Status / Inventory / Spec (!상태창, !스테이터스, !곡괭이, !내장비, !인벤토리)
+    if cmd in [
+        "!상태창", "!스테이터스", "!스펙", "!status", "!spec", "!내스펙", "!상태",
+        "!곡괭이", "!채굴기", "!장비", "!아이템", "!내곡괭이", "!내장비", "!인벤토리", "!인벤", "!pickaxe", "!inventory"
+    ]:
+        target_token = tokens[1] if len(tokens) >= 2 else None
+        is_status_cmd = cmd in ["!상태창", "!스테이터스", "!스펙", "!status", "!spec", "!내스펙", "!상태"]
+        is_inven_cmd = cmd in ["!내장비", "!인벤토리", "!인벤", "!inventory"]
+        if is_inven_cmd and not target_token:
+            return get_user_inventory_status(db, user_id, username), None
+        return get_user_pickaxe_status(db, user_id, username, target_token, force_detail=is_status_cmd), None
 
     # 8-3. Pickaxe Upgrade (!강화, !업그레이드 [장비번호])
     if cmd in ["!강화", "!업그레이드", "!곡괭이강화", "!곡괭이업그레이드", "!upgrade"]:

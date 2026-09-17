@@ -3850,16 +3850,30 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
     )
     return "\n".join(lines)
 
-def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
-    """Returns detailed pickaxe status or inventory for a user."""
+def get_user_pickaxe_status(
+    db: Session,
+    user_id: str,
+    username: str,
+    item_id_or_index: Optional[str] = None,
+    force_detail: bool = False
+) -> str:
+    """Returns detailed pickaxe status / RPG spec window or inventory for a user."""
     user = get_or_create_user(db, user_id, username)
     items = ensure_user_equipment(db, user)
 
-    # If user has multiple equipments, return full inventory view
-    if len(items) > 1:
+    # If specific item requested, find it
+    if item_id_or_index:
+        target = find_user_equipment(db, user, item_id_or_index)
+        if not target:
+            return f"⚠️ 지정한 장비('{item_id_or_index}')를 보유하고 있지 않습니다! (내 장비 확인: !내장비, !인벤토리)"
+        equipped = target
+    elif force_detail or len(items) <= 1:
+        # Show currently equipped item in full detail
+        equipped = get_user_equipped_item(db, user) or items[0]
+    else:
+        # Multiple equipments and no specific item requested -> show inventory list
         return get_user_inventory_status(db, user_id, username)
 
-    equipped = get_user_equipped_item(db, user)
     curr_lvl = equipped.starforce if equipped else 0
     curr_lvl = max(0, min(25, int(curr_lvl)))
     sf_state = get_starforce_event_state(db)
@@ -3895,11 +3909,13 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
         f"🧩 큐브 조각: {frag_cnt:,}개 (!큐브조각 으로 10개당 15,000P 환급)"
     )
 
+    other_items_note = f"\n🎒 다른 보유 장비: 총 {len(items)}개 (!내장비 로 전체 목록 확인)" if len(items) > 1 else ""
+
     if curr_lvl >= 25:
         return (
-            f"{fever_banner}⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
+            f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
-            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동){pot_block}{frag_str}\n"
+            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동){pot_block}{frag_str}{other_items_note}\n"
             f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 큐브 구매: !큐브구매 [수량] | 큐브 사용: !큐브 | 인벤토리: !내장비 | 거래소: !장비장터"
         )
     else:
@@ -3933,11 +3949,11 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
             destroy_warning = " (15성 미만: 절대 안 터짐!)"
 
         return (
-            f"{fever_banner}⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
+            f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
             f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost_str}]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
-            f"  └ 다음 효과: {next_item['desc']}{pot_block}{frag_str}\n"
+            f"  └ 다음 효과: {next_item['desc']}{pot_block}{frag_str}{other_items_note}\n"
             f"💡 명령어: !강화 [장비번호], !큐브구매 [수량], !큐브 [장비번호], !큐브조각, !장착 [장비번호], !곡괭이구매 [0/5/10], !피버, !내장비, !장비장터"
         )
 
