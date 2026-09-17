@@ -1239,6 +1239,84 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         "interest_collected": total_interest_collected
     }
 
+# 채굴 곡괭이 장비 등급표 (포인트 업그레이드 사용처)
+PICKAXE_TIERS: Dict[int, Dict[str, Any]] = {
+    1: {
+        "level": 1,
+        "name": "🪵 나무 곡괭이",
+        "upgrade_cost": 10000,
+        "yield_multiplier": 1.0,
+        "crit_bonus": 0.0,
+        "cooldown_seconds": 900,  # 15분
+        "cooldown_minutes": 15,
+        "desc": "기본 지급되는 나무 곡괭이"
+    },
+    2: {
+        "level": 2,
+        "name": "🪨 돌 곡괭이",
+        "upgrade_cost": 30000,
+        "yield_multiplier": 1.15,
+        "crit_bonus": 1.0,
+        "cooldown_seconds": 840,  # 14분
+        "cooldown_minutes": 14,
+        "desc": "+15% 채굴량, +1% 크리티컬, 쿨 14분"
+    },
+    3: {
+        "level": 3,
+        "name": "⛓️ 철 곡괭이",
+        "upgrade_cost": 70000,
+        "yield_multiplier": 1.30,
+        "crit_bonus": 2.5,
+        "cooldown_seconds": 780,  # 13분
+        "cooldown_minutes": 13,
+        "desc": "+30% 채굴량, +2.5% 크리티컬, 쿨 13분"
+    },
+    4: {
+        "level": 4,
+        "name": "🪙 황금 곡괭이",
+        "upgrade_cost": 150000,
+        "yield_multiplier": 1.50,
+        "crit_bonus": 4.5,
+        "cooldown_seconds": 720,  # 12분
+        "cooldown_minutes": 12,
+        "desc": "+50% 채굴량, +4.5% 크리티컬, 쿨 12분"
+    },
+    5: {
+        "level": 5,
+        "name": "💎 다이아 곡괭이",
+        "upgrade_cost": 300000,
+        "yield_multiplier": 1.80,
+        "crit_bonus": 7.0,
+        "cooldown_seconds": 660,  # 11분
+        "cooldown_minutes": 11,
+        "desc": "+80% 채굴량, +7% 크리티컬, 쿨 11분"
+    },
+    6: {
+        "level": 6,
+        "name": "🌌 옵시디언 곡괭이",
+        "upgrade_cost": 600000,
+        "yield_multiplier": 2.20,
+        "crit_bonus": 10.0,
+        "cooldown_seconds": 600,  # 10분
+        "cooldown_minutes": 10,
+        "desc": "+120% 채굴량 (2.2배), +10% 크리티컬, 쿨 10분"
+    },
+    7: {
+        "level": 7,
+        "name": "🀄 역만 마작 곡괭이",
+        "upgrade_cost": 0,  # MAX
+        "yield_multiplier": 2.80,
+        "crit_bonus": 15.0,
+        "cooldown_seconds": 480,  # 8분
+        "cooldown_minutes": 8,
+        "desc": "종결 장비! +180% 채굴량 (2.8배), +15% 크리티컬, 쿨 8분"
+    }
+}
+
+def get_pickaxe_info(level: int) -> Dict[str, Any]:
+    lvl = max(1, min(7, int(level or 1)))
+    return PICKAXE_TIERS.get(lvl, PICKAXE_TIERS[1])
+
 # 채굴 등급 및 크리티컬 확률/보상 테이블
 MINING_TIERS = [
     {
@@ -1248,7 +1326,7 @@ MINING_TIERS = [
         "multiplier": 5.0,
         "bonus_cash": 10000,
         "bonus_10x": 1.0,
-        "cooldown_reduction": 10,  # 쿨타임 5분으로 단축
+        "cooldown_reduction": 10,  # 쿨타임 10분 단축
     },
     {
         "code": "SSR",
@@ -1257,7 +1335,7 @@ MINING_TIERS = [
         "multiplier": 3.0,
         "bonus_cash": 5000,
         "bonus_10x": 0.0,
-        "cooldown_reduction": 5,   # 쿨타임 10분으로 단축
+        "cooldown_reduction": 5,   # 쿨타임 5분 단축
     },
     {
         "code": "SR",
@@ -1297,12 +1375,26 @@ MINING_TIERS = [
     }
 ]
 
-def roll_mining_tier() -> Dict[str, Any]:
-    """Roll random mining tier based on weighted probabilities."""
+def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
+    """
+    Roll random mining tier based on weighted probabilities.
+    Higher-level pickaxes grant a crit_bonus which boosts UR/SSR/SR/R rates.
+    """
     roll = random.random() * 100.0
     cum = 0.0
+
+    shifts = {
+        "UR": crit_bonus * 0.1,
+        "SSR": crit_bonus * 0.2,
+        "SR": crit_bonus * 0.3,
+        "R": crit_bonus * 0.4,
+        "N": -crit_bonus * 0.5,
+        "C": -crit_bonus * 0.5,
+    }
+
     for tier in MINING_TIERS:
-        cum += tier["prob"]
+        prob = max(0.5, tier["prob"] + shifts.get(tier["code"], 0.0))
+        cum += prob
         if roll < cum:
             t = dict(tier)
             if "multiplier_range" in t:
@@ -1319,36 +1411,48 @@ def execute_mining(
     username: str
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Execute !채굴 (Proof of Watch mining with random critical hits & rewards).
-    Cooldown: 15 minutes (900 seconds) - reducible on critical hits.
+    Execute !채굴 (Proof of Watch mining with pickaxe level, random critical hits & rewards).
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
     now_utc = datetime.now(timezone.utc)
 
-    # 1. Cooldown check (15 minutes = 900 seconds)
+    # 1. Pickaxe Item Info
+    curr_level = getattr(user, "pickaxe_level", 1) or 1
+    pickaxe = get_pickaxe_info(curr_level)
+    cooldown_sec = pickaxe["cooldown_seconds"]
+    cooldown_min = pickaxe["cooldown_minutes"]
+
+    # 2. Cooldown check based on pickaxe cooldown
     if user.last_mined_at:
         last_time = user.last_mined_at
         if last_time.tzinfo is None:
             last_time = last_time.replace(tzinfo=timezone.utc)
         elapsed = (now_utc - last_time).total_seconds()
-        if elapsed < 900:
-            rem = int(900 - elapsed)
+        if elapsed < cooldown_sec:
+            rem = int(cooldown_sec - elapsed)
             rem_m, rem_s = divmod(rem, 60)
-            return False, f"⏳ [채굴 쿨타임] 다음 채굴까지 {rem_m}분 {rem_s}초 남았습니다.", {"remaining_seconds": rem}
+            return False, f"⏳ [채굴 쿨타임] 다음 채굴까지 {rem_m}분 {rem_s}초 남았습니다. ({pickaxe['name']} 쿨타임: {cooldown_min}분)", {"remaining_seconds": rem}
 
     if getattr(state, "treasury_pool", None) is None:
         state.treasury_pool = DEFAULT_TREASURY_POOL
 
     current_price = state.current_price
-    # 2. Dynamic Base Reward based on Treasury Pool
+    # 3. Dynamic Base Reward based on Treasury Pool & Pickaxe Yield
     target_cash = min(float(current_price), max(current_price * 0.2, state.treasury_pool * 0.05))
     base_shares = round(target_cash / current_price, 2)
     if base_shares <= 0.05:
         base_shares = 0.1 # Minimum faucet floor
+    base_shares = round(base_shares * pickaxe["yield_multiplier"], 2)
 
-    # 3. Roll Random Mining Tier & Critical Hits
-    tier = roll_mining_tier()
+    # 4. Roll Random Mining Tier & Critical Hits (boosted by pickaxe crit_bonus)
+    try:
+        tier = roll_mining_tier(crit_bonus=pickaxe.get("crit_bonus", 0.0))
+    except TypeError:
+        try:
+            tier = roll_mining_tier(pickaxe.get("crit_bonus", 0.0))
+        except TypeError:
+            tier = roll_mining_tier()
     multiplier = tier["multiplier"]
     bonus_cash = tier.get("bonus_cash", 0)
     bonus_10x = tier.get("bonus_10x", 0.0)
@@ -1366,15 +1470,16 @@ def execute_mining(
     total_mined_cost = actual_cost + bonus_cash + bonus_10x_cost
     state.treasury_pool = max(0.0, state.treasury_pool - total_mined_cost)
 
-    # Cooldown setup
+    # Cooldown setup (boosted on critical hit)
     if cd_reduction > 0:
+        boosted_cd = max(3, cooldown_min - cd_reduction)
         user.last_mined_at = now_utc - timedelta(minutes=cd_reduction)
-        next_cd_msg = f"{15 - cd_reduction}분 (부스터 발동!)"
+        next_cd_msg = f"{boosted_cd}분 (부스터 발동!)"
     else:
         user.last_mined_at = now_utc
-        next_cd_msg = "15분"
+        next_cd_msg = f"{cooldown_min}분"
 
-    # 4. Check if user has debt -> Forced Labor Mode (탄광 노역 채굴)
+    # 5. Check if user has debt -> Forced Labor Mode (탄광 노역 채굴)
     user_debt = getattr(user, "debt", 0) or 0
     if user_debt > 0:
         total_payout = actual_cost + bonus_cash
@@ -1417,13 +1522,15 @@ def execute_mining(
         bonus_10x_str = f" + 10X {format_quantity(bonus_10x)}주 획득!" if bonus_10x > 0 else ""
         excess_str = f" (빚 완제 후 잔여 {excess:,}P 현금 입금)" if excess > 0 else ""
         msg = (
-            f"⛏️ [탄광 노역 채굴 완료] {tier_name} {user.username}님 탄광 노역으로 총 {total_payout:,}P 상당 채굴! "
+            f"⛏️ [채굴 완료] [{pickaxe['name']}] [탄광 노역 채굴] {tier_name} {user.username}님 탄광 노역으로 총 {total_payout:,}P 상당 채굴! "
             f"수익 {repay_amt:,}P가 국고 빚 상환에 즉시 충당되었습니다!{bonus_10x_str}{excess_str} "
             f"(남은 빚: {user.debt:,}P | 다음 채굴: {next_cd_msg})"
         )
         return True, msg, {
             "user_id": user.id,
             "username": user.username,
+            "pickaxe_level": curr_level,
+            "pickaxe_name": pickaxe["name"],
             "tier": tier_code,
             "tier_name": tier_name,
             "multiplier": multiplier,
@@ -1438,7 +1545,7 @@ def execute_mining(
             "is_forced_labor": True
         }
 
-    # 5. Standard Mining Reward: Credit 1X position to user
+    # 6. Standard Mining Reward: Credit 1X position to user
     pos = db.query(Position).filter_by(user_id=user.id, product_type=ProductType.ONE_X).first()
     if pos and pos.quantity > 0:
         pos.quantity += shares_awarded
@@ -1500,12 +1607,14 @@ def execute_mining(
 
     qty_str = format_quantity(shares_awarded)
     msg = (
-        f"⛏️ [채굴 완료] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
+        f"⛏️ [채굴 완료] [{pickaxe['name']}] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
         f"(+{actual_cost:,}P 상당{extras_str} | 보유 현금: {user.points:,}P | 국고 잔여: {int(state.treasury_pool):,}P | 다음 채굴: {next_cd_msg})"
     )
     return True, msg, {
         "user_id": user.id,
         "username": user.username,
+        "pickaxe_level": curr_level,
+        "pickaxe_name": pickaxe["name"],
         "tier": tier_code,
         "tier_name": tier_name,
         "multiplier": multiplier,
@@ -1518,6 +1627,100 @@ def execute_mining(
         "total_mined": user.total_mined,
         "is_forced_labor": False
     }
+
+def execute_pickaxe_upgrade(
+    db: Session,
+    user_id: str,
+    username: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute !강화 / !업그레이드 (Upgrade mining pickaxe item using points).
+    Points spent are recycled 100% into the National Treasury Pool.
+    """
+    state = get_market_state(db)
+    user = get_or_create_user(db, user_id, username)
+    curr_level = getattr(user, "pickaxe_level", 1) or 1
+
+    if curr_level >= 7:
+        max_item = get_pickaxe_info(7)
+        return False, f"✨ 이미 최고 등급 장비인 [{max_item['name']}] (Lv.7 MAX)를 장착하고 있습니다!", None
+
+    current_item = get_pickaxe_info(curr_level)
+    next_item = get_pickaxe_info(curr_level + 1)
+    cost = current_item["upgrade_cost"]
+
+    # Debt protection: Cannot spend borrowed money on luxury upgrades before repaying debt
+    user_debt = getattr(user, "debt", 0) or 0
+    if user_debt > 0 and (user.points - cost) < user_debt:
+        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여 현금을 남기는 강화를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
+
+    if user.points < cost:
+        return False, f"⚠️ 포인트가 부족합니다! (필요: {cost:,}P | 보유: {user.points:,}P | 부족: {cost - user.points:,}P)", None
+
+    # Deduct cost and credit to Treasury
+    user.points -= cost
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += cost
+
+    user.pickaxe_level = curr_level + 1
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    reply = (
+        f"🔨✨ [곡괭이 강화 성공!!] {user.username}님 {cost:,}P를 소모하여 [{next_item['name']}] (Lv.{next_item['level']}) 강화 완료! "
+        f"(채굴량: {next_item['yield_multiplier']}배 | 크리티컬 보너스: +{next_item['crit_bonus']}% | 쿨타임: {next_item['cooldown_minutes']}분 | "
+        f"국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+    )
+
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "previous_level": curr_level,
+        "new_level": user.pickaxe_level,
+        "pickaxe_name": next_item["name"],
+        "cost": cost,
+        "remaining_points": user.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
+    """Returns detailed pickaxe status for a user."""
+    user = get_or_create_user(db, user_id, username)
+    curr_lvl = getattr(user, "pickaxe_level", 1) or 1
+    item = get_pickaxe_info(curr_lvl)
+
+    if curr_lvl >= 7:
+        return (
+            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']} (Lv.{item['level']} MAX)\n"
+            f"• 효과: 채굴량 {item['yield_multiplier']}배 (+180%) | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
+            f"✨ 최고 등급 종결 곡괭이를 장착 중입니다!"
+        )
+    else:
+        next_item = get_pickaxe_info(curr_lvl + 1)
+        cost = item["upgrade_cost"]
+        yield_pct = int(round((item["yield_multiplier"] - 1.0) * 100))
+        yield_str = f"+{yield_pct}%" if yield_pct > 0 else "기본"
+        return (
+            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']} (Lv.{item['level']})\n"
+            f"• 현재 효과: 채굴량 {yield_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
+            f"• 다음 강화: {next_item['name']} (Lv.{next_item['level']}) [비용: {cost:,}P]\n"
+            f"  └ 다음 효과: {next_item['desc']}\n"
+            f"💡 강화 명령어: !강화 또는 !업그레이드"
+        )
+
+def get_pickaxe_table_guide() -> str:
+    """Returns the entire pickaxe tiers table guide."""
+    lines = ["⛏️📋 [채굴 곡괭이 강화 등급표] (!강화로 업그레이드)"]
+    for lvl in range(1, 8):
+        it = PICKAXE_TIERS[lvl]
+        cost_str = f"{it['upgrade_cost']:,}P" if it["upgrade_cost"] > 0 else "최고 등급"
+        lines.append(f"• Lv.{lvl} {it['name']}: {it['desc']} (강화비: {cost_str})")
+    lines.append("* 강화에 소모된 포인트는 전액 국고 채굴풀로 환원됩니다!")
+    return "\n".join(lines)
 
 def execute_borrow(
     db: Session,

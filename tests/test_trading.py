@@ -1674,6 +1674,104 @@ def test_mining_commands_and_probability_guide(db_session):
     assert ev_mine is not None
     assert ev_mine["type"] == "mining"
 
+def test_pickaxe_upgrade_and_treasury_recycle(db_session):
+    u = "pickaxe_tester"
+    user = te.get_or_create_user(db_session, u, "곡괭이장인")
+    user.points = 100000
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 500000
+    db_session.commit()
+
+    # Initial level should be 1 (나무 곡괭이)
+    assert getattr(user, "pickaxe_level", 1) == 1
+    info1 = te.get_pickaxe_info(1)
+    assert info1["level"] == 1
+    assert "나무" in info1["name"]
+
+    # 1. Upgrade from Lv.1 to Lv.2 (Stone Pickaxe, 10,000P)
+    ok, reply, details = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+    assert ok is True
+    assert details["new_level"] == 2
+    assert "돌 곡괭이" in details["pickaxe_name"]
+    assert details["cost"] == 10000
+    assert details["remaining_points"] == 90000
+    assert details["treasury_pool"] == 510000 # Recycled 100% into Treasury
+    assert user.pickaxe_level == 2
+
+    # 2. Debt protection check
+    user.debt = 85000 # Points: 90,000, next cost: 30,000 -> remaining: 60,000 < debt 85,000
+    db_session.commit()
+    ok_debt, msg_debt, _ = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+    assert ok_debt is False
+    assert "채무" in msg_debt
+
+    # Repay debt to allow upgrading
+    user.debt = 0
+    db_session.commit()
+
+    # 3. Upgrade Lv.2 -> Lv.3 (Iron Pickaxe, 30,000P)
+    ok2, reply2, details2 = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+    assert ok2 is True
+    assert details2["new_level"] == 3
+    assert "철 곡괭이" in details2["pickaxe_name"]
+    assert details2["remaining_points"] == 60000
+    assert details2["treasury_pool"] == 540000
+
+    # 4. Insufficient funds check (need 70,000P for Lv.4, but only 60,000P left)
+    ok_poor, msg_poor, _ = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+    assert ok_poor is False
+    assert "포인트가 부족합니다" in msg_poor
+
+    # 5. Upgrade all the way to Lv.7 MAX
+    user.points = 2000000
+    db_session.commit()
+    for target_lvl in range(4, 8):
+        ok_up, _, det_up = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+        assert ok_up is True
+        assert det_up["new_level"] == target_lvl
+
+    assert user.pickaxe_level == 7
+    # Attempting to upgrade beyond Lv.7 should be rejected
+    ok_max, msg_max, _ = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+    assert ok_max is False
+    assert "최고 등급" in msg_max
+
+def test_pickaxe_chat_commands(db_session):
+    u = "pickaxe_chatter"
+    user = te.get_or_create_user(db_session, u, "광석수집가")
+    user.points = 50000
+    db_session.commit()
+
+    # 1. Query !곡괭이
+    r_pick, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!곡괭이")
+    assert "내 곡괭이 정보" in r_pick
+    assert "나무 곡괭이" in r_pick
+    assert "비용: 10,000P" in r_pick
+
+    # 2. Check !내정보 includes equipped equipment
+    r_info, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!내정보")
+    assert "장비: 🪵 나무 곡괭이" in r_info
+
+    # 3. Upgrade via chat command !강화
+    r_up, ev_up = ch.handle_chat_command(db_session, u, "광석수집가", "!강화")
+    assert "곡괭이 강화 성공" in r_up
+    assert "돌 곡괭이" in r_up
+    assert ev_up is not None
+    assert ev_up["type"] == "pickaxe_upgrade"
+    assert ev_up["data"]["new_level"] == 2
+
+    # 4. Check !내정보 reflects upgraded pickaxe
+    r_info2, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!내정보")
+    assert "장비: 🪨 돌 곡괭이" in r_info2
+
+    # 5. Query !강화표 guide
+    r_guide, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!강화표")
+    assert "채굴 곡괭이 강화 등급표" in r_guide
+    assert "Lv.1 🪵 나무 곡괭이" in r_guide
+    assert "Lv.7 🀄 역만 마작 곡괭이" in r_guide
+    assert "전액 국고 채굴풀로 환원" in r_guide
+
+
 
 
 

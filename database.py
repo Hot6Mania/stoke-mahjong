@@ -57,6 +57,7 @@ def init_db():
                 "ALTER TABLE users ADD COLUMN total_dividends INTEGER DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN debt INTEGER DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN last_bankrupt_at DATETIME",
+                "ALTER TABLE users ADD COLUMN pickaxe_level INTEGER DEFAULT 1",
             ]:
                 try:
                     conn.execute(sqlalchemy.text(col_sql))

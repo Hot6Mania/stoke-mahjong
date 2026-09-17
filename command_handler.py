@@ -31,7 +31,11 @@ from trading_engine import (
     settle_match,
     format_quantity,
     execute_transfer,
-    parse_korean_amount
+    parse_korean_amount,
+    execute_pickaxe_upgrade,
+    get_user_pickaxe_status,
+    get_pickaxe_table_guide,
+    get_pickaxe_info
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -39,7 +43,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴 (확률: !채굴확률), !국고, !남은시간
+• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴 (곡괭이: !곡괭이, !강화, 확률: !채굴확률), !국고, !남은시간
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -53,13 +57,14 @@ GUIDE_BORROW = "💡 대출 사용법: !대출 [금액/최대] (경기 중에도
 GUIDE_REPAY = "💡 상환 사용법: !상환 [금액/전액] (예: !상환 20000, !상환 전액)"
 GUIDE_TRANSFER = "💡 계좌이체 사용법: !송금 [받는분닉네임] [금액/올인] (예: !송금 치즈나베 10000, !이체 @CYTFT 5만, !송금 닉네임 올인)\n• 1만P 이상 이체 시 5% 고액 이체세가 국고로 자동 적립됩니다. (1만P 미만 면세, 10만P 이상 10%)"
 GUIDE_MINING = (
-    "⛏️✨ [랜덤 채굴 & 크리티컬 확률 안내] (15분마다 무료 채굴)\n"
+    "⛏️✨ [랜덤 채굴 & 크리티컬 확률 안내] (기본 15분마다 무료 채굴)\n"
     "• 🀄 역만급 초대박 (1.5%): 1X 5배 + 현금 10,000P + 10X 1주 + 다음 쿨타임 5분 단축!\n"
     "• 💎 다이아몬드 (4.5%): 1X 3배 + 현금 5,000P + 다음 쿨타임 10분 단축!\n"
     "• ⚡ 황금 광맥 (14%): 1X 2배 크리티컬 (2.0x)\n"
     "• ✨ 은 광맥 (25%): 1X 1.3배 ~ 1.5배 보너스 채굴\n"
     "• ⛏️ 구리 광맥 (40%): 1X 1.0배 정규 채굴\n"
     "• 🪨 석탄/자갈 (15%): 1X 0.6배 ~ 0.8배 소박 채굴\n"
+    "* 곡괭이 강화(!강화): 채굴량 최대 +180%, 크리 확률 대폭 상승, 쿨타임 8분까지 단축! (확인: !곡괭이, 등급표: !강화표)\n"
     "* 빚(대출) 보유 시 채굴 가치만큼 국고 빚이 즉시 탕감됩니다!"
 )
 GUIDE_CASINO = "🎰 [국고 카지노 사용법]\n• 슬롯머신: !슬롯 [금액/올인] (확률 확인: !슬롯확률)\n• 주사위: !주사위 [홀/짝/대/소] [금액/올인]\n• 카지노 상태: !카지노\n* 스트리머 전용: !정산 [등수] [점수], !카지노오픈 [분] [최대한도], !카지노마감"
@@ -214,15 +219,17 @@ def handle_chat_command(
 
         div_str = f" | 누적배당: +{user.total_dividends:,}P" if getattr(user, "total_dividends", 0) > 0 else ""
         debt_str = f" | 빚(대출): {debt:,}P" if debt > 0 else ""
+        pickaxe = get_pickaxe_info(getattr(user, "pickaxe_level", 1) or 1)
+        pickaxe_str = f" | 장비: {pickaxe['name']}"
 
         if pos_summaries:
             pos_str = " | ".join(pos_summaries)
             reply = (
-                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str} | "
+                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str} | "
                 f"보유: [{pos_str}]"
             )
         else:
-            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str} | 보유 포지션이 없습니다."
+            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str} | 보유 포지션이 없습니다."
 
         return reply, None
 
@@ -536,6 +543,20 @@ def handle_chat_command(
     # 8-1. Mining Probability & Critical Guide
     if cmd in ["!채굴확률", "!채굴안내", "!채굴정보", "!광맥", "!채굴배율"]:
         return GUIDE_MINING, None
+
+    # 8-2. Pickaxe / Equipment Status (!곡괭이)
+    if cmd in ["!곡괭이", "!채굴기", "!장비", "!아이템", "!내곡괭이", "!내장비", "!pickaxe"]:
+        return get_user_pickaxe_status(db, user_id, username), None
+
+    # 8-3. Pickaxe Upgrade (!강화, !업그레이드)
+    if cmd in ["!강화", "!업그레이드", "!곡괭이강화", "!곡괭이업그레이드", "!upgrade"]:
+        success, reply, details = execute_pickaxe_upgrade(db, user_id, username)
+        event = {"type": "pickaxe_upgrade", "data": details} if success and details else None
+        return reply, event
+
+    # 8-4. Pickaxe Tier Guide (!강화표, !곡괭이목록)
+    if cmd in ["!곡괭이목록", "!곡괭이표", "!강화표", "!강화목록"]:
+        return get_pickaxe_table_guide(), None
 
     # 9. Treasury Info Query
     if cmd in ["!국고", "!풀", "!채굴풀"]:
