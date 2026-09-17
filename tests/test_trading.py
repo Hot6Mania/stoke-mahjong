@@ -952,6 +952,28 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     db_session.refresh(state)
     assert state.treasury_pool == treasury_before + 2000
 
+    # 7. Rig slot spin to 2-matching standard pair: ['🍒', '🍒', '💣'] -> 2x payout (net +1x like dice)
+    user.points = 50000
+    db_session.commit()
+    monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["🍒", "🍒", "💣"])
+    ok_pair, reply_pair, details_pair = te.execute_slot_gamble(db_session, uid, uname, "1000")
+    assert ok_pair is True
+    assert details_pair["won"] is True
+    assert details_pair["net_payout"] == 1000 # 2.0x total payout (net +1.0x)
+    db_session.refresh(user)
+    assert user.points == 51000
+
+    # 8. Rig slot spin to 2-matching high pair: ['💎', '💎', '🍒'] -> 2.5x payout (net +1.5x)
+    user.points = 50000
+    db_session.commit()
+    monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["💎", "💎", "🍒"])
+    ok_hpair, reply_hpair, details_hpair = te.execute_slot_gamble(db_session, uid, uname, "1000")
+    assert ok_hpair is True
+    assert details_hpair["won"] is True
+    assert details_hpair["net_payout"] == 1500 # 2.5x total payout (net +1.5x)
+    db_session.refresh(user)
+    assert user.points == 51500
+
 def test_casino_dice_gamble(db_session, monkeypatch):
     """Test 2-dice high-roller battle mechanics including odd/even/high/low and double 5x critical."""
     uid = "gambler_dice_1"
@@ -1029,7 +1051,7 @@ def test_casino_chat_commands(db_session):
     r_odds, ev_odds = ch.handle_chat_command(db_session, viewer_id, viewer_name, "!슬롯확률")
     assert r_odds is not None
     assert "국고 슬롯 공식 확률" in r_odds
-    assert "21.5%" in r_odds
+    assert "45.9%" in r_odds
     assert "777" in r_odds
     assert ev_odds is None
 

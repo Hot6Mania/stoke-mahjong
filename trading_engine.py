@@ -1829,7 +1829,7 @@ DEFAULT_CASINO_MAX_BET: int = 10000
 MIN_CASINO_BET: int = 100
 
 SLOT_SYMBOLS = ["💣", "🍒", "🍇", "🔔", "💎", "🀄", "7️⃣"]
-SLOT_WEIGHTS = [35, 25, 18, 12, 6, 3, 1]
+SLOT_WEIGHTS = [15, 30, 24, 16, 9, 4, 2]
 
 def get_casino_state(db: Session) -> Dict[str, Any]:
     """Retrieve current casino state with automatic time expiry handling."""
@@ -1913,10 +1913,12 @@ def execute_slot_gamble(
     Payouts:
     - 7️⃣ 7️⃣ 7️⃣ : MEGA JACKPOT (30% of entire treasury pool, min 20x bet)
     - 🀄 🀄 🀄 : 10x Yakuman Jackpot
-    - 💎 💎 💎 : 5x Diamond Triple
-    - 🔔 🔔 🔔 : 3x Golden Bell
-    - 🍇 🍇 🍇 / 🍒 🍒 🍒 : 2x Fruit Triple
-    - 2 symbols matched (not 💣): 1.5x bonus
+    - 💎 💎 💎 : 6x Diamond Triple
+    - 🔔 🔔 🔔 : 4x Golden Bell
+    - 🍇 🍇 🍇 : 2.5x Grape Triple
+    - 🍒 🍒 🍒 : 2.0x Cherry Triple
+    - High 2-pair (7, 🀄, 💎): 2.5x payout (+1.5x net)
+    - Standard 2-pair (🔔, 🍇, 🍒): 2.0x payout (+1.0x net, matching dice!)
     - Non-matched / 💣: Loss (100% absorbed into Treasury Pool)
     """
     c_state = get_casino_state(db)
@@ -1972,24 +1974,33 @@ def execute_slot_gamble(
             net_payout = int(round(bet * multiplier))
         elif s1 == "💎":
             won = True
-            multiplier = 5.0
+            multiplier = 6.0
             net_payout = int(round(bet * multiplier))
         elif s1 == "🔔":
             won = True
-            multiplier = 3.0
+            multiplier = 4.0
             net_payout = int(round(bet * multiplier))
-        elif s1 in ["🍇", "🍒"]:
+        elif s1 == "🍇":
+            won = True
+            multiplier = 2.5
+            net_payout = int(round(bet * multiplier))
+        elif s1 == "🍒":
             won = True
             multiplier = 2.0
             net_payout = int(round(bet * multiplier))
         elif s1 == "💣":
             won = False
             net_payout = -bet
-    elif (s1 == s2 or s2 == s3 or s1 == s3) and (s1 != "💣" and s2 != "💣"):
-        # 2 matching symbols
+    elif (s1 == s2 and s1 != "💣") or (s2 == s3 and s2 != "💣") or (s1 == s3 and s1 != "💣"):
+        # 2 matching symbols (not bomb pair)
         won = True
-        multiplier = 1.5
-        net_payout = int(round(bet * 0.5)) # Net gain +0.5x
+        matched_sym = s1 if (s1 == s2 or s1 == s3) else s2
+        if matched_sym in ["7️⃣", "🀄", "💎"]:
+            multiplier = 2.5
+            net_payout = int(round(bet * 1.5)) # Net gain +1.5x (2.5x total payout)
+        else: # 🔔, 🍇, 🍒
+            multiplier = 2.0
+            net_payout = bet # Net gain +1.0x (2.0x total payout, exactly like dice!)
     else:
         won = False
         net_payout = -bet
