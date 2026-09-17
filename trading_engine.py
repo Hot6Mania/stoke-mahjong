@@ -1239,83 +1239,130 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         "interest_collected": total_interest_collected
     }
 
-# 채굴 곡괭이 장비 등급표 (포인트 업그레이드 사용처)
-PICKAXE_TIERS: Dict[int, Dict[str, Any]] = {
-    1: {
-        "level": 1,
-        "name": "🪵 나무 곡괭이",
-        "upgrade_cost": 10000,
-        "yield_multiplier": 1.0,
-        "crit_bonus": 0.0,
-        "cooldown_seconds": 900,  # 15분
-        "cooldown_minutes": 15,
-        "desc": "기본 지급되는 나무 곡괭이"
-    },
-    2: {
-        "level": 2,
-        "name": "🪨 돌 곡괭이",
-        "upgrade_cost": 30000,
-        "yield_multiplier": 1.15,
-        "crit_bonus": 1.0,
-        "cooldown_seconds": 840,  # 14분
-        "cooldown_minutes": 14,
-        "desc": "+15% 채굴량, +1% 크리티컬, 쿨 14분"
-    },
-    3: {
-        "level": 3,
-        "name": "⛓️ 철 곡괭이",
-        "upgrade_cost": 70000,
-        "yield_multiplier": 1.30,
-        "crit_bonus": 2.5,
-        "cooldown_seconds": 780,  # 13분
-        "cooldown_minutes": 13,
-        "desc": "+30% 채굴량, +2.5% 크리티컬, 쿨 13분"
-    },
-    4: {
-        "level": 4,
-        "name": "🪙 황금 곡괭이",
-        "upgrade_cost": 150000,
-        "yield_multiplier": 1.50,
-        "crit_bonus": 4.5,
-        "cooldown_seconds": 720,  # 12분
-        "cooldown_minutes": 12,
-        "desc": "+50% 채굴량, +4.5% 크리티컬, 쿨 12분"
-    },
-    5: {
-        "level": 5,
-        "name": "💎 다이아 곡괭이",
-        "upgrade_cost": 300000,
-        "yield_multiplier": 1.80,
-        "crit_bonus": 7.0,
-        "cooldown_seconds": 660,  # 11분
-        "cooldown_minutes": 11,
-        "desc": "+80% 채굴량, +7% 크리티컬, 쿨 11분"
-    },
-    6: {
-        "level": 6,
-        "name": "🌌 옵시디언 곡괭이",
-        "upgrade_cost": 600000,
-        "yield_multiplier": 2.20,
-        "crit_bonus": 10.0,
-        "cooldown_seconds": 600,  # 10분
-        "cooldown_minutes": 10,
-        "desc": "+120% 채굴량 (2.2배), +10% 크리티컬, 쿨 10분"
-    },
-    7: {
-        "level": 7,
-        "name": "🀄 역만 마작 곡괭이",
-        "upgrade_cost": 0,  # MAX
-        "yield_multiplier": 2.80,
-        "crit_bonus": 15.0,
-        "cooldown_seconds": 480,  # 8분
-        "cooldown_minutes": 8,
-        "desc": "종결 장비! +180% 채굴량 (2.8배), +15% 크리티컬, 쿨 8분"
-    }
+# 메이플 스타일 곡괭이 스타포스 강화표 (0성 ~ 25성 MAX)
+# 0~14성: 파괴 0% (안전/하락) | 15성~: 파괴 확률 존재 (파괴 시 12성 장비의 흔적 복원)
+STARFORCE_TIERS: Dict[int, Dict[str, Any]] = {
+    0: {"cost": 2000, "success": 99.75, "maintain": 0.25, "drop": 0.0, "destroy": 0.0},
+    1: {"cost": 4000, "success": 94.50, "maintain": 5.50, "drop": 0.0, "destroy": 0.0},
+    2: {"cost": 6000, "success": 89.25, "maintain": 10.75, "drop": 0.0, "destroy": 0.0},
+    3: {"cost": 8000, "success": 89.25, "maintain": 10.75, "drop": 0.0, "destroy": 0.0},
+    4: {"cost": 12000, "success": 84.00, "maintain": 16.00, "drop": 0.0, "destroy": 0.0},
+    5: {"cost": 16000, "success": 78.75, "maintain": 21.25, "drop": 0.0, "destroy": 0.0},
+    6: {"cost": 20000, "success": 73.50, "maintain": 26.50, "drop": 0.0, "destroy": 0.0},
+    7: {"cost": 25000, "success": 68.25, "maintain": 31.75, "drop": 0.0, "destroy": 0.0},
+    8: {"cost": 30000, "success": 63.00, "maintain": 37.00, "drop": 0.0, "destroy": 0.0},
+    9: {"cost": 40000, "success": 57.75, "maintain": 42.25, "drop": 0.0, "destroy": 0.0},
+    10: {"cost": 50000, "success": 52.50, "maintain": 47.50, "drop": 0.0, "destroy": 0.0},
+    # 11~14성: 실패 시 1성 하락, 파괴 없음 (0%)
+    11: {"cost": 70000, "success": 47.25, "maintain": 0.0, "drop": 52.75, "destroy": 0.0},
+    12: {"cost": 100000, "success": 42.00, "maintain": 0.0, "drop": 58.00, "destroy": 0.0},
+    13: {"cost": 140000, "success": 36.75, "maintain": 0.0, "drop": 63.25, "destroy": 0.0},
+    14: {"cost": 200000, "success": 31.50, "maintain": 0.0, "drop": 68.50, "destroy": 0.0},
+    # 15성: 15성 방지턱이라 실패 시 유지, 파괴 확률 발생 (2.055%)
+    15: {"cost": 300000, "success": 31.50, "maintain": 66.445, "drop": 0.0, "destroy": 2.055},
+    # 16~19성: 실패 시 하락, 파괴 발생
+    16: {"cost": 450000, "success": 31.50, "maintain": 0.0, "drop": 66.445, "destroy": 2.055},
+    17: {"cost": 650000, "success": 15.75, "maintain": 0.0, "drop": 77.510, "destroy": 6.740},
+    18: {"cost": 900000, "success": 15.75, "maintain": 0.0, "drop": 77.510, "destroy": 6.740},
+    19: {"cost": 1250000, "success": 15.75, "maintain": 0.0, "drop": 75.825, "destroy": 8.425},
+    # 20성: 20성 방지턱이라 실패 시 유지, 파괴 발생 (10.275%)
+    20: {"cost": 1700000, "success": 31.50, "maintain": 58.225, "drop": 0.0, "destroy": 10.275},
+    # 21~24성: 실패 시 하락, 파괴 발생
+    21: {"cost": 2300000, "success": 15.75, "maintain": 0.0, "drop": 71.6125, "destroy": 12.6375},
+    22: {"cost": 3000000, "success": 15.75, "maintain": 0.0, "drop": 67.40, "destroy": 16.85},
+    23: {"cost": 4000000, "success": 10.50, "maintain": 0.0, "drop": 71.60, "destroy": 17.90},
+    24: {"cost": 5500000, "success": 10.50, "maintain": 0.0, "drop": 71.60, "destroy": 17.90},
+    25: {"cost": 0, "success": 0.0, "maintain": 0.0, "drop": 0.0, "destroy": 0.0}
 }
 
 def get_pickaxe_info(level: int) -> Dict[str, Any]:
-    lvl = max(1, min(7, int(level or 1)))
-    return PICKAXE_TIERS.get(lvl, PICKAXE_TIERS[1])
+    lvl = max(0, min(25, int(level or 0)))
+
+    if lvl >= 25:
+        base_name = "🀄 역만 마작 곡괭이"
+    elif lvl >= 22:
+        base_name = "🌌 옵시디언 곡괭이"
+    elif lvl >= 20:
+        base_name = "💎 다이아 곡괭이"
+    elif lvl >= 15:
+        base_name = "🪙 황금 곡괭이"
+    elif lvl >= 10:
+        base_name = "⛓️ 철 곡괭이"
+    elif lvl >= 5:
+        base_name = "🪨 돌 곡괭이"
+    else:
+        base_name = "🪵 나무 곡괭이"
+
+    name = f"{base_name} (★{lvl}성)"
+    if lvl == 25:
+        name = f"{base_name} (★25성 MAX)"
+
+    t = STARFORCE_TIERS[lvl]
+
+    # Mining yield multiplier calculation
+    if lvl == 0:
+        yield_mult = 1.0
+    elif lvl <= 10:
+        yield_mult = round(1.0 + lvl * 0.05, 2)
+    elif lvl <= 15:
+        yield_mult = round(1.50 + (lvl - 10) * 0.12, 2)
+    elif lvl <= 20:
+        yield_mult = round(2.10 + (lvl - 15) * 0.25, 2)
+    elif lvl <= 22:
+        yield_mult = round(3.35 + (lvl - 20) * 0.50, 2)
+    else:
+        yield_mult = round(4.35 + (lvl - 22) * 0.55, 2)
+
+    # Crit bonus
+    if lvl == 0:
+        crit = 0.0
+    elif lvl <= 10:
+        crit = round(lvl * 0.5, 1)
+    elif lvl <= 15:
+        crit = round(5.0 + (lvl - 10) * 1.0, 1)
+    elif lvl <= 20:
+        crit = round(10.0 + (lvl - 15) * 1.6, 1)
+    elif lvl <= 22:
+        crit = round(18.0 + (lvl - 20) * 2.0, 1)
+    else:
+        crit = round(22.0 + (lvl - 22) * 2.5, 1)
+
+    # Cooldown minutes
+    if lvl >= 25:
+        cd_min = 8
+    elif lvl >= 22:
+        cd_min = 9
+    elif lvl >= 20:
+        cd_min = 10
+    elif lvl >= 17:
+        cd_min = 11
+    elif lvl >= 15:
+        cd_min = 12
+    elif lvl >= 10:
+        cd_min = 13
+    elif lvl >= 5:
+        cd_min = 14
+    else:
+        cd_min = 15
+
+    return {
+        "level": lvl,
+        "name": name,
+        "base_name": base_name,
+        "upgrade_cost": t["cost"],
+        "yield_multiplier": yield_mult,
+        "crit_bonus": crit,
+        "cooldown_minutes": cd_min,
+        "cooldown_seconds": cd_min * 60,
+        "success_rate": t["success"],
+        "maintain_rate": t["maintain"],
+        "drop_rate": t["drop"],
+        "destroy_rate": t["destroy"],
+        "desc": f"채굴량 {yield_mult}배, 크리티컬 +{crit}%, 쿨타임 {cd_min}분"
+    }
+
+# Backwards compatibility dictionary mapping
+PICKAXE_TIERS: Dict[int, Dict[str, Any]] = {i: get_pickaxe_info(i) for i in range(26)}
 
 # 채굴 등급 및 크리티컬 확률/보상 테이블
 MINING_TIERS = [
@@ -1418,7 +1465,9 @@ def execute_mining(
     now_utc = datetime.now(timezone.utc)
 
     # 1. Pickaxe Item Info
-    curr_level = getattr(user, "pickaxe_level", 1) or 1
+    curr_level = getattr(user, "pickaxe_level", 0)
+    if curr_level is None:
+        curr_level = 0
     pickaxe = get_pickaxe_info(curr_level)
     cooldown_sec = pickaxe["cooldown_seconds"]
     cooldown_min = pickaxe["cooldown_minutes"]
@@ -1634,19 +1683,24 @@ def execute_pickaxe_upgrade(
     username: str
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Execute !강화 / !업그레이드 (Upgrade mining pickaxe item using points).
-    Points spent are recycled 100% into the National Treasury Pool.
+    Execute !강화 / !업그레이드 (MapleStory Star Force pickaxe enhancement).
+    - 0성 ~ 14성: 파괴 확률 없음 (0%)
+    - 15성 ~ 24성: 파괴 확률 존재 (파괴 시 메이플 룰에 따라 12성 장비의 흔적으로 복원)
+    - 10성, 15성, 20성: 실패 시 하락 없는 안전 방지턱
+    - 강화 비용은 성공/실패/파괴 무관 100% 국고 채굴풀로 환원
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
-    curr_level = getattr(user, "pickaxe_level", 1) or 1
+    curr_level = getattr(user, "pickaxe_level", 0)
+    if curr_level is None:
+        curr_level = 0
+    curr_level = max(0, min(25, int(curr_level)))
 
-    if curr_level >= 7:
-        max_item = get_pickaxe_info(7)
-        return False, f"✨ 이미 최고 등급 장비인 [{max_item['name']}] (Lv.7 MAX)를 장착하고 있습니다!", None
+    if curr_level >= 25:
+        max_item = get_pickaxe_info(25)
+        return False, f"✨ 이미 최고 등급 종결 장비인 [{max_item['name']}]을(를) 장착하고 있습니다!", None
 
     current_item = get_pickaxe_info(curr_level)
-    next_item = get_pickaxe_info(curr_level + 1)
     cost = current_item["upgrade_cost"]
 
     # Debt protection: Cannot spend borrowed money on luxury upgrades before repaying debt
@@ -1657,30 +1711,68 @@ def execute_pickaxe_upgrade(
     if user.points < cost:
         return False, f"⚠️ 포인트가 부족합니다! (필요: {cost:,}P | 보유: {user.points:,}P | 부족: {cost - user.points:,}P)", None
 
-    # Deduct cost and credit to Treasury
+    # Deduct cost and credit 100% to Treasury regardless of result
     user.points -= cost
     if getattr(state, "treasury_pool", None) is None:
         state.treasury_pool = DEFAULT_TREASURY_POOL
     state.treasury_pool += cost
 
-    user.pickaxe_level = curr_level + 1
+    # Roll outcome based on Star Force tier probabilities
+    roll = random.uniform(0, 100)
+    s_rate = current_item["success_rate"]
+    m_rate = current_item["maintain_rate"]
+    d_rate = current_item["drop_rate"]
+
+    if roll < s_rate:
+        outcome = "success"
+        new_level = curr_level + 1
+        user.pickaxe_level = new_level
+        new_item = get_pickaxe_info(new_level)
+        reply = (
+            f"🔨✨ [스타포스 강화 대성공!!] {user.username}님 {cost:,}P를 소모하여 [{new_item['name']}] 강화에 성공했습니다! "
+            f"(채굴량: {new_item['yield_multiplier']}배 | 크리: +{new_item['crit_bonus']}% | 쿨: {new_item['cooldown_minutes']}분 | "
+            f"국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+        )
+    elif roll < (s_rate + m_rate):
+        outcome = "maintain"
+        new_level = curr_level
+        user.pickaxe_level = new_level
+        new_item = current_item
+        reply = (
+            f"🔨💨 [강화 실패 (등급 유지)] {user.username}님 {cost:,}P를 소모하였으나 강화에 실패했습니다. (방지턱/안전 구간으로 등급 유지) "
+            f"(현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+        )
+    elif roll < (s_rate + m_rate + d_rate):
+        outcome = "drop"
+        new_level = max(0, curr_level - 1)
+        user.pickaxe_level = new_level
+        new_item = get_pickaxe_info(new_level)
+        reply = (
+            f"🔨📉 [강화 실패 (등급 하락!)] {user.username}님 {cost:,}P를 소모하였으나 강화 실패로 1성 하락했습니다! ㅠㅠ "
+            f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+        )
+    else:
+        # Destroyed / Blown up! (Only possible at 15성+)
+        outcome = "destroyed"
+        new_level = 12  # 메이플 스타포스 룰: 장비의 흔적 12성 복원!
+        user.pickaxe_level = 12
+        new_item = get_pickaxe_info(12)
+        reply = (
+            f"💥💥 [곡괭이 폭발 파괴!!] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [{current_item['name']}]이(가) "
+            f"폭발 파괴되어 메이플 장비의 흔적 룰에 따라 [{new_item['name']}]으로 복원되었습니다! (국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
+        )
 
     db.commit()
     db.refresh(user)
     db.refresh(state)
-
-    reply = (
-        f"🔨✨ [곡괭이 강화 성공!!] {user.username}님 {cost:,}P를 소모하여 [{next_item['name']}] (Lv.{next_item['level']}) 강화 완료! "
-        f"(채굴량: {next_item['yield_multiplier']}배 | 크리티컬 보너스: +{next_item['crit_bonus']}% | 쿨타임: {next_item['cooldown_minutes']}분 | "
-        f"국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
-    )
 
     details = {
         "user_id": user.id,
         "username": user.username,
         "previous_level": curr_level,
         "new_level": user.pickaxe_level,
-        "pickaxe_name": next_item["name"],
+        "outcome": outcome,
+        "pickaxe_name": new_item["name"],
         "cost": cost,
         "remaining_points": user.points,
         "treasury_pool": state.treasury_pool
@@ -1690,37 +1782,63 @@ def execute_pickaxe_upgrade(
 def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
     """Returns detailed pickaxe status for a user."""
     user = get_or_create_user(db, user_id, username)
-    curr_lvl = getattr(user, "pickaxe_level", 1) or 1
+    curr_lvl = getattr(user, "pickaxe_level", 0)
+    if curr_lvl is None:
+        curr_lvl = 0
+    curr_lvl = max(0, min(25, int(curr_lvl)))
     item = get_pickaxe_info(curr_lvl)
 
-    if curr_lvl >= 7:
+    if curr_lvl >= 25:
         return (
-            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']} (Lv.{item['level']} MAX)\n"
-            f"• 효과: 채굴량 {item['yield_multiplier']}배 (+180%) | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
-            f"✨ 최고 등급 종결 곡괭이를 장착 중입니다!"
+            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']}\n"
+            f"• 효과: 채굴량 {item['yield_multiplier']}배 | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
+            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다!"
         )
     else:
         next_item = get_pickaxe_info(curr_lvl + 1)
         cost = item["upgrade_cost"]
         yield_pct = int(round((item["yield_multiplier"] - 1.0) * 100))
         yield_str = f"+{yield_pct}%" if yield_pct > 0 else "기본"
+
+        s_rate = item["success_rate"]
+        m_rate = item["maintain_rate"]
+        d_rate = item["drop_rate"]
+        dest_rate = item["destroy_rate"]
+
+        rate_parts = [f"성공 {s_rate:.2f}%" if s_rate % 1 else f"성공 {int(s_rate)}%"]
+        if m_rate > 0:
+            rate_parts.append(f"유지 {m_rate:.3f}%" if m_rate % 1 else f"유지 {int(m_rate)}%")
+        if d_rate > 0:
+            rate_parts.append(f"하락 {d_rate:.3f}%" if d_rate % 1 else f"하락 {int(d_rate)}%")
+        if dest_rate > 0:
+            rate_parts.append(f"💥파괴 {dest_rate:.3f}%" if dest_rate % 1 else f"💥파괴 {int(dest_rate)}%")
+        rate_str = " | ".join(rate_parts)
+
+        destroy_warning = "\n  ⚠️ 15성 이상: 파괴(터짐) 위험 존재! (파괴 시 12성 복원)" if dest_rate > 0 else " (15성 미만: 절대 안 터짐!)"
+
         return (
-            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']} (Lv.{item['level']})\n"
+            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']}\n"
             f"• 현재 효과: 채굴량 {yield_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
-            f"• 다음 강화: {next_item['name']} (Lv.{next_item['level']}) [비용: {cost:,}P]\n"
+            f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost:,}P]\n"
+            f"  └ 확률: {rate_str}{destroy_warning}\n"
             f"  └ 다음 효과: {next_item['desc']}\n"
             f"💡 강화 명령어: !강화 또는 !업그레이드"
         )
 
 def get_pickaxe_table_guide() -> str:
-    """Returns the entire pickaxe tiers table guide."""
-    lines = ["⛏️📋 [채굴 곡괭이 강화 등급표] (!강화로 업그레이드)"]
-    for lvl in range(1, 8):
-        it = PICKAXE_TIERS[lvl]
-        cost_str = f"{it['upgrade_cost']:,}P" if it["upgrade_cost"] > 0 else "최고 등급"
-        lines.append(f"• Lv.{lvl} {it['name']}: {it['desc']} (강화비: {cost_str})")
-    lines.append("* 강화에 소모된 포인트는 전액 국고 채굴풀로 환원됩니다!")
-    return "\n".join(lines)
+    """Returns concise pickaxe tiers & Star Force rate guide."""
+    return (
+        "⛏️📋 [메이플 스타일 곡괭이 스타포스 강화표] (!강화로 업그레이드)\n"
+        "• 0~10성: 안전 구간! 실패해도 하락/파괴 없음 (비용: 2천~5만P)\n"
+        "• 11~14성: 하락 구간! 실패 시 1성 하락 (10성 세이프존 방지턱, 파괴 0%)\n"
+        "• 15성: 15성 방지턱! 성공 31.5% / 유지 66.4% / 💥파괴 2.1%\n"
+        "• 16~19성: 성공 15~31.5% / 하락 66~77% / 💥파괴 2~8.4%\n"
+        "• 20성: 20성 방지턱! 성공 31.5% / 유지 58.2% / 💥파괴 10.3%\n"
+        "• 21~22성: 성공 15.8% / 하락 67~72% / 💥파괴 12.6~16.9% (국민 졸업!)\n"
+        "• 23~25성: 극악의 종결! 성공 10.5% / 하락 71.6% / 💥파괴 17.9% (MAX: 채굴 6배!)\n"
+        "* 15강까진 절대 안 터집니다! 15성 이후 파괴 시 12성(흔적)으로 복원됩니다.\n"
+        "* 강화비는 성공/실패/파괴 무관 100% 국고 채굴풀로 환원됩니다!"
+    )
 
 def execute_borrow(
     db: Session,

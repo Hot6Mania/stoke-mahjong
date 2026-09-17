@@ -64,7 +64,7 @@ GUIDE_MINING = (
     "• ✨ 은 광맥 (25%): 1X 1.3배 ~ 1.5배 보너스 채굴\n"
     "• ⛏️ 구리 광맥 (40%): 1X 1.0배 정규 채굴\n"
     "• 🪨 석탄/자갈 (15%): 1X 0.6배 ~ 0.8배 소박 채굴\n"
-    "* 곡괭이 강화(!강화): 채굴량 최대 +180%, 크리 확률 대폭 상승, 쿨타임 8분까지 단축! (확인: !곡괭이, 등급표: !강화표)\n"
+    "* 곡괭이 강화(!강화): 메이플 스타포스 0~25성 (15성까지 파괴 0%! 15성 이후 파괴 위험, 장비확인: !곡괭이, 강화표: !강화표)\n"
     "* 빚(대출) 보유 시 채굴 가치만큼 국고 빚이 즉시 탕감됩니다!"
 )
 GUIDE_CASINO = "🎰 [국고 카지노 사용법]\n• 슬롯머신: !슬롯 [금액/올인] (확률 확인: !슬롯확률)\n• 주사위: !주사위 [홀/짝/대/소] [금액/올인]\n• 카지노 상태: !카지노\n* 스트리머 전용: !정산 [등수] [점수], !카지노오픈 [분] [최대한도], !카지노마감"
@@ -219,7 +219,10 @@ def handle_chat_command(
 
         div_str = f" | 누적배당: +{user.total_dividends:,}P" if getattr(user, "total_dividends", 0) > 0 else ""
         debt_str = f" | 빚(대출): {debt:,}P" if debt > 0 else ""
-        pickaxe = get_pickaxe_info(getattr(user, "pickaxe_level", 1) or 1)
+        user_pick_lvl = getattr(user, "pickaxe_level", 0)
+        if user_pick_lvl is None:
+            user_pick_lvl = 0
+        pickaxe = get_pickaxe_info(user_pick_lvl)
         pickaxe_str = f" | 장비: {pickaxe['name']}"
 
         if pos_summaries:

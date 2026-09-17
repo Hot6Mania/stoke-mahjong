@@ -1674,102 +1674,131 @@ def test_mining_commands_and_probability_guide(db_session):
     assert ev_mine is not None
     assert ev_mine["type"] == "mining"
 
-def test_pickaxe_upgrade_and_treasury_recycle(db_session):
-    u = "pickaxe_tester"
-    user = te.get_or_create_user(db_session, u, "곡괭이장인")
-    user.points = 100000
+def test_pickaxe_upgrade_and_treasury_recycle(db_session, monkeypatch):
+    import random
+    u = "starforce_tester"
+    user = te.get_or_create_user(db_session, u, "스타포스장인")
+    user.points = 10000000 # 1,000만P
     state = te.get_market_state(db_session)
     state.treasury_pool = 500000
     db_session.commit()
 
-    # Initial level should be 1 (나무 곡괭이)
-    assert getattr(user, "pickaxe_level", 1) == 1
-    info1 = te.get_pickaxe_info(1)
-    assert info1["level"] == 1
-    assert "나무" in info1["name"]
-
-    # 1. Upgrade from Lv.1 to Lv.2 (Stone Pickaxe, 10,000P)
-    ok, reply, details = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
-    assert ok is True
-    assert details["new_level"] == 2
-    assert "돌 곡괭이" in details["pickaxe_name"]
-    assert details["cost"] == 10000
-    assert details["remaining_points"] == 90000
-    assert details["treasury_pool"] == 510000 # Recycled 100% into Treasury
-    assert user.pickaxe_level == 2
-
-    # 2. Debt protection check
-    user.debt = 85000 # Points: 90,000, next cost: 30,000 -> remaining: 60,000 < debt 85,000
+    # Initial level should be 0 or 1
+    user.pickaxe_level = 0
     db_session.commit()
-    ok_debt, msg_debt, _ = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+    info0 = te.get_pickaxe_info(0)
+    assert info0["level"] == 0
+    assert "★0성" in info0["name"]
+
+    # 1. 0성 -> 1성 (Force roll success: roll = 10 < 99.75)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 10.0)
+    ok, reply, details = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
+    assert ok is True
+    assert details["outcome"] == "success"
+    assert details["new_level"] == 1
+    assert details["cost"] == 2000
+    assert details["treasury_pool"] == 502000
+    assert user.pickaxe_level == 1
+
+    # 2. Check 0~14성 has 0% destroy rate guarantee
+    for lvl in range(15):
+        it = te.get_pickaxe_info(lvl)
+        assert it["destroy_rate"] == 0.0, f"Level {lvl} must have 0% destroy rate!"
+
+    # 3. Check 15성+ has destroy rate
+    info15 = te.get_pickaxe_info(15)
+    assert info15["destroy_rate"] == 2.055
+    info22 = te.get_pickaxe_info(22)
+    assert info22["destroy_rate"] == 16.85
+
+    # 4. Test 10성 safety bracket (Maintain on fail)
+    user.pickaxe_level = 10
+    db_session.commit()
+    info10 = te.get_pickaxe_info(10)
+    # roll between success (52.5) and 100 -> maintain
+    monkeypatch.setattr(random, "uniform", lambda a, b: 70.0)
+    ok10, rep10, det10 = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
+    assert ok10 is True
+    assert det10["outcome"] == "maintain"
+    assert det10["new_level"] == 10
+    assert user.pickaxe_level == 10
+
+    # 5. Test 11성 failure (Drop 1 level to 10성)
+    user.pickaxe_level = 11
+    db_session.commit()
+    # 11성: success 47.25, drop 52.75 -> roll 60 is drop
+    monkeypatch.setattr(random, "uniform", lambda a, b: 60.0)
+    ok11, rep11, det11 = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
+    assert ok11 is True
+    assert det11["outcome"] == "drop"
+    assert det11["new_level"] == 10
+    assert user.pickaxe_level == 10
+
+    # 6. Test 17성 destruction (15+ stars blow-up -> restores to 12성)
+    user.pickaxe_level = 17
+    db_session.commit()
+    # 17성: success 15.75, drop 77.51 (cumul 93.26), destroy 6.74 (roll 95 is destroy)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 95.0)
+    ok17, rep17, det17 = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
+    assert ok17 is True
+    assert det17["outcome"] == "destroyed"
+    assert det17["new_level"] == 12  # MapleStory trace restoration!
+    assert user.pickaxe_level == 12
+    assert "폭발 파괴" in rep17
+    assert "12성" in rep17
+
+    # 7. Debt protection check
+    user.points = 150000
+    user.debt = 100000 # Cost for 12성 is 100,000 -> remaining 50,000 < debt 100,000
+    db_session.commit()
+    ok_debt, msg_debt, _ = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
     assert ok_debt is False
     assert "채무" in msg_debt
 
-    # Repay debt to allow upgrading
+    # 8. Max level 25 check
     user.debt = 0
+    user.pickaxe_level = 25
     db_session.commit()
-
-    # 3. Upgrade Lv.2 -> Lv.3 (Iron Pickaxe, 30,000P)
-    ok2, reply2, details2 = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
-    assert ok2 is True
-    assert details2["new_level"] == 3
-    assert "철 곡괭이" in details2["pickaxe_name"]
-    assert details2["remaining_points"] == 60000
-    assert details2["treasury_pool"] == 540000
-
-    # 4. Insufficient funds check (need 70,000P for Lv.4, but only 60,000P left)
-    ok_poor, msg_poor, _ = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
-    assert ok_poor is False
-    assert "포인트가 부족합니다" in msg_poor
-
-    # 5. Upgrade all the way to Lv.7 MAX
-    user.points = 2000000
-    db_session.commit()
-    for target_lvl in range(4, 8):
-        ok_up, _, det_up = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
-        assert ok_up is True
-        assert det_up["new_level"] == target_lvl
-
-    assert user.pickaxe_level == 7
-    # Attempting to upgrade beyond Lv.7 should be rejected
-    ok_max, msg_max, _ = te.execute_pickaxe_upgrade(db_session, u, "곡괭이장인")
+    ok_max, msg_max, _ = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
     assert ok_max is False
     assert "최고 등급" in msg_max
 
-def test_pickaxe_chat_commands(db_session):
+def test_pickaxe_chat_commands(db_session, monkeypatch):
+    import random
     u = "pickaxe_chatter"
     user = te.get_or_create_user(db_session, u, "광석수집가")
     user.points = 50000
+    user.pickaxe_level = 0
     db_session.commit()
 
     # 1. Query !곡괭이
     r_pick, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!곡괭이")
     assert "내 곡괭이 정보" in r_pick
-    assert "나무 곡괭이" in r_pick
-    assert "비용: 10,000P" in r_pick
+    assert "나무 곡괭이 (★0성)" in r_pick
+    assert "비용: 2,000P" in r_pick
 
     # 2. Check !내정보 includes equipped equipment
     r_info, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!내정보")
-    assert "장비: 🪵 나무 곡괭이" in r_info
+    assert "장비: 🪵 나무 곡괭이 (★0성)" in r_info
 
-    # 3. Upgrade via chat command !강화
+    # 3. Upgrade via chat command !강화 (Force success)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 1.0)
     r_up, ev_up = ch.handle_chat_command(db_session, u, "광석수집가", "!강화")
-    assert "곡괭이 강화 성공" in r_up
-    assert "돌 곡괭이" in r_up
+    assert "스타포스 강화 대성공" in r_up
+    assert "★1성" in r_up
     assert ev_up is not None
     assert ev_up["type"] == "pickaxe_upgrade"
-    assert ev_up["data"]["new_level"] == 2
+    assert ev_up["data"]["new_level"] == 1
 
     # 4. Check !내정보 reflects upgraded pickaxe
     r_info2, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!내정보")
-    assert "장비: 🪨 돌 곡괭이" in r_info2
+    assert "장비: 🪵 나무 곡괭이 (★1성)" in r_info2
 
     # 5. Query !강화표 guide
     r_guide, _ = ch.handle_chat_command(db_session, u, "광석수집가", "!강화표")
-    assert "채굴 곡괭이 강화 등급표" in r_guide
-    assert "Lv.1 🪵 나무 곡괭이" in r_guide
-    assert "Lv.7 🀄 역만 마작 곡괭이" in r_guide
-    assert "전액 국고 채굴풀로 환원" in r_guide
+    assert "스타포스 강화표" in r_guide
+    assert "15강까진 절대 안 터집니다" in r_guide
+    assert "국고 채굴풀로 환원" in r_guide
 
 
 
