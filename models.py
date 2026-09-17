@@ -47,6 +47,7 @@ class User(Base):
     auto_mining_end_time = Column(Float, default=0.0, nullable=True)
     auto_mining_session_mined = Column(Float, default=0.0, nullable=False)
     auto_mining_session_points = Column(Integer, default=0, nullable=False)
+    cube_fragments = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     positions = relationship("Position", back_populates="user", cascade="all, delete-orphan")
@@ -144,6 +145,11 @@ class UserEquipment(Base):
     name = Column(String, nullable=False)
     starforce = Column(Integer, default=0, nullable=False)
     is_equipped = Column(Boolean, default=False, nullable=False)
+    potential_tier = Column(String, default="NONE", nullable=False) # NONE, RARE, EPIC, UNIQUE, LEGENDARY
+    potential_line_1 = Column(String, nullable=True) # e.g. "MINING_CD_RESET:15"
+    potential_line_2 = Column(String, nullable=True) # e.g. "MINING_BONUS_CASH:60000"
+    potential_line_3 = Column(String, nullable=True) # e.g. "CASINO_SLOT_BOOST:50"
+    pity_count = Column(Integer, default=0, nullable=False) # 등급 상승 보장 카운터
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", backref="equipments")

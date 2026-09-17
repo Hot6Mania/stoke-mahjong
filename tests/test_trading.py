@@ -1,5 +1,7 @@
 import os
 import time
+import json
+import random
 from datetime import datetime, timezone
 import pytest
 from sqlalchemy import create_engine
@@ -2418,6 +2420,253 @@ def test_equipment_listing_buy_transfer_starforce(db_session):
 
     # Seller has received points minus tax
     assert seller.points == initial_seller_pts + (20000 - details["tax_fee"])
+
+
+def test_cube_first_use_and_promotion(db_session):
+    """Test first cube on NONE potential equipment promotes to RARE 100%."""
+    uid = "cube_tester_1"
+    uname = "큐브테스터1"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 50000
+    state = te.get_market_state(db_session)
+    initial_treasury = state.treasury_pool
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+    assert eq.potential_tier == "NONE"
+
+    # Use cube
+    ok, reply, details = te.execute_cube_use(db_session, uid, uname)
+    assert ok is True
+    assert details["old_tier"] == "NONE"
+    assert details["new_tier"] == "RARE"
+    assert details["promoted"] is True
+    assert user.points == 50000 - te.CUBE_COST
+    assert state.treasury_pool == initial_treasury + te.CUBE_COST
+    assert user.cube_fragments == 1
+    assert eq.potential_tier == "RARE"
+    assert eq.pity_count == 0
+
+    # 3 lines must be present and valid JSON
+    line1 = json.loads(eq.potential_line_1)
+    line2 = json.loads(eq.potential_line_2)
+    line3 = json.loads(eq.potential_line_3)
+    assert line1["tier"] == "RARE"
+    assert line2["tier"] == "RARE"
+    assert line3["tier"] == "RARE"
+    assert "code" in line1 and "val" in line1
+
+
+def test_cube_pity_progression(db_session, monkeypatch):
+    """Test pity guarantee ceilings (10 for RARE, 42 for EPIC, 107 for UNIQUE)."""
+    uid = "cube_pity_tester"
+    uname = "천장테스터"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 10000000
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+
+    # Force probability roll to fail so only pity triggers promotion
+    monkeypatch.setattr(random, "uniform", lambda a, b: 99.9)
+
+    # 1. RARE -> EPIC at pity 10
+    eq.potential_tier = "RARE"
+    eq.pity_count = 9
+    db_session.commit()
+
+    ok, reply, details = te.execute_cube_use(db_session, uid, uname)
+    assert ok is True
+    assert details["new_tier"] == "EPIC"
+    assert details["pity_triggered"] is True
+    assert eq.potential_tier == "EPIC"
+    assert eq.pity_count == 0
+
+    # 2. EPIC -> UNIQUE at pity 42
+    eq.potential_tier = "EPIC"
+    eq.pity_count = 41
+    db_session.commit()
+
+    ok, reply, details = te.execute_cube_use(db_session, uid, uname)
+    assert ok is True
+    assert details["new_tier"] == "UNIQUE"
+    assert details["pity_triggered"] is True
+    assert eq.potential_tier == "UNIQUE"
+    assert eq.pity_count == 0
+
+    # 3. UNIQUE -> LEGENDARY at pity 107
+    eq.potential_tier = "UNIQUE"
+    eq.pity_count = 106
+    db_session.commit()
+
+    ok, reply, details = te.execute_cube_use(db_session, uid, uname)
+    assert ok is True
+    assert details["new_tier"] == "LEGENDARY"
+    assert details["pity_triggered"] is True
+    assert eq.potential_tier == "LEGENDARY"
+    assert eq.pity_count == 0
+
+
+def test_cube_fragment_exchange(db_session):
+    """Test 10 Cube Fragments exchange for 15,000P refund."""
+    uid = "frag_tester"
+    uname = "조각테스터"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 10000
+    user.cube_fragments = 9
+    db_session.commit()
+
+    # 9 fragments -> fails
+    ok, reply, _ = te.execute_cube_fragment_exchange(db_session, uid, uname)
+    assert ok is False
+    assert "부족" in reply
+
+    # 10 fragments -> succeeds (+15,000P)
+    user.cube_fragments = 10
+    db_session.commit()
+    ok, reply, details = te.execute_cube_fragment_exchange(db_session, uid, uname)
+    assert ok is True
+    assert user.points == 25000
+    assert user.cube_fragments == 0
+    assert "교환 완료" in reply
+
+
+def test_cube_potential_effects_aggregation(db_session):
+    """Test that get_equipment_potential_effects properly sums multiple lines and respects balance caps."""
+    uid = "agg_user"
+    uname = "합산유저"
+    user = te.get_or_create_user(db_session, uid, uname)
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+
+    eq.potential_tier = "LEGENDARY"
+    eq.potential_line_1 = json.dumps({"code": "MINING_BONUS_CASH", "val": 60000, "text": "+60,000P"})
+    eq.potential_line_2 = json.dumps({"code": "MINING_BONUS_CASH", "val": 25000, "text": "+25,000P"})
+    eq.potential_line_3 = json.dumps({"code": "MINING_CD_RESET", "val": 15.0, "text": "15%"})
+    db_session.commit()
+
+    effects = te.get_equipment_potential_effects(eq)
+    assert effects["bonus_cash"] == 85000
+    assert effects["cd_reset_pct"] == 15.0
+    assert effects["yield_boost"] == 0.0
+
+
+def test_cube_mining_effects(db_session, monkeypatch):
+    """Test mining bonuses and cooldown reset triggered by potential lines."""
+    uid = "mine_cube_user"
+    uname = "채굴큐브유저"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 100000
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+
+    eq.potential_tier = "LEGENDARY"
+    eq.potential_line_1 = json.dumps({"code": "MINING_BONUS_CASH", "val": 60000, "text": "+60000P"})
+    eq.potential_line_2 = json.dumps({"code": "MINING_YIELD_BOOST", "val": 2.0, "text": "+2.0x"})
+    eq.potential_line_3 = json.dumps({"code": "MINING_CD_RESET", "val": 15.0, "text": "15%"})
+    db_session.commit()
+
+    # Test bonus cash awarded in mining
+    ok, reply, details = te.execute_mining(db_session, uid, uname)
+    assert ok is True
+    assert details["potential_bonus_cash"] == 60000
+    assert details["total_bonus_cash"] >= 60000
+    assert "잠재 현금 +60,000P" in reply
+
+    # Test CD reset hook by setting random to 0.01 (< 15%)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0.01)
+    user.last_mined_at = None
+    db_session.commit()
+    ok_reset, reply_reset, det_reset = te.execute_mining(db_session, uid, uname)
+    assert ok_reset is True
+    assert det_reset["cd_reset_triggered"] is True
+    assert user.last_mined_at is None
+    assert "⚡잠재 쿨초 발동" in reply_reset
+
+
+def test_cube_casino_and_starforce_effects(db_session, monkeypatch):
+    """Test slot boost, dice payback, starforce discount, and safeguard protection."""
+    uid = "gamble_sf_user"
+    uname = "도박강화유저"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 500000
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+
+    # Equip item with slot boost, dice payback, sf discount & safeguard
+    eq.potential_tier = "LEGENDARY"
+    eq.potential_line_1 = json.dumps({"code": "CASINO_SLOT_BOOST", "val": 50.0, "text": "+50%"})
+    eq.potential_line_2 = json.dumps({"code": "CASINO_DICE_PAYBACK", "val": 40.0, "text": "40%"})
+    eq.potential_line_3 = json.dumps({"code": "STARFORCE_SAFEGUARD", "val": 50.0, "text": "50%"})
+    db_session.commit()
+
+    # 1. Slot gamble boost
+    te.open_casino(db_session, 100000)
+    monkeypatch.setattr(random, "choices", lambda syms, weights, k: ["💎", "💎", "💎"])
+    ok_slot, reply_slot, det_slot = te.execute_slot_gamble(db_session, uid, uname, "1000")
+    assert ok_slot is True
+    assert det_slot["won"] is True
+    assert "잠재 배당 +50%" in reply_slot
+
+    # 2. Dice gamble payback on loss
+    monkeypatch.setattr(random, "randint", lambda a, b: 1) # 1+1 = 2 (Even)
+    # Bet on "홀" (Odd) -> Loss!
+    initial_pts = user.points
+    ok_dice, reply_dice, det_dice = te.execute_dice_gamble(db_session, uid, uname, "홀", "10000")
+    assert ok_dice is True
+    assert det_dice["won"] is False
+    assert "잠재 페이백 40% 발동" in reply_dice
+    # Net loss should be 10000 - 4000 = 6000
+    assert user.points == initial_pts - 6000
+
+    # 3. Starforce Safeguard on 15성+ destruction
+    eq.starforce = 15
+    user.pickaxe_level = 15
+    eq.name = te.get_pickaxe_info(15)["name"]
+    db_session.commit()
+    # Mock roll into destruction range (99.9) and safeguard roll (10.0 < 50%)
+    sf_rolls = []
+    def mock_roll(a, b):
+        if a == 0 and b == 100:
+            sf_rolls.append(1)
+            if len(sf_rolls) == 1:
+                return 99.9  # Destruction roll
+            return 10.0      # Safeguard roll (< 50% safeguard succeeds!)
+        return 60.0          # Event interval scheduling
+    monkeypatch.setattr(random, "uniform", mock_roll)
+
+    ok_sf, reply_sf, det_sf = te.execute_pickaxe_upgrade(db_session, uid, uname)
+    assert ok_sf is True
+    assert det_sf["outcome"] == "safeguarded_drop"
+    assert eq.starforce == 14  # Dropped to 14 instead of being destroyed to 12!
+    assert "세이프가드" in reply_sf
+
+
+def test_cube_chat_commands(db_session):
+    """Test !큐브 and !큐브조각 via command_handler."""
+    uid = "chat_cmd_cube_user"
+    uname = "채팅큐브유저"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 100000
+    items = te.ensure_user_equipment(db_session, user)
+
+    # 1. !큐브 command
+    reply, event = ch.handle_chat_command(db_session, uid, uname, "!큐브")
+    assert "미라클 큐브 사용" in reply
+    assert event is not None
+    assert event["type"] == "cube_use"
+
+    # 2. Check pickaxe view includes potential
+    reply_pick, _ = ch.handle_chat_command(db_session, uid, uname, "!곡괭이")
+    assert "잠재능력:" in reply_pick
+    assert "큐브 조각:" in reply_pick
+
+    # 3. Exchange fragments command (!큐브조각)
+    user.cube_fragments = 10
+    db_session.commit()
+    reply_frag, ev_frag = ch.handle_chat_command(db_session, uid, uname, "!큐브조각")
+    assert "큐브 조각 교환 완료" in reply_frag
+    assert ev_frag is not None
+    assert ev_frag["type"] == "cube_fragment_exchange"
+
 
 
 

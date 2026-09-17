@@ -51,7 +51,9 @@ from trading_engine import (
     renew_auto_mining,
     get_auto_mining_status,
     get_user_equipped_item,
-    get_user_cooldown_status
+    get_user_cooldown_status,
+    execute_cube_use,
+    execute_cube_fragment_exchange
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -60,7 +62,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
 • 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간, !쿨타임
-• 장비: !내장비, !장착 [번호], !강화 [번호], !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
+• 장비: !내장비, !장착 [번호], !강화 [번호], !큐브 [번호], !큐브조각, !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -732,6 +734,19 @@ def handle_chat_command(
 
         # General viewer query
         return get_starforce_event_guide(db), None
+
+    # 8-12. Maple Cube Potential Reset (!큐브, !cube, !미라클큐브, !블랙큐브, !잠재, !잠재능력)
+    if cmd in ["!큐브", "!cube", "!미라클큐브", "!블랙큐브", "!잠재", "!잠재능력", "!큐브사용"]:
+        target_token = tokens[1] if len(tokens) >= 2 else None
+        success, reply, details = execute_cube_use(db, user_id, username, target_token)
+        event = {"type": "cube_use", "data": details} if success and details else None
+        return reply, event
+
+    # 8-13. Cube Fragment Exchange (!큐브조각, !큐브조각교환, !조각교환, !조각)
+    if cmd in ["!큐브조각", "!큐브조각교환", "!조각교환", "!조각"]:
+        success, reply, details = execute_cube_fragment_exchange(db, user_id, username)
+        event = {"type": "cube_fragment_exchange", "data": details} if success and details else None
+        return reply, event
 
     # 9. Treasury Info Query
     if cmd in ["!국고", "!풀", "!채굴풀"]:

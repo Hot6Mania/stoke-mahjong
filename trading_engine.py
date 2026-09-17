@@ -214,6 +214,287 @@ TRANSFER_TAX_RATE: float = 0.05           # 1만P 이상 기본 5% 이체세
 TRANSFER_HIGH_TAX_THRESHOLD: int = 100000 # 10만P 이상 초고액 이체 시
 TRANSFER_HIGH_TAX_RATE: float = 0.10      # 10만P 이상 10% 증여세
 
+# ==========================================
+# MapleStory Equipment Potential & Cube System (메이플 큐브 잠재능력)
+# ==========================================
+
+CUBE_COST: int = 15000
+CUBE_FRAGMENT_EXCHANGE_COST: int = 10
+CUBE_FRAGMENT_EXCHANGE_REWARD: int = 15000
+
+CUBE_TIER_ORDER = ["NONE", "RARE", "EPIC", "UNIQUE", "LEGENDARY"]
+
+CUBE_TIER_DISPLAY: Dict[str, str] = {
+    "NONE": "잠재 없음",
+    "RARE": "💙 레어 (RARE)",
+    "EPIC": "💜 에픽 (EPIC)",
+    "UNIQUE": "💛 유니크 (UNIQUE)",
+    "LEGENDARY": "🌟 레전드리 (LEGENDARY)",
+}
+
+# Promotion rates based on official Black Cube rates from Namuwiki
+CUBE_PROMOTION_RATES: Dict[str, float] = {
+    "NONE": 100.0,   # 1st cube unlocks RARE with 100% chance
+    "RARE": 15.0,    # RARE -> EPIC (15.0%)
+    "EPIC": 3.5,     # EPIC -> UNIQUE (3.5%)
+    "UNIQUE": 1.4,   # UNIQUE -> LEGENDARY (1.4%)
+    "LEGENDARY": 0.0 # Max tier
+}
+
+# Pity guarantee ceilings based on official MapleStory data (3.2 등급 상승 보장)
+CUBE_PITY_CEILINGS: Dict[str, int] = {
+    "RARE": 10,     # 10회 천장
+    "EPIC": 42,     # 42회 천장
+    "UNIQUE": 107,  # 107회 천장
+}
+
+POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
+    "MINING_CD_RESET": {
+        "name": "쿨타임 즉시 초기화",
+        "unit": "%",
+        "icon": "⚡",
+        "tiers": {
+            "EPIC": (4.0, "채굴 시 4% 확률로 쿨타임 즉시 초기화"),
+            "UNIQUE": (8.0, "채굴 시 8% 확률로 쿨타임 즉시 초기화"),
+            "LEGENDARY": (15.0, "채굴 시 15% 확률로 쿨타임 즉시 초기화"),
+        }
+    },
+    "MINING_BONUS_CASH": {
+        "name": "채굴 확정 현금",
+        "unit": "P",
+        "icon": "🪙",
+        "tiers": {
+            "RARE": (3000, "매 채굴 시 확정 현금 +3,000P"),
+            "EPIC": (10000, "매 채굴 시 확정 현금 +10,000P"),
+            "UNIQUE": (25000, "매 채굴 시 확정 현금 +25,000P"),
+            "LEGENDARY": (60000, "매 채굴 시 확정 현금 +60,000P"),
+        }
+    },
+    "MINING_CRIT_BOOST": {
+        "name": "채굴 크리티컬 확률",
+        "unit": "%",
+        "icon": "💥",
+        "tiers": {
+            "RARE": (3.0, "채굴 크리티컬 확률 +3%"),
+            "EPIC": (7.0, "채굴 크리티컬 확률 +7%"),
+            "UNIQUE": (14.0, "채굴 크리티컬 확률 +14%"),
+            "LEGENDARY": (25.0, "채굴 크리티컬 확률 +25%"),
+        }
+    },
+    "MINING_YIELD_BOOST": {
+        "name": "채굴량 배율",
+        "unit": "x",
+        "icon": "⛏️",
+        "tiers": {
+            "RARE": (0.2, "주식 채굴량 배율 +0.2x"),
+            "EPIC": (0.5, "주식 채굴량 배율 +0.5x"),
+            "UNIQUE": (1.0, "주식 채굴량 배율 +1.0x"),
+            "LEGENDARY": (2.0, "주식 채굴량 배율 +2.0x"),
+        }
+    },
+    "CASINO_SLOT_BOOST": {
+        "name": "슬롯 당첨금 보너스",
+        "unit": "%",
+        "icon": "🎰",
+        "tiers": {
+            "EPIC": (10.0, "슬롯머신 최종 당첨금 +10%"),
+            "UNIQUE": (25.0, "슬롯머신 최종 당첨금 +25%"),
+            "LEGENDARY": (50.0, "슬롯머신 최종 당첨금 +50%"),
+        }
+    },
+    "CASINO_DICE_PAYBACK": {
+        "name": "주사위 패배 페이백",
+        "unit": "%",
+        "icon": "🎲",
+        "tiers": {
+            "EPIC": (10.0, "주사위 패배 시 베팅금 10% 페이백"),
+            "UNIQUE": (20.0, "주사위 패배 시 베팅금 20% 페이백"),
+            "LEGENDARY": (40.0, "주사위 패배 시 베팅금 40% 페이백"),
+        }
+    },
+    "STARFORCE_DISCOUNT": {
+        "name": "스타포스 강화비 할인",
+        "unit": "%",
+        "icon": "🔨",
+        "tiers": {
+            "EPIC": (5.0, "스타포스 강화 비용 5% 상시 할인"),
+            "UNIQUE": (10.0, "스타포스 강화 비용 10% 상시 할인"),
+            "LEGENDARY": (20.0, "스타포스 강화 비용 20% 상시 할인"),
+        }
+    },
+    "STARFORCE_SAFEGUARD": {
+        "name": "15성+ 파괴 방지",
+        "unit": "%",
+        "icon": "🛡️",
+        "tiers": {
+            "UNIQUE": (20.0, "15성 이상 강화 실패 시 20% 확률 파괴 방지"),
+            "LEGENDARY": (50.0, "15성 이상 강화 실패 시 50% 확률 파괴 방지"),
+        }
+    },
+    "AUTO_MINING_DURATION": {
+        "name": "자동채굴 시간 연장",
+        "unit": "%",
+        "icon": "⏰",
+        "tiers": {
+            "RARE": (15.0, "자동 채굴 지속 시간 +15%"),
+            "EPIC": (30.0, "자동 채굴 지속 시간 +30%"),
+            "UNIQUE": (60.0, "자동 채굴 지속 시간 +60%"),
+            "LEGENDARY": (100.0, "자동 채굴 지속 시간 +100%"),
+        }
+    },
+    "FEE_DISCOUNT": {
+        "name": "거래 수수료 감면",
+        "unit": "%",
+        "icon": "📉",
+        "tiers": {
+            "EPIC": (15.0, "주식 거래 및 송금 수수료 15% 감면"),
+            "UNIQUE": (30.0, "주식 거래 및 송금 수수료 30% 감면"),
+            "LEGENDARY": (60.0, "주식 거래 및 송금 수수료 60% 감면"),
+        }
+    }
+}
+
+def get_lower_potential_tier(tier: str) -> str:
+    """Returns the tier directly below the given tier (minimum RARE)."""
+    order = ["RARE", "EPIC", "UNIQUE", "LEGENDARY"]
+    if tier in order:
+        idx = order.index(tier)
+        if idx > 0:
+            return order[idx - 1]
+    return "RARE"
+
+def roll_single_potential_line(tier: str) -> Dict[str, Any]:
+    """Rolls a single potential line option for the specified tier."""
+    valid_keys = [
+        code for code, data in POTENTIAL_OPTIONS.items()
+        if tier in data["tiers"]
+    ]
+    if not valid_keys:
+        valid_keys = ["MINING_BONUS_CASH"]
+        tier = "RARE"
+
+    code = random.choice(valid_keys)
+    opt = POTENTIAL_OPTIONS[code]
+    val, desc = opt["tiers"][tier]
+    return {
+        "code": code,
+        "name": opt["name"],
+        "icon": opt["icon"],
+        "tier": tier,
+        "val": val,
+        "unit": opt["unit"],
+        "text": f"{opt['icon']} {desc}"
+    }
+
+def roll_cube_potential(tier: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    """
+    Rolls 3 lines of potential options based on MapleStory distribution rules:
+    - Line 1: Current tier (100%)
+    - Line 2: Current tier (50%) / 1 tier lower (50%)
+    - Line 3: Current tier (20%) / 1 tier lower (80%)
+    """
+    lower_tier = get_lower_potential_tier(tier)
+
+    # Line 1: 100% Current tier
+    line1 = roll_single_potential_line(tier)
+
+    # Line 2: 50% Current / 50% Lower (RARE is always RARE)
+    if tier == "RARE":
+        l2_tier = "RARE"
+    else:
+        l2_tier = tier if random.random() < 0.50 else lower_tier
+    line2 = roll_single_potential_line(l2_tier)
+
+    # Line 3: 20% Current / 80% Lower
+    if tier == "RARE":
+        l3_tier = "RARE"
+    else:
+        l3_tier = tier if random.random() < 0.20 else lower_tier
+    line3 = roll_single_potential_line(l3_tier)
+
+    return line1, line2, line3
+
+def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, Any]:
+    """Aggregates all 3 potential lines from an equipment into numeric bonuses."""
+    effects = {
+        "cd_reset_pct": 0.0,
+        "bonus_cash": 0,
+        "crit_boost": 0.0,
+        "yield_boost": 0.0,
+        "slot_boost_pct": 0.0,
+        "dice_payback_pct": 0.0,
+        "starforce_discount_pct": 0.0,
+        "safeguard_pct": 0.0,
+        "auto_duration_pct": 0.0,
+        "fee_discount_pct": 0.0,
+    }
+    if not item:
+        return effects
+
+    lines = [item.potential_line_1, item.potential_line_2, item.potential_line_3]
+    for raw in lines:
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            code = data.get("code")
+            val = float(data.get("val", 0))
+            if code == "MINING_CD_RESET":
+                effects["cd_reset_pct"] += val
+            elif code == "MINING_BONUS_CASH":
+                effects["bonus_cash"] += int(val)
+            elif code == "MINING_CRIT_BOOST":
+                effects["crit_boost"] += val
+            elif code == "MINING_YIELD_BOOST":
+                effects["yield_boost"] += val
+            elif code == "CASINO_SLOT_BOOST":
+                effects["slot_boost_pct"] += val
+            elif code == "CASINO_DICE_PAYBACK":
+                effects["dice_payback_pct"] += val
+            elif code == "STARFORCE_DISCOUNT":
+                effects["starforce_discount_pct"] += val
+            elif code == "STARFORCE_SAFEGUARD":
+                effects["safeguard_pct"] += val
+            elif code == "AUTO_MINING_DURATION":
+                effects["auto_duration_pct"] += val
+            elif code == "FEE_DISCOUNT":
+                effects["fee_discount_pct"] += val
+        except Exception:
+            continue
+
+    # Balance caps
+    effects["cd_reset_pct"] = min(70.0, effects["cd_reset_pct"])
+    effects["crit_boost"] = min(100.0, effects["crit_boost"])
+    effects["slot_boost_pct"] = min(150.0, effects["slot_boost_pct"])
+    effects["dice_payback_pct"] = min(80.0, effects["dice_payback_pct"])
+    effects["starforce_discount_pct"] = min(50.0, effects["starforce_discount_pct"])
+    effects["safeguard_pct"] = min(90.0, effects["safeguard_pct"])
+    effects["auto_duration_pct"] = min(200.0, effects["auto_duration_pct"])
+    effects["fee_discount_pct"] = min(90.0, effects["fee_discount_pct"])
+    return effects
+
+def get_user_fee_discount_pct(db: Session, user: User) -> float:
+    """Returns total fee discount percentage from user's equipped item potential lines."""
+    try:
+        item = db.query(UserEquipment).filter_by(user_id=user.id, is_equipped=True).first()
+        if not item:
+            item = db.query(UserEquipment).filter_by(user_id=user.id).first()
+        effects = get_equipment_potential_effects(item)
+        return min(90.0, float(effects.get("fee_discount_pct", 0.0)))
+    except Exception:
+        return 0.0
+
+def format_potential_summary(item: Optional[UserEquipment]) -> str:
+    """Returns concise potential tier badge and options summary."""
+    if not item:
+        return ""
+    tier = (item.potential_tier or "NONE").upper()
+    if tier == "NONE":
+        return "🔮 [잠재: 없음]"
+    disp = CUBE_TIER_DISPLAY.get(tier, tier)
+    return f"🔮 [{disp}]"
+
+
 def parse_korean_amount(val_str: Any) -> Optional[int]:
     """Parse amounts like 10000, 10,000, 5만, 10만, 1.5만, 5천, 1억 into integer points."""
     if val_str is None:
@@ -492,14 +773,16 @@ def execute_buy(
         except ValueError:
             return False, f"⚠️ 유효하지 않은 수량입니다: '{quantity_str}' (수량 숫자 또는 '올인' 입력)", None
 
+    fee_disc = get_user_fee_discount_pct(db, user)
+    eff_fee_rate = TRADING_FEE_RATE * (1.0 - fee_disc / 100.0) if fee_disc > 0 else TRADING_FEE_RATE
     cost = int(round(quantity * current_price))
-    fee = max(1, int(round(cost * TRADING_FEE_RATE))) if cost > 0 else 0
+    fee = max(0 if fee_disc > 0 else 1, int(round(cost * eff_fee_rate))) if cost > 0 else 0
     total_deduct = cost + fee
 
     while total_deduct > user.points and quantity > 0:
         quantity -= 1
         cost = int(round(quantity * current_price))
-        fee = max(1, int(round(cost * TRADING_FEE_RATE))) if cost > 0 else 0
+        fee = max(0 if fee_disc > 0 else 1, int(round(cost * eff_fee_rate))) if cost > 0 else 0
         total_deduct = cost + fee
 
     if quantity <= 0 or user.points < total_deduct:
@@ -742,7 +1025,9 @@ def execute_sell(
     val = calculate_position_valuation(pos, state.current_price)
     ratio = min(1.0, sell_qty / pos.quantity)
     gross_payout = int(round(val["current_value"] * ratio))
-    fee = max(1, int(round(gross_payout * TRADING_FEE_RATE))) if gross_payout > 0 else 0
+    fee_disc = get_user_fee_discount_pct(db, user)
+    eff_fee_rate = TRADING_FEE_RATE * (1.0 - fee_disc / 100.0) if fee_disc > 0 else TRADING_FEE_RATE
+    fee = max(0 if fee_disc > 0 else 1, int(round(gross_payout * eff_fee_rate))) if gross_payout > 0 else 0
     net_payout = max(0, gross_payout - fee)
     invested_part = pos.invested_cash * ratio
     pnl = net_payout - invested_part
@@ -2015,7 +2300,9 @@ def set_auto_mining(
     star = max(0, min(25, int(star or 0)))
 
     if enable:
-        dur_hours = get_auto_mining_duration_hours(star)
+        pot_effects = get_equipment_potential_effects(equipped_item)
+        extra_pct = min(200.0, float(pot_effects.get("auto_duration_pct", 0.0)))
+        dur_hours = get_auto_mining_duration_hours(star) * (1.0 + extra_pct / 100.0)
         dur_sec = dur_hours * 3600.0
         now = time.time()
         user.auto_mining_enabled = True
@@ -2026,6 +2313,8 @@ def set_auto_mining(
         db.refresh(user)
 
         dur_str = format_duration_hours(dur_hours)
+        if extra_pct > 0:
+            dur_str += f" (⏰잠재 +{int(extra_pct)}% 연장)"
         info = get_pickaxe_info(star)
         reply = (
             f"⛏️🤖 [자동 채굴 활성화 (ON)] {user.username}님의 자동 채굴이 시작되었습니다!\n"
@@ -2075,7 +2364,9 @@ def renew_auto_mining(
     star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
     star = max(0, min(25, int(star or 0)))
 
-    dur_hours = get_auto_mining_duration_hours(star)
+    pot_effects = get_equipment_potential_effects(equipped_item)
+    extra_pct = min(200.0, float(pot_effects.get("auto_duration_pct", 0.0)))
+    dur_hours = get_auto_mining_duration_hours(star) * (1.0 + extra_pct / 100.0)
     dur_sec = dur_hours * 3600.0
     now = time.time()
 
@@ -2085,6 +2376,8 @@ def renew_auto_mining(
     db.refresh(user)
 
     dur_str = format_duration_hours(dur_hours)
+    if extra_pct > 0:
+        dur_str += f" (⏰잠재 +{int(extra_pct)}% 연장)"
     reply = (
         f"🔄🤖 [자동 채굴 갱신 완료!] {user.username}님의 자동 채굴 지속 시간이 지금부터 {dur_str} 동안 연장되었습니다!\n"
         f"• 현재 장착: {equipped_item.name} (★{star}성)\n"
@@ -2244,6 +2537,7 @@ def get_user_equipped_item(db: Session, user: User) -> UserEquipment:
     db.commit()
     return items[0]
 
+
 def get_user_cooldown_status(db: Session, user_id: str, username: str) -> str:
     """
     Returns dedicated status breakdown of mining cooldown, auto-mining timer, and server timers.
@@ -2369,6 +2663,13 @@ def execute_mining(
     cooldown_min = pickaxe["cooldown_minutes"]
     pickaxe_bonus_cash = pickaxe.get("bonus_points", 0)
 
+    # Aggregate potential effects from equipped item
+    pot_effects = get_equipment_potential_effects(equipped_item)
+    pot_crit_bonus = pot_effects.get("crit_boost", 0.0)
+    pot_yield_bonus = pot_effects.get("yield_boost", 0.0)
+    pot_bonus_cash = pot_effects.get("bonus_cash", 0)
+    pot_cd_reset_pct = pot_effects.get("cd_reset_pct", 0.0)
+
     # 2. Cooldown check based on pickaxe cooldown
     if user.last_mined_at:
         last_time = user.last_mined_at
@@ -2384,19 +2685,21 @@ def execute_mining(
         state.treasury_pool = DEFAULT_TREASURY_POOL
 
     current_price = state.current_price
-    # 3. Dynamic Base Reward based on Treasury Pool & Pickaxe Yield
+    # 3. Dynamic Base Reward based on Treasury Pool & Pickaxe Yield (boosted by potential yield)
     target_cash = min(float(current_price), max(current_price * 0.2, state.treasury_pool * 0.05))
     base_shares = round(target_cash / current_price, 2)
     if base_shares <= 0.05:
         base_shares = 0.1 # Minimum faucet floor
-    base_shares = round(base_shares * pickaxe["yield_multiplier"], 2)
+    total_yield = pickaxe["yield_multiplier"] + pot_yield_bonus
+    base_shares = round(base_shares * total_yield, 2)
 
-    # 4. Roll Random Mining Tier & Critical Hits (boosted by pickaxe crit_bonus)
+    # 4. Roll Random Mining Tier & Critical Hits (boosted by pickaxe crit_bonus + potential crit)
+    total_crit = pickaxe.get("crit_bonus", 0.0) + pot_crit_bonus
     try:
-        tier = roll_mining_tier(crit_bonus=pickaxe.get("crit_bonus", 0.0))
+        tier = roll_mining_tier(crit_bonus=total_crit)
     except TypeError:
         try:
-            tier = roll_mining_tier(pickaxe.get("crit_bonus", 0.0))
+            tier = roll_mining_tier(total_crit)
         except TypeError:
             tier = roll_mining_tier()
     multiplier = tier["multiplier"]
@@ -2409,7 +2712,7 @@ def execute_mining(
     else:
         bonus_cash = tier.get("bonus_cash", 0)
 
-    total_bonus_cash = bonus_cash + pickaxe_bonus_cash
+    total_bonus_cash = bonus_cash + pickaxe_bonus_cash + pot_bonus_cash
 
     bonus_10x = tier.get("bonus_10x", 0.0)
     cd_reduction = tier.get("cooldown_reduction", 0)
@@ -2426,8 +2729,13 @@ def execute_mining(
     total_mined_cost = actual_cost + total_bonus_cash + bonus_10x_cost
     state.treasury_pool = max(0.0, state.treasury_pool - total_mined_cost)
 
-    # Cooldown setup (boosted on critical hit)
-    if cd_reduction > 0:
+    # Cooldown setup (boosted on critical hit or potential CD reset)
+    cd_reset_triggered = False
+    if pot_cd_reset_pct > 0 and random.uniform(0, 100) < pot_cd_reset_pct:
+        cd_reset_triggered = True
+        user.last_mined_at = None
+        next_cd_msg = "⚡ [잠재 쿨초 발동!] 지금 바로 재채굴 가능!"
+    elif cd_reduction > 0:
         boosted_cd = max(0, cooldown_min - cd_reduction)
         if boosted_cd == 0:
             user.last_mined_at = None
@@ -2438,6 +2746,7 @@ def execute_mining(
     else:
         user.last_mined_at = now_utc
         next_cd_msg = f"{cooldown_min}분"
+
 
     # 5. Check if user has debt -> Forced Labor Mode (탄광 노역 채굴)
     user_debt = getattr(user, "debt", 0) or 0
@@ -2566,8 +2875,12 @@ def execute_mining(
         extras.append(f"잭팟 현금 +{bonus_cash:,}P")
     if pickaxe_bonus_cash > 0:
         extras.append(f"곡괭이 보너스 +{pickaxe_bonus_cash:,}P")
+    if pot_bonus_cash > 0:
+        extras.append(f"잠재 현금 +{pot_bonus_cash:,}P")
     if bonus_10x > 0:
         extras.append(f"🔥 10X 레버리지 +{format_quantity(bonus_10x)}주")
+    if cd_reset_triggered:
+        extras.append("⚡잠재 쿨초 발동")
     extras_str = f" + {' / '.join(extras)}" if extras else ""
 
     qty_str = format_quantity(shares_awarded)
@@ -2588,9 +2901,11 @@ def execute_mining(
         "cash_value": actual_cost,
         "bonus_cash": bonus_cash,
         "pickaxe_bonus_cash": pickaxe_bonus_cash,
+        "potential_bonus_cash": pot_bonus_cash,
         "total_bonus_cash": total_bonus_cash,
         "bonus_10x_shares": bonus_10x,
         "cooldown_reduction_minutes": cd_reduction,
+        "cd_reset_triggered": cd_reset_triggered,
         "treasury_pool": state.treasury_pool,
         "total_mined": user.total_mined,
         "is_forced_labor": False
@@ -2654,6 +2969,12 @@ def execute_pickaxe_upgrade(
     current_item = get_pickaxe_info(curr_level, event_state=sf_state)
     cost = current_item["upgrade_cost"]
 
+    # Potential effects: cost discount & safeguard
+    pot_effects = get_equipment_potential_effects(target_item)
+    pot_discount_pct = min(50.0, float(pot_effects.get("starforce_discount_pct", 0.0)))
+    if pot_discount_pct > 0:
+        cost = max(100, int(round(cost * (1.0 - pot_discount_pct / 100.0))))
+
     # Debt protection: Cannot spend borrowed money on luxury upgrades before repaying debt
     user_debt = getattr(user, "debt", 0) or 0
     if user_debt > 0 and (user.points - cost) < user_debt:
@@ -2677,6 +2998,8 @@ def execute_pickaxe_upgrade(
     fever_suffix = ""
     if current_item.get("is_discounted"):
         fever_suffix = " (🔥30% 할인 피버 적용)"
+    if pot_discount_pct > 0:
+        fever_suffix += f" (🔨잠재 {int(pot_discount_pct)}%할인)"
 
     if roll < s_rate:
         outcome = "success"
@@ -2718,15 +3041,29 @@ def execute_pickaxe_upgrade(
         )
     else:
         # Destroyed / Blown up! (Only possible at 15성+)
-        outcome = "destroyed"
-        new_level = 12  # 메이플 스타포스 룰: 장비의 흔적 12성 복원!
-        target_item.starforce = 12
-        new_item = get_pickaxe_info(12, event_state=sf_state)
-        target_item.name = new_item["name"]
-        reply = (
-            f"💥💥 [곡괭이 폭발 파괴!!{fever_suffix}] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [장비 #{target_item.id} {current_item['name']}]이(가) "
-            f"폭발 파괴되어 메이플 장비의 흔적 룰에 따라 [{new_item['name']}]으로 복원되었습니다! (국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
-        )
+        safeguard_pct = min(90.0, float(pot_effects.get("safeguard_pct", 0.0)))
+        if safeguard_pct > 0 and random.uniform(0, 100) < safeguard_pct:
+            # Safeguarded! Drop 1 star instead of falling to 12
+            outcome = "safeguarded_drop"
+            new_level = max(0, curr_level - 1)
+            target_item.starforce = new_level
+            new_item = get_pickaxe_info(new_level, event_state=sf_state)
+            target_item.name = new_item["name"]
+            reply = (
+                f"🛡️✨ [잠재능력 파괴 방지 발동!{fever_suffix}] 굉음과 함께 곡괭이가 폭발 파괴될 뻔했으나, "
+                f"장비에 깃든 잠재 세이프가드({int(safeguard_pct)}%)가 발동하여 파괴를 막아냈습니다! "
+                f"(1성 하락으로 방어: [{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
+            )
+        else:
+            outcome = "destroyed"
+            new_level = 12  # 메이플 스타포스 룰: 장비의 흔적 12성 복원!
+            target_item.starforce = 12
+            new_item = get_pickaxe_info(12, event_state=sf_state)
+            target_item.name = new_item["name"]
+            reply = (
+                f"💥💥 [곡괭이 폭발 파괴!!{fever_suffix}] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [장비 #{target_item.id} {current_item['name']}]이(가) "
+                f"폭발 파괴되어 메이플 장비의 흔적 룰에 따라 [{new_item['name']}]으로 복원되었습니다! (국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
+            )
 
     if target_item.is_equipped:
         user.pickaxe_level = target_item.starforce
@@ -3153,6 +3490,202 @@ def execute_cancel_equipment_listing(
         reply += f" (장착: !장착 {eq.id if eq else ''})"
     return True, reply, {"listing_id": listing.id, "equipment_id": eq.id if eq else None}
 
+def execute_cube_use(
+    db: Session,
+    user_id: str,
+    username: str,
+    item_id_or_index: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute !큐브 [장비번호/슬롯] (MapleStory Miracle/Black Cube potential reset).
+    - Cost: 15,000P per cube, 100% credited to Treasury pool.
+    - Tier order: NONE -> RARE -> EPIC -> UNIQUE -> LEGENDARY
+    - Promotion rates: NONE->RARE 100%, RARE->EPIC 15%, EPIC->UNIQUE 3.5%, UNIQUE->LEGENDARY 1.4%
+    - Pity guarantees: RARE->EPIC 10 cubes, EPIC->UNIQUE 42 cubes, UNIQUE->LEGENDARY 107 cubes
+    - 1 Cube Fragment per use. 10 fragments exchangeable for 15,000P refund (!큐브조각)
+    - 3 lines rolled per tier with official Maple distribution
+    """
+    state = get_market_state(db)
+    user = get_or_create_user(db, user_id, username)
+    target_item = find_user_equipment(db, user, item_id_or_index)
+
+    if not target_item:
+        return False, f"⚠️ 지정한 장비('{item_id_or_index}')를 보유하고 있지 않습니다! (내 장비 확인: !내장비, !인벤토리)", None
+
+    active_listing = db.query(EquipmentListing).filter_by(equipment_id=target_item.id, status="ACTIVE").first()
+    if active_listing:
+        return False, f"⚠️ [장비 #{target_item.id}]은(는) 현재 거래소/직거래에 판매 등록 중입니다! 등록 취소(!장비회수) 후 큐브를 사용해주세요.", None
+
+    user_debt = getattr(user, "debt", 0) or 0
+    if user_debt > 0 and (user.points - CUBE_COST) < user_debt:
+        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여금을 남기는 큐브 강화를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
+
+    if user.points < CUBE_COST:
+        return False, f"⚠️ 포인트가 부족합니다! (필요: {CUBE_COST:,}P | 보유: {user.points:,}P | 부족: {CUBE_COST - user.points:,}P)", None
+
+    # Deduct cost and credit to Treasury
+    user.points -= CUBE_COST
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += CUBE_COST
+
+    # Credit 1 Cube Fragment
+    user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 1
+
+    curr_tier = (target_item.potential_tier or "NONE").upper()
+    if curr_tier not in CUBE_TIER_ORDER:
+        curr_tier = "NONE"
+
+    old_tier = curr_tier
+    promoted = False
+    pity_triggered = False
+
+    if curr_tier == "NONE":
+        new_tier = "RARE"
+        promoted = True
+        target_item.pity_count = 0
+    elif curr_tier == "RARE":
+        ceiling = CUBE_PITY_CEILINGS["RARE"]
+        target_item.pity_count = (target_item.pity_count or 0) + 1
+        if target_item.pity_count >= ceiling:
+            new_tier = "EPIC"
+            promoted = True
+            pity_triggered = True
+            target_item.pity_count = 0
+        else:
+            if random.uniform(0, 100) < CUBE_PROMOTION_RATES["RARE"]:
+                new_tier = "EPIC"
+                promoted = True
+                target_item.pity_count = 0
+            else:
+                new_tier = "RARE"
+    elif curr_tier == "EPIC":
+        ceiling = CUBE_PITY_CEILINGS["EPIC"]
+        target_item.pity_count = (target_item.pity_count or 0) + 1
+        if target_item.pity_count >= ceiling:
+            new_tier = "UNIQUE"
+            promoted = True
+            pity_triggered = True
+            target_item.pity_count = 0
+        else:
+            if random.uniform(0, 100) < CUBE_PROMOTION_RATES["EPIC"]:
+                new_tier = "UNIQUE"
+                promoted = True
+                target_item.pity_count = 0
+            else:
+                new_tier = "EPIC"
+    elif curr_tier == "UNIQUE":
+        ceiling = CUBE_PITY_CEILINGS["UNIQUE"]
+        target_item.pity_count = (target_item.pity_count or 0) + 1
+        if target_item.pity_count >= ceiling:
+            new_tier = "LEGENDARY"
+            promoted = True
+            pity_triggered = True
+            target_item.pity_count = 0
+        else:
+            if random.uniform(0, 100) < CUBE_PROMOTION_RATES["UNIQUE"]:
+                new_tier = "LEGENDARY"
+                promoted = True
+                target_item.pity_count = 0
+            else:
+                new_tier = "UNIQUE"
+    else:  # LEGENDARY
+        new_tier = "LEGENDARY"
+        target_item.pity_count = 0
+
+    target_item.potential_tier = new_tier
+
+    # Roll 3 lines
+    line1, line2, line3 = roll_cube_potential(new_tier)
+    target_item.potential_line_1 = json.dumps(line1, ensure_ascii=False)
+    target_item.potential_line_2 = json.dumps(line2, ensure_ascii=False)
+    target_item.potential_line_3 = json.dumps(line3, ensure_ascii=False)
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(target_item)
+    db.refresh(state)
+
+    promo_banner = ""
+    if promoted:
+        old_disp = CUBE_TIER_DISPLAY.get(old_tier, old_tier)
+        new_disp = CUBE_TIER_DISPLAY.get(new_tier, new_tier)
+        pity_tag = " (⭐등급 상승 보장 천장 발동!)" if pity_triggered else " (🌟승급 성공!)"
+        promo_banner = f"\n🎉🎉 [잠재 등급 상승 대성공!!] [{old_disp} ➔ {new_disp}]{pity_tag}"
+
+    if new_tier in CUBE_PITY_CEILINGS:
+        ceil_val = CUBE_PITY_CEILINGS[new_tier]
+        pity_info = f"• 등급 상승 보장 천장: {target_item.pity_count}/{ceil_val}회"
+    else:
+        pity_info = "• 🌟 최고 등급(레전드리) 도달 완료! (종결 옵션 3줄을 노려보세요)"
+
+    reply = (
+        f"🔮✨ [미라클 큐브 사용] {user.username}님이 [장비 #{target_item.id} {target_item.name}]에 큐브를 사용했습니다! "
+        f"(15,000P ➔ 국고 적립){promo_banner}\n"
+        f"📋 [잠재 등급: {CUBE_TIER_DISPLAY.get(new_tier, new_tier)}]\n"
+        f"  • 줄 1: {line1['text']}\n"
+        f"  • 줄 2: {line2['text']}\n"
+        f"  • 줄 3: {line3['text']}\n"
+        f"{pity_info}\n"
+        f"🧩 큐브 조각: {user.cube_fragments}개 (!큐브조각 으로 10개당 15,000P 환급) | 잔여: {user.points:,}P"
+    )
+
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "equipment_id": target_item.id,
+        "equipment_name": target_item.name,
+        "old_tier": old_tier,
+        "new_tier": new_tier,
+        "promoted": promoted,
+        "pity_triggered": pity_triggered,
+        "pity_count": target_item.pity_count,
+        "cube_cost": CUBE_COST,
+        "cube_fragments": user.cube_fragments,
+        "lines": [line1, line2, line3],
+        "remaining_points": user.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+def execute_cube_fragment_exchange(
+    db: Session,
+    user_id: str,
+    username: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Exchange 10 Cube Fragments for 15,000P refund (MapleStory Cube Fragment homage).
+    """
+    user = get_or_create_user(db, user_id, username)
+    frags = getattr(user, "cube_fragments", 0) or 0
+    if frags < CUBE_FRAGMENT_EXCHANGE_COST:
+        return False, (
+            f"⚠️ 보유하신 큐브 조각이 부족합니다! (보유: {frags}개 / 필요: {CUBE_FRAGMENT_EXCHANGE_COST}개)\n"
+            f"💡 큐브를 1회 돌릴 때마다 큐브 조각 1개를 획득합니다. (!큐브)"
+        ), None
+
+    user.cube_fragments = frags - CUBE_FRAGMENT_EXCHANGE_COST
+    user.points += CUBE_FRAGMENT_EXCHANGE_REWARD
+
+    db.commit()
+    db.refresh(user)
+
+    reply = (
+        f"🧩✨ [큐브 조각 교환 완료] {user.username}님이 큐브 조각 {CUBE_FRAGMENT_EXCHANGE_COST}개를 교환하여 "
+        f"+{CUBE_FRAGMENT_EXCHANGE_REWARD:,}P를 페이백 환급받았습니다! "
+        f"(남은 큐브 조각: {user.cube_fragments}개 | 현재 보유 포인트: {user.points:,}P)"
+    )
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "exchanged_fragments": CUBE_FRAGMENT_EXCHANGE_COST,
+        "reward_points": CUBE_FRAGMENT_EXCHANGE_REWARD,
+        "remaining_fragments": user.cube_fragments,
+        "remaining_points": user.points
+    }
+    return True, reply, details
+
+
 def get_equipment_market_listings(db: Session, target_user_id: Optional[str] = None) -> str:
     """Returns active marketplace listings."""
     query = db.query(EquipmentListing).filter_by(status="ACTIVE").order_by(EquipmentListing.id.desc())
@@ -3172,8 +3705,11 @@ def get_equipment_market_listings(db: Session, target_user_id: Optional[str] = N
         star = eq.starforce if eq else 0
         info = get_pickaxe_info(star)
         target_tag = f"🔒 [{l.buyer_name} 전용]" if l.buyer_name else "🌐 [공개]"
+        pot_tag = ""
+        if eq and eq.potential_tier and eq.potential_tier != "NONE":
+            pot_tag = f" [{CUBE_TIER_DISPLAY.get(eq.potential_tier, eq.potential_tier)}]"
         lines.append(
-            f"• [거래 #{l.id}] {target_tag} 판매자: {l.seller_name} | {eq_name} (★{star}성, {info['yield_multiplier']}배) | "
+            f"• [거래 #{l.id}] {target_tag} 판매자: {l.seller_name} | {eq_name}{pot_tag} (★{star}성, {info['yield_multiplier']}배) | "
             f"가격: {l.price:,}P (수수료: {l.tax_fee:,}P) 👉 구매: !장비구매 {l.id}"
         )
     lines.append("💡 명령어: !장비구매 [거래번호] | !장비등록 [내장비번호] [가격] | !장비회수 [거래번호]")
@@ -3207,6 +3743,10 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
             tags.append(f"🏷️거래#{active_listing_map[it.id]}판매중")
         tag_str = "[" + "/".join(tags) + "]"
 
+        pot_badge = ""
+        if it.potential_tier and it.potential_tier != "NONE":
+            pot_badge = f" [{CUBE_TIER_DISPLAY.get(it.potential_tier, it.potential_tier)}]"
+
         if it.starforce >= 25:
             next_str = "MAX"
         else:
@@ -3218,12 +3758,13 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
             next_str = f"다음강화 {cost_label}"
 
         lines.append(
-            f"• #{it.id} {tag_str} {it.name} | 채굴 {info['yield_multiplier']}배{bp_str}, 크리+{info['crit_bonus']}%, 쿨{info['cooldown_minutes']}분 ({next_str})"
+            f"• #{it.id} {tag_str} {it.name}{pot_badge} | 채굴 {info['yield_multiplier']}배{bp_str}, 크리+{info['crit_bonus']}%, 쿨{info['cooldown_minutes']}분 ({next_str})"
         )
 
     lines.append(
         "💡 명령어 안내:\n"
         "• 장비 교체: !장착 [장비번호]\n"
+        "• 큐브 잠재: !큐브 [장비번호] (15,000P ➔ 국고 | 10조각 모아 !큐브조각 환급)\n"
         "• 선택 강화: !강화 [장비번호] (비어있으면 장착 장비 강화)\n"
         "• 새 곡괭이 구매: !곡괭이구매 [0/5/10]\n"
         "• 피버 확인: !피버 | 거래소: !장비장터, !장비등록 [번호] [가격]"
@@ -3252,12 +3793,30 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
         rem_m, rem_s = divmod(sf_state["remaining_sec"], 60)
         fever_banner = f"🔥 [피버 진행중: {sf_state['title']} ({rem_m}분 {rem_s}초 남음)]\n"
 
+    pot_tier = (equipped.potential_tier or "NONE").upper() if equipped else "NONE"
+    if pot_tier != "NONE":
+        ceiling = CUBE_PITY_CEILINGS.get(pot_tier, 0)
+        pity_str = f" | 천장: {equipped.pity_count}/{ceiling}회" if ceiling > 0 else " | 🌟최고 등급"
+        pot_lines = []
+        for i, line_raw in enumerate([equipped.potential_line_1, equipped.potential_line_2, equipped.potential_line_3], start=1):
+            if line_raw:
+                try:
+                    data = json.loads(line_raw) if isinstance(line_raw, str) else line_raw
+                    pot_lines.append(f"  • 줄 {i}: {data.get('text', '')}")
+                except Exception:
+                    pot_lines.append(f"  • 줄 {i}: {line_raw}")
+        pot_block = f"\n🔮 [잠재능력: {CUBE_TIER_DISPLAY.get(pot_tier, pot_tier)}{pity_str}]\n" + "\n".join(pot_lines)
+    else:
+        pot_block = "\n🔮 [잠재능력: 없음] (!큐브 로 15,000P에 3줄 잠재 개방 가능!)"
+
+    frag_str = f"\n🧩 큐브 조각: {getattr(user, 'cube_fragments', 0)}개 (!큐브조각 으로 10개당 15,000P 환급)"
+
     if curr_lvl >= 25:
         return (
             f"{fever_banner}⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
-            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동)\n"
-            f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 인벤토리: !내장비 | 거래소: !장비장터"
+            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동){pot_block}{frag_str}\n"
+            f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 큐브: !큐브 | 인벤토리: !내장비 | 거래소: !장비장터"
         )
     else:
         next_item = get_pickaxe_info(curr_lvl + 1, event_state=sf_state)
@@ -3294,8 +3853,8 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
             f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
             f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost_str}]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
-            f"  └ 다음 효과: {next_item['desc']}\n"
-            f"💡 명령어: !강화 [장비번호], !장착 [장비번호], !곡괭이구매 [0/5/10], !피버, !내장비, !장비장터"
+            f"  └ 다음 효과: {next_item['desc']}{pot_block}{frag_str}\n"
+            f"💡 명령어: !강화 [장비번호], !큐브 [장비번호], !큐브조각, !장착 [장비번호], !곡괭이구매 [0/5/10], !피버, !내장비, !장비장터"
         )
 
 def get_pickaxe_table_guide() -> str:
@@ -3512,6 +4071,9 @@ def execute_transfer(
 
     # Calculate Tax
     tax, tax_rate, tax_label = calculate_transfer_tax(amount)
+    fee_disc = get_user_fee_discount_pct(db, sender)
+    if fee_disc > 0 and tax > 0:
+        tax = int(round(tax * (1.0 - fee_disc / 100.0)))
     tax_rate_pct = int(round(tax_rate * 100))
     recipient_net = amount - tax
 
@@ -3528,10 +4090,11 @@ def execute_transfer(
     db.refresh(recipient)
     db.refresh(state)
 
+    disc_str = f" (잠재 -{int(fee_disc)}% 감면)" if (fee_disc > 0 and tax > 0) else ""
     if tax > 0:
         reply = (
             f"💸 [계좌이체 완료] {sender.username}님 ➡️ {recipient.username}님께 {amount:,}P 이체 완료! "
-            f"(실수령: {recipient_net:,}P | {tax_label}({tax_rate_pct}%): {tax:,}P 국고 적립 | "
+            f"(실수령: {recipient_net:,}P | {tax_label}({tax_rate_pct}%){disc_str}: {tax:,}P 국고 적립 | "
             f"보낸 분 잔액: {sender.points:,}P)"
         )
     else:
@@ -4365,23 +4928,33 @@ def execute_slot_gamble(
         net_payout = -bet
 
     if won:
+        # Check potential effects from equipped pickaxe
+        equipped_item = get_user_equipped_item(db, user)
+        pot_effects = get_equipment_potential_effects(equipped_item)
+        slot_boost = min(150.0, float(pot_effects.get("slot_boost_pct", 0.0)))
+        extra_slot_payout = 0
+        if slot_boost > 0 and net_payout > 0:
+            extra_slot_payout = int(round(net_payout * (slot_boost / 100.0)))
+            net_payout += extra_slot_payout
+
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
+        pot_slot_msg = f" (🎰잠재 배당 +{int(slot_boost)}%: +{extra_slot_payout:,}P 추가)" if extra_slot_payout > 0 else ""
         if is_jackpot and s1 == "7️⃣":
             msg = (
                 f"🚨🚨🚨 [MEGA 777 JACKPOT!] {user.username}님이 {display_reels} 대박 터짐! "
-                f"국고의 20%인 +{net_payout:,}P를 싹쓸이 강탈했습니다! (잔여: {user.points:,}P | 남은 국고: {int(state.treasury_pool):,}P)"
+                f"국고의 20%인 +{net_payout:,}P를 싹쓸이 강탈했습니다!{pot_slot_msg} (잔여: {user.points:,}P | 남은 국고: {int(state.treasury_pool):,}P)"
             )
         elif is_jackpot and s1 == "🀄":
             msg = (
                 f"🀄🔥 [역만 잭팟 당첨!] {user.username}님이 {display_reels} 적중! "
-                f"배팅금 10배인 +{net_payout:,}P를 국고에서 출금 지급! (잔여: {user.points:,}P)"
+                f"배팅금 10배인 +{net_payout:,}P를 국고에서 출금 지급!{pot_slot_msg} (잔여: {user.points:,}P)"
             )
         else:
             gain_label = f"{multiplier}배" if multiplier > 0 else "보너스"
             msg = (
                 f"🎉 [슬롯 당첨!] {user.username}님이 {display_reels} 적중! "
-                f"({gain_label} 당첨으로 +{net_payout:,}P 획득! 잔여: {user.points:,}P)"
+                f"({gain_label} 당첨으로 +{net_payout:,}P 획득!{pot_slot_msg} 잔여: {user.points:,}P)"
             )
     else:
         user.points -= bet
@@ -4518,13 +5091,23 @@ def execute_dice_gamble(
             f"[ 🎲{d1} + 🎲{d2} = 7 ] 베팅금 {bet:,}P는 전액 환급됩니다! (잔여: {user.points:,}P)"
         )
     else:
-        net_payout = -bet
-        user.points -= bet
-        state.treasury_pool += bet
+        # Check dice payback potential
+        equipped_item = get_user_equipped_item(db, user)
+        pot_effects = get_equipment_potential_effects(equipped_item)
+        payback_pct = min(80.0, float(pot_effects.get("dice_payback_pct", 0.0)))
+        payback_amt = 0
+        if payback_pct > 0:
+            payback_amt = int(round(bet * (payback_pct / 100.0)))
+
+        net_loss = bet - payback_amt
+        net_payout = -net_loss
+        user.points -= net_loss
+        state.treasury_pool += net_loss
         odd_label = "홀" if is_odd else "짝"
+        payback_str = f" (🎲잠재 페이백 {int(payback_pct)}% 발동: {payback_amt:,}P 환급!)" if payback_amt > 0 else ""
         msg = (
             f"🎲💀 [주사위 실패!] {user.username}님의 예측 빗나감! "
-            f"[ 🎲{d1} + 🎲{d2} = {total} ({odd_label}) ] 베팅금 {bet:,}P는 국고로 귀속되었습니다! (잔여: {user.points:,}P)"
+            f"[ 🎲{d1} + 🎲{d2} = {total} ({odd_label}) ] 베팅금 {bet:,}P 중 {net_loss:,}P가 국고로 귀속되었습니다!{payback_str} (잔여: {user.points:,}P)"
         )
 
     db.commit()
