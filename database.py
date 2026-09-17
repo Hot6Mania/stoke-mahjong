@@ -125,10 +125,14 @@ def init_db():
                 User.id.like("sim_%"),
                 User.id.like("strictly_%"),
                 User.id.like("u_매수%"),
+                User.id.like("diag_%"),
+                User.id.like("new_opt_%"),
+                User.id.like("u_check%"),
                 User.username.like("임시%"),
                 User.username.like("유저_%"),
                 User.username.like("테스터%"),
-                User.username.like("더미%")
+                User.username.like("더미%"),
+                User.username.in_(["세이프가드", "신규옵션테스터", "체커"])
             )
         ).all()
         if dummy_users:

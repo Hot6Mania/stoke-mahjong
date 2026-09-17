@@ -21,15 +21,19 @@ PRODUCT_MULTIPLIERS: Dict[ProductType, float] = {
     ProductType.FIVE_X: 5.0,
     ProductType.TEN_X: 10.0,
     ProductType.TWENTY_X: 20.0,
+    ProductType.FORTY_X: 40.0,
+    ProductType.SIXTY_X: 60.0,
     ProductType.INV: -1.0,
     ProductType.TWO_X_INV: -2.0,
     ProductType.THREE_X_INV: -3.0,
     ProductType.FIVE_X_INV: -5.0,
     ProductType.TEN_X_INV: -10.0,
     ProductType.TWENTY_X_INV: -20.0,
+    ProductType.FORTY_X_INV: -40.0,
+    ProductType.SIXTY_X_INV: -60.0,
 }
 
-SUPPORTED_PRODUCTS_GUIDE: str = "1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV, 3X_INV, 5X_INV, 10X_INV (인버스) [레전더리 해금: 20X, 20X_INV]"
+SUPPORTED_PRODUCTS_GUIDE: str = "1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV, 3X_INV, 5X_INV, 10X_INV (인버스) [야수의 심장 해금: 20X(1줄), 40X(2줄), 60X(3줄)]"
 
 PRODUCT_SYNONYMS = {
     "1X": ProductType.ONE_X,
@@ -111,6 +115,36 @@ PRODUCT_SYNONYMS = {
     "20배레버": ProductType.TWENTY_X,
     "20배레버리지": ProductType.TWENTY_X,
     "20X레버": ProductType.TWENTY_X,
+
+    "40X": ProductType.FORTY_X,
+    "40x": ProductType.FORTY_X,
+    "40배": ProductType.FORTY_X,
+    "40배주": ProductType.FORTY_X,
+    "40배주식": ProductType.FORTY_X,
+    "40레": ProductType.FORTY_X,
+    "40버": ProductType.FORTY_X,
+    "40롱": ProductType.FORTY_X,
+    "40배롱": ProductType.FORTY_X,
+    "40X롱": ProductType.FORTY_X,
+    "40레버": ProductType.FORTY_X,
+    "40배레버": ProductType.FORTY_X,
+    "40배레버리지": ProductType.FORTY_X,
+    "40X레버": ProductType.FORTY_X,
+
+    "60X": ProductType.SIXTY_X,
+    "60x": ProductType.SIXTY_X,
+    "60배": ProductType.SIXTY_X,
+    "60배주": ProductType.SIXTY_X,
+    "60배주식": ProductType.SIXTY_X,
+    "60레": ProductType.SIXTY_X,
+    "60버": ProductType.SIXTY_X,
+    "60롱": ProductType.SIXTY_X,
+    "60배롱": ProductType.SIXTY_X,
+    "60X롱": ProductType.SIXTY_X,
+    "60레버": ProductType.SIXTY_X,
+    "60배레버": ProductType.SIXTY_X,
+    "60배레버리지": ProductType.SIXTY_X,
+    "60X레버": ProductType.SIXTY_X,
 
     "INV": ProductType.INV,
     "inv": ProductType.INV,
@@ -200,6 +234,36 @@ PRODUCT_SYNONYMS = {
     "20숏": ProductType.TWENTY_X_INV,
     "인버스20X": ProductType.TWENTY_X_INV,
     "인버스20배": ProductType.TWENTY_X_INV,
+
+    "40X_INV": ProductType.FORTY_X_INV,
+    "40x_inv": ProductType.FORTY_X_INV,
+    "40XINV": ProductType.FORTY_X_INV,
+    "40xinv": ProductType.FORTY_X_INV,
+    "40배인버스": ProductType.FORTY_X_INV,
+    "40배곱버스": ProductType.FORTY_X_INV,
+    "40인": ProductType.FORTY_X_INV,
+    "40곱": ProductType.FORTY_X_INV,
+    "40X인버스": ProductType.FORTY_X_INV,
+    "40X숏": ProductType.FORTY_X_INV,
+    "40배숏": ProductType.FORTY_X_INV,
+    "40숏": ProductType.FORTY_X_INV,
+    "인버스40X": ProductType.FORTY_X_INV,
+    "인버스40배": ProductType.FORTY_X_INV,
+
+    "60X_INV": ProductType.SIXTY_X_INV,
+    "60x_inv": ProductType.SIXTY_X_INV,
+    "60XINV": ProductType.SIXTY_X_INV,
+    "60xinv": ProductType.SIXTY_X_INV,
+    "60배인버스": ProductType.SIXTY_X_INV,
+    "60배곱버스": ProductType.SIXTY_X_INV,
+    "60인": ProductType.SIXTY_X_INV,
+    "60곱": ProductType.SIXTY_X_INV,
+    "60X인버스": ProductType.SIXTY_X_INV,
+    "60X숏": ProductType.SIXTY_X_INV,
+    "60배숏": ProductType.SIXTY_X_INV,
+    "60숏": ProductType.SIXTY_X_INV,
+    "인버스60X": ProductType.SIXTY_X_INV,
+    "인버스60배": ProductType.SIXTY_X_INV,
 }
 
 def parse_product_type(text: str) -> Optional[ProductType]:
@@ -216,19 +280,19 @@ def parse_product_type(text: str) -> Optional[ProductType]:
     if cleaned in PRODUCT_SYNONYMS:
         return PRODUCT_SYNONYMS[cleaned]
 
-    # Handle forms like "10x", "5x", "10배", "5배", "10레", "10버", "10롱"
+    # Handle forms like "10x", "5x", "10배", "5배", "10레", "10버", "10롱", "40배", "60배"
     upper_c = cleaned.upper()
     for suffix in ["X", "배", "레", "버", "레버", "배레버", "롱", "배롱", "X롱", "배주", "배주식"]:
         if upper_c.endswith(suffix):
             prefix = upper_c[:-len(suffix)].strip()
-            if prefix in ["1", "2", "3", "5", "10"]:
+            if prefix in ["1", "2", "3", "5", "10", "20", "40", "60"]:
                 return PRODUCT_SYNONYMS.get(f"{prefix}X")
 
-    # Handle inverse forms like "10숏", "10인", "10곱", "10인버스", "10곱버스"
+    # Handle inverse forms like "10숏", "10인", "10곱", "10인버스", "10곱버스", "40숏", "60숏"
     for suffix in ["인", "곱", "숏", "배인", "배곱", "배숏", "인버스", "곱버스", "X인버스", "X숏", "X_INV", "XINV"]:
         if upper_c.endswith(suffix):
             prefix = upper_c[:-len(suffix)].strip()
-            if prefix in ["1", "2", "3", "5", "10"]:
+            if prefix in ["1", "2", "3", "5", "10", "20", "40", "60"]:
                 inv_key = "INV" if prefix == "1" else f"{prefix}X_INV"
                 return PRODUCT_SYNONYMS.get(inv_key)
 
@@ -439,7 +503,7 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "unit": "배",
         "icon": "🦁",
         "tiers": {
-            "LEGENDARY": (20.0, "20X 레버리지 & 20X 인버스(20배 롱/숏) 매매 자격 개방!"),
+            "LEGENDARY": (20.0, "20X/40X/60X 초고배율 레버리지 & 인버스 매매 개방! (1줄: 20배, 2줄: 40배, 3줄: 60배)"),
         }
     }
 }
@@ -527,6 +591,8 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
         "goblin_chance": 0.0,
         "goblin_reward": 0,
         "leverage_20x_unlocked": False,
+        "leverage_unlock_count": 0,
+        "max_leverage_multiplier": 10,
     }
     if not item:
         return effects
@@ -574,6 +640,7 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
                 effects["goblin_reward"] += reward
             elif code == "LEVERAGE_20X_UNLOCK":
                 effects["leverage_20x_unlocked"] = True
+                effects["leverage_unlock_count"] += 1
         except Exception:
             continue
 
@@ -591,6 +658,18 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
     effects["treasury_loot_pct"] = min(1.0, effects["treasury_loot_pct"])
     effects["dividend_boost_pct"] = min(300.0, effects["dividend_boost_pct"])
     effects["goblin_chance"] = min(15.0, effects["goblin_chance"])
+
+    # Calculate maximum leverage multiplier based on Beast Heart (야수의 심장) line count
+    cnt = effects["leverage_unlock_count"]
+    if cnt >= 3:
+        effects["max_leverage_multiplier"] = 60
+    elif cnt == 2:
+        effects["max_leverage_multiplier"] = 40
+    elif cnt == 1:
+        effects["max_leverage_multiplier"] = 20
+    else:
+        effects["max_leverage_multiplier"] = 10
+
     return effects
 
 def get_user_fee_discount_pct(db: Session, user: User) -> float:
@@ -604,16 +683,45 @@ def get_user_fee_discount_pct(db: Session, user: User) -> float:
     except Exception:
         return 0.0
 
-def user_has_20x_unlock(db: Session, user: User) -> bool:
-    """Checks if the user has the legendary LEVERAGE_20X_UNLOCK potential option equipped."""
+def get_user_max_leverage_multiplier(db: Session, user: User) -> int:
+    """Returns the maximum allowed leverage multiplier (10, 20, 40, or 60) from user's equipped item."""
     try:
         item = db.query(UserEquipment).filter_by(user_id=user.id, is_equipped=True).first()
         if not item:
             item = db.query(UserEquipment).filter_by(user_id=user.id).first()
         effects = get_equipment_potential_effects(item)
-        return bool(effects.get("leverage_20x_unlocked", False))
+        return int(effects.get("max_leverage_multiplier", 10))
     except Exception:
-        return False
+        return 10
+
+def user_has_20x_unlock(db: Session, user: User) -> bool:
+    """Checks if the user has at least 20X leverage unlocked (backward compatibility)."""
+    return get_user_max_leverage_multiplier(db, user) >= 20
+
+def check_user_leverage_permission(db: Session, user: User, product_type: ProductType) -> Tuple[bool, str]:
+    """
+    Checks if user is authorized to trade the given product_type.
+    1X ~ 10X (and INV ~ 10X_INV): default allowed (up to 10X).
+    20X / 20X_INV: requires at least 1 line of [야수의 심장] (20배).
+    40X / 40X_INV: requires at least 2 lines of [야수의 심장] (40배).
+    60X / 60X_INV: requires at least 3 lines of [야수의 심장] (60배).
+    """
+    multiplier = abs(PRODUCT_MULTIPLIERS.get(product_type, 1.0))
+    if multiplier <= 10.0:
+        return True, ""
+
+    max_mult = get_user_max_leverage_multiplier(db, user)
+    if multiplier <= max_mult:
+        return True, ""
+
+    if multiplier > 40.0:
+        req_lines = 3
+    elif multiplier > 20.0:
+        req_lines = 2
+    else:
+        req_lines = 1
+
+    return False, f"🦁 [야수의 심장 전용] {product_type.value} 종목은 잠재능력 레전더리 옵션 [야수의 심장]이 {req_lines}줄 이상 장착되어야 거래할 수 있습니다! (현재 해금: {max_mult}배)"
 
 def format_potential_summary(item: Optional[UserEquipment]) -> str:
     """Returns concise potential tier badge and options summary."""
@@ -866,9 +974,9 @@ def execute_buy(
     product_str = product_type.value
 
     user = get_or_create_user(db, user_id, username)
-    if product_type in (ProductType.TWENTY_X, ProductType.TWENTY_X_INV):
-        if not user_has_20x_unlock(db, user):
-            return False, "🦁 [야수의 심장 전용] 20X 레버리지 및 20X 인버스는 잠재능력 레전더리 옵션 [야수의 심장(20배 매매 개방)] 장착자만 거래할 수 있습니다!", None
+    allowed, err_msg = check_user_leverage_permission(db, user, product_type)
+    if not allowed:
+        return False, err_msg, None
     current_price = state.current_price
 
     # Determine quantity
@@ -1000,9 +1108,9 @@ def execute_margin_buy(
     product_str = product_type.value
 
     user = get_or_create_user(db, user_id, username)
-    if product_type in (ProductType.TWENTY_X, ProductType.TWENTY_X_INV):
-        if not user_has_20x_unlock(db, user):
-            return False, "🦁 [야수의 심장 전용] 20X 레버리지 및 20X 인버스는 잠재능력 레전더리 옵션 [야수의 심장(20배 매매 개방)] 장착자만 거래할 수 있습니다!", None
+    allowed, err_msg = check_user_leverage_permission(db, user, product_type)
+    if not allowed:
+        return False, err_msg, None
     current_price = state.current_price
     current_debt = getattr(user, "debt", 0) or 0
 
@@ -1315,9 +1423,10 @@ def register_limit_order(
         return False, f"⚠️ 주문 수량이 올바른 숫자가 아닙니다: '{quantity_str}'", None
 
     user = get_or_create_user(db, user_id, username)
-    if order_type == OrderType.BUY and product_type in (ProductType.TWENTY_X, ProductType.TWENTY_X_INV):
-        if not user_has_20x_unlock(db, user):
-            return False, "🦁 [야수의 심장 전용] 20X 레버리지 및 20X 인버스는 잠재능력 레전더리 옵션 [야수의 심장(20배 매매 개방)] 장착자만 거래할 수 있습니다!", None
+    if order_type == OrderType.BUY:
+        allowed, err_msg = check_user_leverage_permission(db, user, product_type)
+        if not allowed:
+            return False, err_msg, None
     current_price = state.current_price
 
     if order_type == OrderType.BUY:
@@ -4129,6 +4238,8 @@ def get_user_pickaxe_status(
                         line_text = f"⭐ 강화 성공률 증가 & 실패율 감소 (성공 +{float(val):.1f}% / 실패 -{float(val):.1f}%)"
                     elif code == "STARFORCE_SAFEGUARD" and "15성" not in line_text and val:
                         line_text = f"🛡️ 15성+ 파괴 방지 (15성 이상 강화 실패 시 {float(val):.0f}% 확률 파괴 방어)"
+                    elif code == "LEVERAGE_20X_UNLOCK":
+                        line_text = "🦁 야수의 심장 (1줄: 20배, 2줄: 40배, 3줄: 60배 해금)"
                     pot_lines.append(f"  • 줄 {i}: {line_text}")
                 except Exception:
                     pot_lines.append(f"  • 줄 {i}: {line_raw}")

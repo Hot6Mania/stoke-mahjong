@@ -60,12 +60,14 @@ from trading_engine import (
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
 GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-mahjong/")
 
+SUPPORTED_LEVERAGE_PREFIXES = ["1", "2", "3", "5", "10", "20", "40", "60"]
+
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
 • 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간, !쿨타임
 • 장비: !상태창, !내장비, !장착 [번호], !강화 [번호], !큐브구매 [수량], !큐브 [번호], !큐브조각, !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
-• 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
+• 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) [야수의 심장: 20X, 40X, 60X] (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
 GUIDE_STOCK = HELP_MESSAGE
 
@@ -336,7 +338,7 @@ def handle_chat_command(
             break
         elif cmd.startswith(ac):
             rem = cmd[len(ac):].strip()
-            p_cand = parse_product_type(f"{rem}X" if rem in ["1", "2", "3", "5", "10", "20"] else rem)
+            p_cand = parse_product_type(f"{rem}X" if rem in SUPPORTED_LEVERAGE_PREFIXES else rem)
             if p_cand:
                 matched_allin_cmd = ac
                 allin_rem_product = p_cand.value
@@ -357,7 +359,7 @@ def handle_chat_command(
                 is_margin = True
             elif parsed_prod:
                 product_str = parsed_prod.value
-            elif clean_t in ["1", "2", "3", "5", "10", "20"]:
+            elif clean_t in SUPPORTED_LEVERAGE_PREFIXES:
                 product_str = f"{clean_t}X"
 
         if not product_str:
@@ -376,7 +378,7 @@ def handle_chat_command(
 
     if cmd.startswith("!"):
         cmd_sub = cmd[1:]
-        cand_sub = f"{cmd_sub}X" if cmd_sub in ["1", "2", "3", "5", "10", "20"] else cmd_sub
+        cand_sub = f"{cmd_sub}X" if cmd_sub in SUPPORTED_LEVERAGE_PREFIXES else cmd_sub
         direct_prod = parse_product_type(cand_sub)
 
         if direct_prod:
@@ -459,7 +461,7 @@ def handle_chat_command(
         for aiw in ["올인", "풀매수", "전액", "전액매수", "올인매수", "빚올인", "빚투", "전부", "다", "최대"]:
             if t1.endswith(aiw) and len(t1) > len(aiw):
                 prod_part = t1[:-len(aiw)].strip()
-                p_cand = parse_product_type(f"{prod_part}X" if prod_part in ["1", "2", "3", "5", "10", "20"] else prod_part)
+                p_cand = parse_product_type(f"{prod_part}X" if prod_part in SUPPORTED_LEVERAGE_PREFIXES else prod_part)
                 if p_cand:
                     t1 = p_cand.value
                     if not t2:
@@ -484,7 +486,7 @@ def handle_chat_command(
         elif t1 in margin_words:
             product_str = "1X"
             qty_str = "빚올인"
-        elif t1 in ["1", "2", "3", "5", "10", "20"]:
+        elif t1 in SUPPORTED_LEVERAGE_PREFIXES:
             product_str = f"{t1}X"
             qty_str = t2 if t2 else "1"
         else:
@@ -510,7 +512,7 @@ def handle_chat_command(
             parsed_prod = parse_product_type(clean_t)
             if parsed_prod:
                 product_str = parsed_prod.value
-            elif clean_t in ["1", "2", "3", "5", "10", "20"]:
+            elif clean_t in SUPPORTED_LEVERAGE_PREFIXES:
                 product_str = f"{clean_t}X"
             elif clean_t not in ["올인", "all", "전액", "빚올인", "신용"]:
                 qty_str = clean_t
@@ -529,7 +531,7 @@ def handle_chat_command(
             if p:
                 product_str = p.value
                 break
-            elif clean_t in ["1", "2", "3", "5", "10", "20"]:
+            elif clean_t in SUPPORTED_LEVERAGE_PREFIXES:
                 product_str = f"{clean_t}X"
                 break
         if not product_str:
@@ -546,7 +548,7 @@ def handle_chat_command(
             parsed_p = parse_product_type(raw_p)
             if parsed_p:
                 product_str = parsed_p.value
-            elif raw_p in ["1", "2", "3", "5", "10", "20"]:
+            elif raw_p in SUPPORTED_LEVERAGE_PREFIXES:
                 product_str = f"{raw_p}X"
             else:
                 product_str = raw_p
@@ -567,7 +569,7 @@ def handle_chat_command(
             elif t1 in all_sell_words:
                 product_str = "1X"
                 qty_str = "전량"
-            elif t1 in ["1", "2", "3", "5", "10"]:
+            elif t1 in SUPPORTED_LEVERAGE_PREFIXES:
                 product_str = f"{t1}X"
                 qty_str = t2 if t2 else "전량"
             else:

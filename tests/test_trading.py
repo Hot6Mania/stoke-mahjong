@@ -2857,7 +2857,7 @@ def test_new_potential_options_hooks(db_session, monkeypatch):
     assert div_entry["dividend_boost_pct"] == 100.0
 
 def test_leverage_20x_unlock_and_mechanics(db_session):
-    """Test 20X & 20X_INV product parsing, legendary unlock exclusivity, and settlement multiplier."""
+    """Test 20X, 40X, 60X & INV parsing, stacking lines (1: 20X, 2: 40X, 3: 60X), and settlement liquidations."""
     # 1. Parsing tests
     assert te.parse_product_type("20X") == ProductType.TWENTY_X
     assert te.parse_product_type("20x") == ProductType.TWENTY_X
@@ -2870,13 +2870,36 @@ def test_leverage_20x_unlock_and_mechanics(db_session):
     assert te.parse_product_type("20인") == ProductType.TWENTY_X_INV
     assert te.parse_product_type("인버스20X") == ProductType.TWENTY_X_INV
 
+    # 40X & 60X Parsing tests
+    assert te.parse_product_type("40X") == ProductType.FORTY_X
+    assert te.parse_product_type("40x") == ProductType.FORTY_X
+    assert te.parse_product_type("40배") == ProductType.FORTY_X
+    assert te.parse_product_type("40레버") == ProductType.FORTY_X
+    assert te.parse_product_type("40롱") == ProductType.FORTY_X
+    assert te.parse_product_type("40X_INV") == ProductType.FORTY_X_INV
+    assert te.parse_product_type("40숏") == ProductType.FORTY_X_INV
+    assert te.parse_product_type("40곱") == ProductType.FORTY_X_INV
+    assert te.parse_product_type("40인") == ProductType.FORTY_X_INV
+    assert te.parse_product_type("인버스40X") == ProductType.FORTY_X_INV
+
+    assert te.parse_product_type("60X") == ProductType.SIXTY_X
+    assert te.parse_product_type("60x") == ProductType.SIXTY_X
+    assert te.parse_product_type("60배") == ProductType.SIXTY_X
+    assert te.parse_product_type("60레버") == ProductType.SIXTY_X
+    assert te.parse_product_type("60롱") == ProductType.SIXTY_X
+    assert te.parse_product_type("60X_INV") == ProductType.SIXTY_X_INV
+    assert te.parse_product_type("60숏") == ProductType.SIXTY_X_INV
+    assert te.parse_product_type("60곱") == ProductType.SIXTY_X_INV
+    assert te.parse_product_type("60인") == ProductType.SIXTY_X_INV
+    assert te.parse_product_type("인버스60X") == ProductType.SIXTY_X_INV
+
     # 2. Legendary-only roll test: RARE, EPIC, UNIQUE never roll LEVERAGE_20X_UNLOCK
     for _ in range(100):
         assert te.roll_single_potential_line("RARE")["code"] != "LEVERAGE_20X_UNLOCK"
         assert te.roll_single_potential_line("EPIC")["code"] != "LEVERAGE_20X_UNLOCK"
         assert te.roll_single_potential_line("UNIQUE")["code"] != "LEVERAGE_20X_UNLOCK"
 
-    # 3. User without unlock cannot buy 20X or 20X_INV
+    # 3. User without unlock (0 lines): cannot buy 20X, 40X, or 60X
     uid = "beast_tester"
     uname = "야수테스터"
     user = te.get_or_create_user(db_session, uid, uname)
@@ -2885,43 +2908,91 @@ def test_leverage_20x_unlock_and_mechanics(db_session):
     eq = items[0]
     eq.potential_tier = "EPIC"
     eq.potential_line_1 = None
+    eq.potential_line_2 = None
+    eq.potential_line_3 = None
     db_session.commit()
 
     ok_buy, msg_buy, _ = te.execute_buy(db_session, uid, uname, "20X", "1")
     assert ok_buy is False
     assert "야수의 심장" in msg_buy
 
-    ok_margin, msg_margin, _ = te.execute_margin_buy(db_session, uid, uname, "20X_INV", "1")
-    assert ok_margin is False
-    assert "야수의 심장" in msg_margin
+    ok_40, msg_40, _ = te.execute_buy(db_session, uid, uname, "40X", "1")
+    assert ok_40 is False
+    assert "야수의 심장" in msg_40
 
-    ok_limit, msg_limit, _ = te.register_limit_order(db_session, uid, uname, "매수", "20X", "1000", "1")
-    assert ok_limit is False
-    assert "야수의 심장" in msg_limit
+    ok_60, msg_60, _ = te.execute_buy(db_session, uid, uname, "60X", "1")
+    assert ok_60 is False
+    assert "야수의 심장" in msg_60
 
-    # 4. User equips LEVERAGE_20X_UNLOCK (Legendary potential)
+    # 4. User equips 1 line of LEVERAGE_20X_UNLOCK -> Can trade 20X, but NOT 40X or 60X
     eq.potential_tier = "LEGENDARY"
-    eq.potential_line_1 = json.dumps({"code": "LEVERAGE_20X_UNLOCK", "val": 20.0, "text": "🦁 20X 매매 개방"})
+    beast_line = json.dumps({"code": "LEVERAGE_20X_UNLOCK", "val": 20.0, "text": "🦁 야수의 심장 (1줄: 20배, 2줄: 40배, 3줄: 60배 해금)"})
+    eq.potential_line_1 = beast_line
+    eq.potential_line_2 = None
+    eq.potential_line_3 = None
     db_session.commit()
 
-    ok_buy2, msg_buy2, det_buy2 = te.execute_buy(db_session, uid, uname, "20X", "2")
-    assert ok_buy2 is True
-    assert det_buy2["product_type"] == "20X"
-    assert det_buy2["quantity"] == 2.0
+    assert te.get_user_max_leverage_multiplier(db_session, user) == 20
+    ok_20, _, det_20 = te.execute_buy(db_session, uid, uname, "20X", "1")
+    assert ok_20 is True
+    assert det_20["product_type"] == "20X"
 
-    # 5. Test 20X settlement liquidation: 5% drop (-5% * 20 = -100%) triggers liquidation
+    ok_40_1, msg_40_1, _ = te.execute_buy(db_session, uid, uname, "40X", "1")
+    assert ok_40_1 is False
+    assert "2줄 이상" in msg_40_1
+
+    ok_60_1, msg_60_1, _ = te.execute_buy(db_session, uid, uname, "60X", "1")
+    assert ok_60_1 is False
+    assert "3줄 이상" in msg_60_1
+
+    # 5. User equips 2 lines of LEVERAGE_20X_UNLOCK -> Can trade 40X, but NOT 60X
+    eq.potential_line_2 = beast_line
+    db_session.commit()
+
+    assert te.get_user_max_leverage_multiplier(db_session, user) == 40
+    ok_40_2, _, det_40_2 = te.execute_buy(db_session, uid, uname, "40X", "1")
+    assert ok_40_2 is True
+    assert det_40_2["product_type"] == "40X"
+
+    ok_60_2, msg_60_2, _ = te.execute_buy(db_session, uid, uname, "60X", "1")
+    assert ok_60_2 is False
+    assert "3줄 이상" in msg_60_2
+
+    # 6. User equips 3 lines of LEVERAGE_20X_UNLOCK -> Can trade 60X!
+    eq.potential_line_3 = beast_line
+    db_session.commit()
+
+    assert te.get_user_max_leverage_multiplier(db_session, user) == 60
+    ok_60_3, _, det_60_3 = te.execute_buy(db_session, uid, uname, "60X", "1")
+    assert ok_60_3 is True
+    assert det_60_3["product_type"] == "60X"
+
+    # 7. Test 40X & 60X settlement liquidation:
+    # 40X: -2.5% drop causes liquidation
     mstate = te.get_market_state(db_session)
     mstate.current_rank_point = 1000
     mstate.current_price = 1000
-    pos = db_session.query(Position).filter_by(user_id=uid, product_type=ProductType.TWENTY_X).first()
-    pos.entry_price = 1000.0
-    pos.invested_cash = 2000.0
-    pos.quantity = 2.0
+    pos40 = db_session.query(Position).filter_by(user_id=uid, product_type=ProductType.FORTY_X).first()
+    pos40.entry_price = 1000.0
+    pos40.invested_cash = 1000.0
+    pos40.quantity = 1.0
     db_session.commit()
 
-    # Drop rank points by 50 (5% drop from 1000 to 950)
-    det_settle = te.settle_match(db_session, rank=4, point_delta=-50)
-    assert any(liq["user_id"] == uid and liq["product_type"] == "20X" for liq in det_settle["liquidations"])
+    # Drop rank points by 25 (-2.5% drop from 1000 to 975 -> product_ret = -2.5% * 40 = -100%)
+    det_settle40 = te.settle_match(db_session, rank=4, point_delta=-25)
+    assert any(liq["user_id"] == uid and liq["product_type"] == "40X" for liq in det_settle40["liquidations"])
+
+    # 60X: -1.67% drop causes liquidation (-20 drop from 1000 to 980 -> product_ret = -2.0% * 60 = -120% <= -100%)
+    mstate.current_rank_point = 1000
+    mstate.current_price = 1000
+    pos60 = db_session.query(Position).filter_by(user_id=uid, product_type=ProductType.SIXTY_X).first()
+    pos60.entry_price = 1000.0
+    pos60.invested_cash = 1000.0
+    pos60.quantity = 1.0
+    db_session.commit()
+
+    det_settle60 = te.settle_match(db_session, rank=4, point_delta=-20)
+    assert any(liq["user_id"] == uid and liq["product_type"] == "60X" for liq in det_settle60["liquidations"])
 
 def test_starforce_safeguard_65_and_failure_reduction(db_session, monkeypatch):
     """Test STARFORCE_SAFEGUARD (Unique 30%, Legendary 65%) and failure rate reduction by success boost."""
@@ -3146,15 +3217,42 @@ def test_casino_debuff_and_payback_cap(db_session, monkeypatch):
     assert det_c["net_payout"] == 12000 # 2.2x payout
     assert "2.2배 크리티컬" in reply_c
 
+def test_beast_heart_chat_commands(db_session):
+    """Test chat command handling for 40X, 60X, and inverse counterparts."""
+    uid = "cmd_beast_user"
+    uname = "채팅야수"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 5000000
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+    eq.potential_tier = "LEGENDARY"
+    beast_line = json.dumps({"code": "LEVERAGE_20X_UNLOCK", "val": 20.0, "text": "🦁 야수의 심장"})
+    # 2 lines -> 40X unlocked, 60X locked
+    eq.potential_line_1 = beast_line
+    eq.potential_line_2 = beast_line
+    eq.potential_line_3 = None
+    db_session.commit()
 
+    # 40X buy command should succeed
+    rep40, evt40 = ch.handle_chat_command(db_session, uid, uname, "!40X 1")
+    assert evt40 is not None
+    assert evt40["data"]["product_type"] == "40X"
 
+    # 60X buy command should be rejected (needs 3 lines)
+    rep60, evt60 = ch.handle_chat_command(db_session, uid, uname, "!60배 1")
+    assert evt60 is None
+    assert "3줄 이상" in rep60
 
+    # 40배 sell command should work
+    rep_sell, evt_sell = ch.handle_chat_command(db_session, uid, uname, "!40배 전량")
+    assert evt_sell is not None
+    assert evt_sell["type"] == "trade_sell"
 
+    # Now equip 3 lines -> 60X should succeed
+    eq.potential_line_3 = beast_line
+    db_session.commit()
 
-
-
-
-
-
-
+    rep60_ok, evt60_ok = ch.handle_chat_command(db_session, uid, uname, "!60X 1")
+    assert evt60_ok is not None
+    assert evt60_ok["data"]["product_type"] == "60X"
 
