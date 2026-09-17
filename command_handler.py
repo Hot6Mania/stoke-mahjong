@@ -658,7 +658,7 @@ def handle_chat_command(
     # 17. Dice Roll Gamble
     if cmd in ["!주사위", "!다이스", "!dice"]:
         if len(tokens) < 3:
-            return "🎲 [주사위 배틀] 사용법: !주사위 [홀/짝/대/소] [금액/올인] (예: !주사위 홀 2000, !주사위 대 올인) | 홀/짝 1.9배, 대/소 2배, 더블(1-1/6-6) 시 2.5배 대박!", None
+            return "🎲 [주사위 배틀] 사용법: !주사위 [홀/짝/대/소] [금액/올인] (예: !주사위 홀 2000, !주사위 대 올인) | 홀/짝 1.9배, 대/소 2배, 더블(1-1/6-6) 시 2.5배 대박 (당첨금 캡 없음!)", None
         if tokens[1] in ["홀", "짝", "대", "소", "even", "odd", "high", "low"]:
             choice_str = tokens[1]
             bet_str = tokens[2]

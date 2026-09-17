@@ -1120,7 +1120,7 @@ def test_casino_dice_gamble(db_session, monkeypatch):
     assert details_7["net_payout"] == -1000
     assert "국고로 귀속" in reply_7
 
-    # 4. Bet up to 100,000P on dice succeeds and critical double is capped at MAX_CASINO_PAYOUT (100,000P)
+    # 4. Bet up to 100,000P on dice succeeds and critical double is NOT capped at 100k (uncapped!)
     user.points = 200000
     db_session.commit()
     dice_100k = iter([6, 6])
@@ -1128,7 +1128,9 @@ def test_casino_dice_gamble(db_session, monkeypatch):
     ok_100k, _, det_100k = te.execute_dice_gamble(db_session, uid, uname, "짝", "100000")
     assert ok_100k is True
     assert det_100k["is_critical"] is True
-    assert det_100k["net_payout"] == 100000  # Capped at 100,000P instead of 150,000P!
+    assert det_100k["net_payout"] == 150000  # 2.5x payout -> net +150,000P uncapped!
+    db_session.refresh(user)
+    assert user.points == 200000 + 150000
 
     # 5. Bet over 100,000P on dice is rejected
     ok_over, reply_over, _ = te.execute_dice_gamble(db_session, uid, uname, "짝", "100001")

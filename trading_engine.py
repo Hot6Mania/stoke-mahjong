@@ -2264,9 +2264,9 @@ def execute_dice_gamble(
     bet_token: str
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Execute 2-Dice High-Roller Gamble:
+    Execute 2-Dice High-Roller Gamble (Uncapped Payouts!):
     Choices: '홀' (Odd - 1.9x), '짝' (Even - 1.9x), '대' (8~12 High - 2x), '소' (2~6 Low - 2x).
-    Special: Double 1-1 or 6-6 gives 2.5x CRITICAL JACKPOT! (Max 100,000P net)
+    Special: Double 1-1 or 6-6 gives 2.5x CRITICAL JACKPOT! (Uncapped)
     """
     c_state = get_casino_state(db)
     if not c_state["is_open"]:
@@ -2330,8 +2330,8 @@ def execute_dice_gamble(
     is_critical = is_correct and ((d1 == 1 and d2 == 1) or (d1 == 6 and d2 == 6))
 
     if is_critical:
-        # 2.5x Critical Payout (Net profit 1.5x)
-        net_payout = min(MAX_CASINO_PAYOUT, int(round(bet * 1.5)))
+        # 2.5x Critical Payout (Net profit 1.5x, uncapped)
+        net_payout = int(round(bet * 1.5))
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
         msg = (
@@ -2340,10 +2340,10 @@ def execute_dice_gamble(
         )
     elif is_correct:
         if target_choice in ["ODD", "EVEN"]:
-            net_payout = min(MAX_CASINO_PAYOUT, max(10, int(round(bet * 0.9))))
+            net_payout = max(10, int(round(bet * 0.9)))
             gain_label = "1.9배"
         else: # HIGH, LOW
-            net_payout = min(MAX_CASINO_PAYOUT, bet)
+            net_payout = bet
             gain_label = "2배"
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
