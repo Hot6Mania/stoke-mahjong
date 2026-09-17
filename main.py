@@ -577,10 +577,13 @@ class ChzzkBot:
                                     try:
                                         reply, event = handle_chat_command(db, user_id, nickname, msg)
                                         if event:
+                                            if event.get("type") == "settlement":
+                                                await start_free_trading_window(300)
                                             record_trade_event(event)
                                             # Broadcast trade/order update to OBS overlay immediately
                                             leaderboard = te.get_leaderboard(db, top_n=3)
                                             state = te.get_market_state(db)
+                                            sync_docs_market_state(state)
                                             await manager.broadcast({
                                                 **event,
                                                 "leaderboard": leaderboard,
@@ -614,8 +617,12 @@ session_worker = ChzzkSessionWorker(
 # ---------------------------------------------------------
 # Real-time Mahjong Tracker Polling Task
 # ---------------------------------------------------------
+last_synced_record: str = ""
+last_synced_pts: Optional[int] = None
+
 async def sync_tracker_loop():
     """Background task to sync real mahjong stats from http://127.0.0.1:7500/data.json."""
+    global last_synced_record, last_synced_pts
     while True:
         try:
             async with httpx.AsyncClient(timeout=1.5) as client:
@@ -627,10 +634,11 @@ async def sync_tracker_loop():
                             if isinstance(data, dict) and data.get("nickname") != "정보 없음":
                                 latest_tracker_data.update(data)
 
-                                # Check if rank points changed
+                                # Check if rank points or match record changed
                                 score_str = data.get("score", "")
                                 pts = extract_rank_points(score_str)
                                 day_start = extract_day_start_points(score_str)
+                                rec_str = str(data.get("record", "") or "").strip()
 
                                 if pts is not None and pts > 0:
                                     db = SessionLocal()
@@ -640,14 +648,52 @@ async def sync_tracker_loop():
                                             state.day_open_price = day_start
                                             db.commit()
 
-                                        if state.current_rank_point != pts:
-                                            delta = pts - state.current_rank_point
-                                            rec_str = str(data.get("record", "") or "")
-                                            rec_digits = [int(c) for c in rec_str if c in "1234"]
-                                            if rec_digits:
-                                                rank = rec_digits[-1]
-                                            else:
-                                                rank = 1 if delta > 0 else (3 if delta < 0 else 2)
+                                        # Detect if a match finished:
+                                        # 1. Rank points changed (pts != state.current_rank_point)
+                                        # 2. OR match record changed (new match added, even if point delta was 0)
+                                        pts_changed = (state.current_rank_point != pts)
+                                        rec_changed = bool(last_synced_record and rec_str and rec_str != last_synced_record)
+
+                                        if pts_changed or rec_changed:
+                                            delta = (pts - state.current_rank_point) if pts_changed else 0
+
+                                            # Determine rank of the finished match:
+                                            new_digits = [int(c) for c in rec_str if c in "1234"]
+                                            old_digits = [int(c) for c in last_synced_record if c in "1234"] if last_synced_record else []
+
+                                            rank = None
+                                            # Method A: Compare record differences if record updated
+                                            if old_digits and new_digits and len(new_digits) > len(old_digits):
+                                                if new_digits[0] != old_digits[0]:
+                                                    rank = new_digits[0]
+                                                elif new_digits[-1] != old_digits[-1]:
+                                                    rank = new_digits[-1]
+                                                else:
+                                                    rank = new_digits[0]
+
+                                            # Method B: Infer rank from point delta
+                                            if rank is None:
+                                                if delta >= 40:
+                                                    rank = 1  # 1위 (+40pt ~ +150pt+)
+                                                elif 0 <= delta < 40:
+                                                    rank = 2  # 2위 (0pt ~ +39pt, classic 2nd place in Mahjong Soul)
+                                                elif -40 < delta < 0:
+                                                    rank = 3  # 3위 (-1pt ~ -39pt)
+                                                else:
+                                                    rank = 4  # 4위 / 3위 in sanma (-40pt or worse)
+
+                                            # Method C: Sanity check for Mahjong Soul rank point rules
+                                            # In Saint 3 / Jade Room, any delta between 0 and +39pt is guaranteed 2nd place!
+                                            if 0 <= delta < 40 and rank in (3, 4):
+                                                rank = 2
+                                            elif delta >= 40 and rank != 1:
+                                                rank = 1
+                                            elif delta <= -40 and rank in (1, 2):
+                                                rank = 4
+
+                                            last_synced_record = rec_str
+                                            last_synced_pts = pts
+
                                             settle_res = te.settle_match(db, rank=rank, point_delta=delta)
                                             leaderboard = te.get_leaderboard(db, top_n=3)
 
@@ -658,7 +704,7 @@ async def sync_tracker_loop():
                                                 div_count = len(settle_res["dividends"])
                                                 total_div = sum(d["payout"] for d in settle_res["dividends"])
                                                 pct_label = "5%" if rank == 1 else ("1%" if rank == 2 else "")
-                                                div_chat = f"🎁 [{rank}위 승리 배당] 1X(기본주) 주주 총 {div_count}명에게 {pct_label} 배당금(총 +{total_div:,}P) 지급 완료!"
+                                                div_chat = f"🎁 [{rank}위 승리 배당] 1X(기본주) 주주 총 {div_count}명에게 {pct_label} 배당금(총 +{total_div:,}P) 지급 완료! (자유 거래 5분 오픈)"
                                                 asyncio.create_task(dispatch_chat_notice(div_chat, fallback_bot=bot_instance))
 
                                             if settle_res.get("liquidations"):
@@ -666,6 +712,7 @@ async def sync_tracker_loop():
                                                 liq_chat = f"🚨 [마진콜 경고] 총 {liq_count}건의 레버리지/인버스 포지션이 강제 청산되었습니다!"
                                                 asyncio.create_task(dispatch_chat_notice(liq_chat, fallback_bot=bot_instance))
 
+                                            sync_docs_market_state(state)
                                             await manager.broadcast({
                                                 "type": "settlement",
                                                 **settle_res,
@@ -675,6 +722,12 @@ async def sync_tracker_loop():
                                                 "market_state": serialize_market_state(state)
                                             })
                                         else:
+                                            # Update baseline on first poll
+                                            if not last_synced_record and rec_str:
+                                                last_synced_record = rec_str
+                                            if last_synced_pts is None and pts:
+                                                last_synced_pts = pts
+
                                             # Periodic tracker update broadcast
                                             await manager.broadcast({
                                                 "type": "tracker_update",

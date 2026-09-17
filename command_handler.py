@@ -27,7 +27,8 @@ from trading_engine import (
     open_casino,
     close_casino,
     execute_slot_gamble,
-    execute_dice_gamble
+    execute_dice_gamble,
+    settle_match
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -47,7 +48,7 @@ GUIDE_LIMIT = "💡 지정가 사용법: !지정가 [매수/매도] [종목] [�
 GUIDE_LIQUIDATE = "💡 청산 사용법: !청산 [종목/전량] (예: !청산 10X, !청산 전량)"
 GUIDE_BORROW = "💡 대출 사용법: !대출 [금액/최대] (경기 중에도 24시간 상시 가능, 예: !대출 최대, !대출 30000 | 개장 중엔 !빚올인 10X)"
 GUIDE_REPAY = "💡 상환 사용법: !상환 [금액/전액] (예: !상환 20000, !상환 전액)"
-GUIDE_CASINO = "🎰 [국고 카지노 사용법]\n• 슬롯머신: !슬롯 [금액/올인] (확률 확인: !슬롯확률)\n• 주사위: !주사위 [홀/짝/대/소] [금액/올인]\n• 카지노 상태: !카지노\n* 스트리머 전용: !카지노오픈 [분] [최대한도], !카지노마감"
+GUIDE_CASINO = "🎰 [국고 카지노 사용법]\n• 슬롯머신: !슬롯 [금액/올인] (확률 확인: !슬롯확률)\n• 주사위: !주사위 [홀/짝/대/소] [금액/올인]\n• 카지노 상태: !카지노\n* 스트리머 전용: !정산 [등수] [점수], !카지노오픈 [분] [최대한도], !카지노마감"
 
 def handle_chat_command(
     db: Session,
@@ -678,6 +679,58 @@ def handle_chat_command(
                 event = {"type": "casino_jackpot", "data": {**details, "gamble_type": "dice_critical", "dice1": d1, "dice2": d2, "dice_sum": dice_sum, "payout": details["net_payout"], "win": True}}
             else:
                 event = {"type": "casino_dice", "data": {**details, "dice1": d1, "dice2": d2, "dice_sum": dice_sum, "user_choice": choice_str, "win": details["won"], "payout": details["net_payout"], "bet_amount": details["bet"]}}
+        return reply, event
+
+    # 18. Streamer Match Settlement Command (!정산 [등수] [변동점수])
+    if cmd in ["!정산", "!경기정산", "!결과", "!settle"]:
+        is_streamer = (user_id == CHANNEL_ID or username in ["치즈나베", "스트리머"] or user_id in ["streamer", "admin"])
+        if not is_streamer:
+            return "🚫 경기 정산은 스트리머(치즈나베) 전용 명령어입니다!", None
+
+        if len(tokens) < 2:
+            return "🎯 [경기 정산 사용법] !정산 [순위(1~4)] [변동점수(선택)] (예: !정산 2 0, !정산 1 270, !정산 2, !정산 3 -330)", None
+
+        try:
+            rank_val = int(tokens[1])
+            if rank_val not in (1, 2, 3, 4):
+                return "⚠️ 순위는 1, 2, 3, 4 중 하나를 입력해주세요. (예: !정산 2 0, !정산 1 270)", None
+        except ValueError:
+            return f"⚠️ 올바른 순위를 입력해주세요: '{tokens[1]}'", None
+
+        delta_val = 0
+        if len(tokens) >= 3:
+            try:
+                delta_str = tokens[2].replace("+", "").strip()
+                delta_val = int(delta_str)
+            except ValueError:
+                delta_val = 0
+        else:
+            default_deltas = {1: 270, 2: 0, 3: -330, 4: -600}
+            delta_val = default_deltas.get(rank_val, 0)
+
+        settle_res = settle_match(db, rank=rank_val, point_delta=delta_val)
+        new_price = settle_res["new_price"]
+        divs = settle_res.get("dividends", [])
+        div_count = len(divs)
+        div_total = sum(d["payout"] for d in divs)
+        div_label = f" | 1X 배당: {div_count}명(+{div_total:,}P)" if div_count > 0 else ""
+        liq_count = len(settle_res.get("liquidations", []))
+        liq_label = f" | 🚨청산 {liq_count}건" if liq_count > 0 else ""
+
+        delta_sign = f"+{delta_val}" if delta_val > 0 else f"{delta_val}"
+        reply = (
+            f"📢 [경기 정산 완료] {rank_val}위 ({delta_sign}pt) 정산 완료! "
+            f"새 주가: {new_price:,}P{div_label}{liq_label} | 5분간 자유 거래 오픈!"
+        )
+        event = {
+            "type": "settlement",
+            "data": {
+                **settle_res,
+                "rank": rank_val,
+                "point_delta": delta_val,
+                "free_trading_remaining": 300
+            }
+        }
         return reply, event
 
     return None, None

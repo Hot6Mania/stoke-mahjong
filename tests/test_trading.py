@@ -1187,6 +1187,35 @@ def test_casino_chat_commands(db_session):
     assert "마감" in r6
     assert ev6["type"] == "casino_close"
 
+def test_streamer_chat_settle_command(db_session):
+    """Test streamer chat settlement command !정산 [등수] [변동점수]."""
+    viewer_id = "normal_viewer_55"
+    viewer_name = "일반시청자"
+    streamer_id = ch.CHANNEL_ID
+    streamer_name = "치즈나베"
+
+    # Setup 1X stock shareholder
+    te.execute_buy(db_session, viewer_id, viewer_name, "1X", "20")
+    user_before = db_session.query(User).filter_by(id=viewer_id).first()
+    div_before = user_before.total_dividends or 0
+
+    # Non-streamer attempting to settle -> blocked
+    r_no, ev_no = ch.handle_chat_command(db_session, viewer_id, viewer_name, "!정산 2 0")
+    assert "🚫" in r_no
+    assert ev_no is None
+
+    # Streamer settling 2nd place with 0pt (!정산 2 0)
+    r_yes, ev_yes = ch.handle_chat_command(db_session, streamer_id, streamer_name, "!정산 2 0")
+    assert "2위" in r_yes
+    assert "정산 완료" in r_yes
+    assert "1X 배당" in r_yes
+    assert ev_yes is not None
+    assert ev_yes["type"] == "settlement"
+
+    # Check that 1X shareholder received 1% dividend
+    db_session.refresh(user_before)
+    assert user_before.total_dividends > div_before
+
 def test_borrow_allowed_during_game_market_lock(db_session):
     """Verify that pure loan (!대출) is allowed even when the market is locked during games."""
     uid = "borrower_during_game"
