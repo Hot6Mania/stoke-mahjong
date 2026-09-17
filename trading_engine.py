@@ -1302,9 +1302,9 @@ STARFORCE_EVENT_TYPES: Dict[str, Dict[str, Any]] = {
     }
 }
 
-# Star Force Fever Event Interval & Duration Settings (Significantly extended to avoid being too frequent)
-STARFORCE_EVENT_MIN_INTERVAL_MINUTES = 90.0   # 1.5 hours
-STARFORCE_EVENT_MAX_INTERVAL_MINUTES = 180.0  # 3.0 hours
+# Star Force Fever Event Interval & Duration Settings (0.5~1.5 hours / 30~90 min)
+STARFORCE_EVENT_MIN_INTERVAL_MINUTES = 30.0   # 0.5 hours (30 minutes)
+STARFORCE_EVENT_MAX_INTERVAL_MINUTES = 90.0   # 1.5 hours (90 minutes)
 STARFORCE_EVENT_DURATIONS = [5.0, 7.0, 10.0]  # 5~10 minutes
 
 def get_starforce_event_state(
@@ -1315,7 +1315,7 @@ def get_starforce_event_state(
 ) -> Dict[str, Any]:
     """
     Retrieve current Star Force Fever Event state.
-    Handles spontaneous trigger at random intervals (1.5~3 hours), random duration (5~10 min), and automatic expiration.
+    Handles spontaneous trigger at random intervals (0.5~1.5 hours), random duration (5~10 min), and automatic expiration.
     """
     state = get_market_state(db)
     now = time.time()
@@ -1500,7 +1500,7 @@ def get_starforce_event_guide(db: Session) -> str:
             f"  1. 💸 비용 30% 할인: 전 구간 강화 비용 30% 파격 세일\n"
             f"  2. ⭐ 5·10·15성 100% 성공: ★5성, ★10성, ★15성(파괴위험구간) 100% 무조건 확정 성공!\n"
             f"  3. ✨🌟 샤이닝 스타포스: 30% 할인 + 5/10/15성 100% 성공 동시 발동!\n"
-            f"💡 피버는 약 1.5~3시간 주기로 5~10분간 랜덤 돌발 발생합니다! (스트리머 명령어: !피버 [분] [종류])"
+            f"💡 피버는 약 0.5~1.5시간(30~90분) 주기로 5~10분간 랜덤 돌발 발생합니다! (스트리머 명령어: !피버 [분] [종류])"
         )
 
 def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

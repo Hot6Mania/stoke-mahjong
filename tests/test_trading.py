@@ -2263,14 +2263,14 @@ def test_auto_mining_system_and_commands(db_session, monkeypatch):
 
 
 def test_starforce_fever_extended_intervals(db_session):
-    """Test that Star Force Fever event intervals are extended to 1.5~3 hours and durations 5~10 mins."""
-    assert te.STARFORCE_EVENT_MIN_INTERVAL_MINUTES == 90.0
-    assert te.STARFORCE_EVENT_MAX_INTERVAL_MINUTES == 180.0
+    """Test that Star Force Fever event intervals are set to 0.5~1.5 hours (30~90 min) and durations 5~10 mins."""
+    assert te.STARFORCE_EVENT_MIN_INTERVAL_MINUTES == 30.0
+    assert te.STARFORCE_EVENT_MAX_INTERVAL_MINUTES == 90.0
     assert te.STARFORCE_EVENT_DURATIONS == [5.0, 7.0, 10.0]
 
     # Check guide text
     guide = te.get_starforce_event_guide(db_session)
-    assert "1.5~3시간" in guide
+    assert "0.5~1.5시간" in guide
 
     # Test open event
     now = time.time()
@@ -2280,16 +2280,17 @@ def test_starforce_fever_extended_intervals(db_session):
     assert details["event_type"] == "DISCOUNT_30"
 
     state = te.get_market_state(db_session)
-    assert state.sf_next_event_time >= state.sf_event_end_time + (90.0 * 60.0) - 1.0
-    assert state.sf_next_event_time <= state.sf_event_end_time + (180.0 * 60.0) + 1.0
+    assert state.sf_next_event_time >= state.sf_event_end_time + (30.0 * 60.0) - 1.0
+    assert state.sf_next_event_time <= state.sf_event_end_time + (90.0 * 60.0) + 1.0
 
     # Test close event
     ok_close, _, _ = te.close_starforce_event(db_session)
     assert ok_close is True
     db_session.refresh(state)
     assert state.sf_event_type is None
-    assert state.sf_next_event_time >= now + (90.0 * 60.0) - 1.0
-    assert state.sf_next_event_time <= now + (180.0 * 60.0) + 1.0
+    assert state.sf_next_event_time >= now + (30.0 * 60.0) - 1.0
+    assert state.sf_next_event_time <= now + (90.0 * 60.0) + 1.0
+
 
 
 def test_cooldown_command(db_session):

@@ -1,13 +1,13 @@
 {
-  "current_rank_point": 2397,
-  "current_price": 2397,
-  "previous_price": 2114,
+  "current_rank_point": 1745,
+  "current_price": 1745,
+  "previous_price": 1745,
   "day_open_price": 3055,
-  "is_trading_locked": true,
-  "last_settlement_delta": 283,
-  "treasury_pool": 5081928.0,
-  "free_trading_remaining": 0,
-  "free_trading_end_time": 0.0,
+  "is_trading_locked": false,
+  "last_settlement_delta": 0,
+  "treasury_pool": 17501407.0,
+  "free_trading_remaining": 113,
+  "free_trading_end_time": 1789668592.1649587,
   "casino_is_open": false,
   "casino_remaining": 0,
   "casino_max_bet": 1000000,
@@ -15,7 +15,7 @@
   "sf_event_title": null,
   "sf_is_active": false,
   "sf_remaining": 0,
-  "day_diff": -658,
-  "day_diff_pct": -21.54,
-  "updated_at": "2026-09-18 02:48:17"
+  "day_diff": -1310,
+  "day_diff_pct": -42.88,
+  "updated_at": "2026-09-18 03:07:59"
 }
