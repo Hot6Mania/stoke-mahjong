@@ -7,7 +7,7 @@
   "last_settlement_delta": 20,
   "treasury_pool": 501305.0,
   "free_trading_remaining": 299,
-  "free_trading_end_time": 1789680517.9200883,
+  "free_trading_end_time": 1789680946.328116,
   "casino_is_open": false,
   "casino_remaining": 0,
   "casino_max_bet": 100000,
@@ -17,5 +17,5 @@
   "sf_remaining": 0,
   "day_diff": 290,
   "day_diff_pct": 12.39,
-  "updated_at": "2026-09-18 06:23:37"
+  "updated_at": "2026-09-18 06:30:46"
 }

@@ -133,9 +133,36 @@ def init_db():
         ).all()
         if dummy_users:
             for du in dummy_users:
-                for dp in du.positions:
+                # 1. Clean up equipment listings associated with dummy seller or dummy equipments
+                eq_ids = [eq.id for eq in getattr(du, "equipments", [])]
+                if eq_ids:
+                    db.query(EquipmentListing).filter(EquipmentListing.equipment_id.in_(eq_ids)).delete(synchronize_session=False)
+                db.query(EquipmentListing).filter(EquipmentListing.seller_id == du.id).delete(synchronize_session=False)
+
+                # 2. Clean up equipments
+                for eq in list(getattr(du, "equipments", [])):
+                    db.delete(eq)
+
+                # 3. Clean up other child records
+                for dp in list(du.positions):
                     db.delete(dp)
+                for o in list(du.orders):
+                    db.delete(o)
+                for b in list(getattr(du, "bankruptcy_applications", [])):
+                    db.delete(b)
+                for d in list(getattr(du, "donations", [])):
+                    db.delete(d)
                 db.delete(du)
+            db.commit()
+
+        # Clean up any orphaned equipment or listings (if previous incomplete runs left dangling rows)
+        all_user_ids = [u[0] for u in db.query(User.id).all()]
+        if all_user_ids:
+            orphaned_eqs = db.query(UserEquipment).filter(~UserEquipment.user_id.in_(all_user_ids)).all()
+            for o_eq in orphaned_eqs:
+                db.query(EquipmentListing).filter_by(equipment_id=o_eq.id).delete(synchronize_session=False)
+                db.delete(o_eq)
+            db.query(EquipmentListing).filter(~EquipmentListing.seller_id.in_(all_user_ids)).delete(synchronize_session=False)
             db.commit()
     finally:
         db.close()

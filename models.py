@@ -55,6 +55,10 @@ class User(Base):
 
     positions = relationship("Position", back_populates="user", cascade="all, delete-orphan")
     orders = relationship("LimitOrder", back_populates="user", cascade="all, delete-orphan")
+    equipments = relationship("UserEquipment", back_populates="user", cascade="all, delete-orphan")
+    bankruptcy_applications = relationship("BankruptcyApplication", back_populates="user", cascade="all, delete-orphan")
+    donations = relationship("DonationRecord", back_populates="user", cascade="all, delete-orphan")
+    equipment_listings = relationship("EquipmentListing", foreign_keys="EquipmentListing.seller_id", back_populates="seller", cascade="all, delete-orphan")
 
 class Position(Base):
     __tablename__ = "positions"
@@ -119,7 +123,7 @@ class BankruptcyApplication(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     resolved_at = Column(DateTime, nullable=True)
 
-    user = relationship("User", backref="bankruptcy_applications")
+    user = relationship("User", back_populates="bankruptcy_applications")
 
 class DonationRecord(Base):
     __tablename__ = "donation_records"
@@ -137,7 +141,7 @@ class DonationRecord(Base):
     raw_payload = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    user = relationship("User", backref="donations")
+    user = relationship("User", back_populates="donations")
 
 class UserEquipment(Base):
     __tablename__ = "user_equipments"
@@ -155,7 +159,8 @@ class UserEquipment(Base):
     pity_count = Column(Integer, default=0, nullable=False) # 등급 상승 보장 카운터
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    user = relationship("User", backref="equipments")
+    user = relationship("User", back_populates="equipments")
+    listings = relationship("EquipmentListing", foreign_keys="EquipmentListing.equipment_id", back_populates="equipment", cascade="all, delete-orphan")
 
 class EquipmentListing(Base):
     __tablename__ = "equipment_listings"
@@ -172,6 +177,6 @@ class EquipmentListing(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     resolved_at = Column(DateTime, nullable=True)
 
-    equipment = relationship("UserEquipment")
-    seller = relationship("User", foreign_keys=[seller_id])
+    equipment = relationship("UserEquipment", foreign_keys=[equipment_id], back_populates="listings")
+    seller = relationship("User", foreign_keys=[seller_id], back_populates="equipment_listings")
 
