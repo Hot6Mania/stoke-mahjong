@@ -1386,5 +1386,53 @@ def test_allin_purchase_message_and_casino_limit_100k(db_session):
     r_open2, _ = ch.handle_chat_command(db_session, "admin", "스트리머", "!카지노오픈 10만")
     assert "100,000P" in r_open2
 
+def test_format_quantity_compatibility():
+    # Test integer inputs (e.g. from math.floor or int casts)
+    assert te.format_quantity(5) == "5"
+    assert te.format_quantity(0) == "0"
+    assert te.format_quantity(12345) == "12345"
+
+    # Test float inputs
+    assert te.format_quantity(5.0) == "5"
+    assert te.format_quantity(5.25) == "5.25"
+    assert te.format_quantity(5.20) == "5.20"
+    assert te.format_quantity(0.0) == "0"
+
+    # Test string / edge cases
+    assert te.format_quantity("10") == "10"
+    assert te.format_quantity("10.5") == "10.50"
+    assert te.format_quantity("invalid") == "invalid"
+
+def test_allin_and_int_quantity_trading_pipeline(db_session):
+    uid = "int_compat_user"
+    uname = "정수유저"
+
+    # 1. Buy all-in (returns integer quantity)
+    r_allin, ev_allin = ch.handle_chat_command(db_session, uid, uname, "!매수 1X 올인")
+    assert "매수 체결" in r_allin or "구매 완료" in r_allin
+    assert ev_allin is not None
+    assert isinstance(ev_allin["data"]["quantity"], (int, float))
+
+    # 2. Check info (!내정보) with integer position quantity
+    r_info, _ = ch.handle_chat_command(db_session, uid, uname, "!내정보")
+    assert "보유:" in r_info
+    assert "1X:" in r_info
+
+    # 3. Test get_current_buyers
+    buyers_data = te.get_current_buyers(db_session)
+    assert buyers_data["summary"]["total_buyers"] >= 1
+    found = [b for b in buyers_data["buyers"] if b["user_id"] == uid]
+    assert len(found) == 1
+    assert isinstance(found[0]["quantity"], int)
+
+    # 4. Limit order with integer quantity
+    r_limit, _ = ch.handle_chat_command(db_session, uid, uname, "!지정가 매도 1X 3000 5")
+    assert "예약 완료" in r_limit or "체결" in r_limit
+
+    # 5. Sell all (!매도 1X 전량)
+    r_sell, ev_sell = ch.handle_chat_command(db_session, uid, uname, "!매도 1X 전량")
+    assert "매도 체결" in r_sell or "판매 완료" in r_sell
+
+
 
 

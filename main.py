@@ -593,6 +593,8 @@ class ChzzkBot:
 
                                         if reply:
                                             asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=self))
+                                    except Exception as cmd_err:
+                                        print(f"[ChzzkBot] ⚠️ 명령어 처리 중 오류 ({cmd_err}): {msg}")
                                     finally:
                                         db.close()
 

@@ -206,6 +206,16 @@ TRADING_FEE_RATE: float = 0.01  # 1% 거래 수수료 -> 국고 채굴풀 자동
 MAX_LOAN_LIMIT: int = 50000     # 최대 50,000P 신용 대출 한도
 LOAN_INTEREST_RATE: float = 0.02 # 경기당 2% 대출 이자 (국고 환수)
 
+def format_quantity(quantity: Any) -> str:
+    """Safely format stock quantity: integer if whole number (e.g. 5), else 2 decimals (e.g. 5.25)."""
+    try:
+        f = float(quantity)
+        if f.is_integer():
+            return str(int(f))
+        return f"{f:.2f}"
+    except (ValueError, TypeError):
+        return str(quantity)
+
 def calculate_stock_price(rank_points: int) -> int:
     """1:1 Rank Point Peg with a safety floor of 100P to prevent bankruptcy."""
     return max(100, int(rank_points))
@@ -453,7 +463,7 @@ def execute_buy(
     db.refresh(user)
     db.refresh(pos)
 
-    qty_display = f"{int(quantity)}" if quantity.is_integer() else f"{quantity:.2f}"
+    qty_display = format_quantity(quantity)
     is_allin = clean_qty_str in ["올인", "all", "전액", "풀매수", "올인매수", "전액매수", "최대", "전부", "다"]
     allin_label = "전액 올인 " if is_allin else ""
     msg = (
@@ -577,7 +587,7 @@ def execute_margin_buy(
     db.refresh(pos)
     db.refresh(state)
 
-    qty_display = f"{int(quantity)}" if quantity.is_integer() else f"{quantity:.2f}"
+    qty_display = format_quantity(quantity)
     if borrow_amount > 0:
         msg = (
             f"💳🔥 [빚투 / 신용 올인 체결] {user.username}님 국고 대출 {borrow_amount:,}P 실행 후 "
@@ -648,7 +658,7 @@ def execute_sell(
             if sell_qty <= 0:
                 return False, "⚠️ 매도 수량은 0보다 커야 합니다.", None
             if sell_qty > pos.quantity + 1e-9:
-                qty_has = f"{int(pos.quantity)}" if pos.quantity.is_integer() else f"{pos.quantity:.2f}"
+                qty_has = format_quantity(pos.quantity)
                 return False, f"⚠️ 보유 수량을 초과했습니다! (현재 보유: {qty_has}주)", None
         except ValueError:
             return False, f"⚠️ 유효하지 않은 수량입니다: '{quantity_str}' (수량 숫자 또는 '전량' 입력)", None
@@ -679,7 +689,7 @@ def execute_sell(
     db.commit()
     db.refresh(user)
 
-    qty_display = f"{int(sell_qty)}" if sell_qty.is_integer() else f"{sell_qty:.2f}"
+    qty_display = format_quantity(sell_qty)
     sign = "+" if pnl >= 0 else ""
     msg = f"✅ [매도 체결 / 판매 완료] {user.username}님이 {product_type.value} {qty_display}주를 판매했습니다! (매도 완료 | +{net_payout:,}P 입금, 수수료: {fee:,}P 국고 적립, 손익: {sign}{int(round(pnl)):,}P / {sign}{pnl_pct:.1f}%)"
 
@@ -857,7 +867,7 @@ def register_limit_order(
             )
             db.add(order)
             db.commit()
-            qty_display = f"{int(quantity)}" if quantity.is_integer() else f"{quantity:.2f}"
+            qty_display = format_quantity(quantity)
             msg = f"✅ [지정가 매수 즉시 체결] 현재가({current_price:,}P)가 목표가({target_price:g}P) 이하이므로 즉시 체결되었습니다! ({product_type.value} {qty_display}주, 수수료: {fee:,}P 국고 적립, 잔여: {user.points:,}P)"
             return True, msg, {"order_id": order.id, "status": "FILLED"}
         else:
@@ -873,7 +883,7 @@ def register_limit_order(
             )
             db.add(order)
             db.commit()
-            qty_display = f"{int(quantity)}" if quantity.is_integer() else f"{quantity:.2f}"
+            qty_display = format_quantity(quantity)
             msg = f"📌 [지정가 매수 예약] #{order.id} {product_type.value} {qty_display}주 @ 목표가 {target_price:g}P 예약 완료 (예약금: {total_reserved:,}P 차감)"
             return True, msg, {"order_id": order.id, "status": "PENDING"}
 
@@ -881,7 +891,7 @@ def register_limit_order(
         pos = db.query(Position).filter_by(user_id=user.id, product_type=product_type).first()
         if not pos or pos.quantity < quantity - 1e-9:
             has_q = pos.quantity if pos else 0
-            qty_has = f"{int(has_q)}" if isinstance(has_q, (int, float)) and float(has_q).is_integer() else f"{has_q:.2f}"
+            qty_has = format_quantity(has_q)
             return False, f"⚠️ 매도 예약할 수량이 부족합니다. (보유: {qty_has}주)", None
 
         if current_price >= target_price:
@@ -916,7 +926,7 @@ def register_limit_order(
             )
             db.add(order)
             db.commit()
-            qty_display = f"{int(quantity)}" if quantity.is_integer() else f"{quantity:.2f}"
+            qty_display = format_quantity(quantity)
             sign = "+" if pnl >= 0 else ""
             msg = f"✅ [지정가 매도 즉시 체결] 현재가({current_price:,}P)가 목표가({target_price:g}P) 이상이므로 즉시 체결되었습니다! ({product_type.value} {qty_display}주, +{net_payout:,}P 입금, 수수료: {fee:,}P 국고 적립)"
             return True, msg, {"order_id": order.id, "status": "FILLED"}
@@ -941,7 +951,7 @@ def register_limit_order(
             )
             db.add(order)
             db.commit()
-            qty_display = f"{int(quantity)}" if quantity.is_integer() else f"{quantity:.2f}"
+            qty_display = format_quantity(quantity)
             msg = f"📌 [지정가 매도 예약] #{order.id} {product_type.value} {qty_display}주 @ 목표가 {target_price:g}P 예약 완료"
             return True, msg, {"order_id": order.id, "status": "PENDING"}
 
@@ -1802,7 +1812,7 @@ def get_current_buyers(db: Session, limit: int = 100) -> Dict[str, Any]:
             long_count += 1
             long_value += curr_val
 
-        qty_display = int(pos.quantity) if pos.quantity.is_integer() else round(pos.quantity, 2)
+        qty_display = int(pos.quantity) if float(pos.quantity).is_integer() else round(float(pos.quantity), 2)
         entry_p = int(round(pos.entry_price)) if pos.entry_price else current_price
 
         buyers.append({

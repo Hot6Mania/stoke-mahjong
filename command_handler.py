@@ -28,7 +28,8 @@ from trading_engine import (
     close_casino,
     execute_slot_gamble,
     execute_dice_gamble,
-    settle_match
+    settle_match,
+    format_quantity
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -188,7 +189,7 @@ def handle_chat_command(
             portfolio_val += curr_val
             pnl_pct = val["pnl_pct"]
             sign = "+" if pnl_pct >= 0 else ""
-            qty_str = f"{int(p.quantity)}" if p.quantity.is_integer() else f"{p.quantity:.2f}"
+            qty_str = format_quantity(p.quantity)
             pos_summaries.append(f"{p.product_type.value}: {qty_str}주 (평단 {int(round(p.entry_price)):,}P, {sign}{pnl_pct:.1f}%)")
 
         debt = getattr(user, "debt", 0) or 0
