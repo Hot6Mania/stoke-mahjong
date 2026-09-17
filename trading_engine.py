@@ -3490,6 +3490,80 @@ def execute_cancel_equipment_listing(
         reply += f" (장착: !장착 {eq.id if eq else ''})"
     return True, reply, {"listing_id": listing.id, "equipment_id": eq.id if eq else None}
 
+def execute_buy_cubes(
+    db: Session,
+    user_id: str,
+    username: str,
+    quantity_str: Optional[str] = "1"
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute !큐브구매 [수량/최대] (MapleStory Miracle Cube purchase).
+    - Cost: 15,000P per cube, 100% credited to Treasury pool.
+    - Adds to user.cube_count.
+    """
+    state = get_market_state(db)
+    user = get_or_create_user(db, user_id, username)
+
+    raw = (quantity_str or "1").strip().lower()
+    user_debt = getattr(user, "debt", 0) or 0
+    spendable_points = max(0, user.points - user_debt) if user_debt > 0 else user.points
+
+    if raw in ["최대", "올인", "max", "all", "전액", "전부"]:
+        qty = spendable_points // CUBE_COST
+        if qty <= 0:
+            if user_debt > 0 and user.points < CUBE_COST + user_debt:
+                return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있어 큐브를 구매할 수 없습니다! (보유: {user.points:,}P | 1개당 {CUBE_COST:,}P)", None
+            return False, f"⚠️ 포인트가 부족하여 큐브를 구매할 수 없습니다! (보유: {user.points:,}P | 1개당 {CUBE_COST:,}P)", None
+    else:
+        try:
+            qty = int(raw.replace(",", "").replace("개", "").replace("p", "").replace("원", ""))
+        except ValueError:
+            return False, f"💡 큐브 구매 사용법: !큐브구매 [수량/최대] (예: !큐브구매 1, !큐브구매 10 | 1개당 {CUBE_COST:,}P)", None
+
+    if qty <= 0:
+        return False, "⚠️ 구매 수량은 1개 이상의 양수여야 합니다.", None
+
+    total_cost = qty * CUBE_COST
+
+    if user_debt > 0 and (user.points - total_cost) < user_debt:
+        max_possible = spendable_points // CUBE_COST
+        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여금을 남기는 큐브 구매를 할 수 없습니다! (현재 구매 가능: {max_possible}개)", None
+
+    if user.points < total_cost:
+        max_possible = user.points // CUBE_COST
+        return False, f"⚠️ 포인트가 부족합니다! (필요: {total_cost:,}P | 보유: {user.points:,}P | 최대 구매 가능: {max_possible}개)", None
+
+    # Deduct cost and credit to Treasury
+    user.points -= total_cost
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += total_cost
+
+    # Add cubes to user inventory
+    user.cube_count = (getattr(user, "cube_count", 0) or 0) + qty
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    reply = (
+        f"🔮 [미라클 큐브 구매 완료] {user.username}님이 큐브 {qty:,}개를 구매했습니다!\n"
+        f"  • 결제 금액: -{total_cost:,}P (전액 국고 상금풀 적립)\n"
+        f"  • 📦 보유 큐브: {user.cube_count:,}개 | 💰 잔여 포인트: {user.points:,}P\n"
+        f"💡 사용법: !큐브 (장착 곡괭이에 1개 사용) 또는 !큐브 [장비번호]"
+    )
+
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "quantity": qty,
+        "cost_per_cube": CUBE_COST,
+        "total_cost": total_cost,
+        "cube_count": user.cube_count,
+        "remaining_points": user.points
+    }
+    return True, reply, details
+
 def execute_cube_use(
     db: Session,
     user_id: str,
@@ -3498,7 +3572,7 @@ def execute_cube_use(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !큐브 [장비번호/슬롯] (MapleStory Miracle/Black Cube potential reset).
-    - Cost: 15,000P per cube, 100% credited to Treasury pool.
+    - Requires pre-purchased cube (!큐브구매). Consumes 1 cube from user.cube_count.
     - Tier order: NONE -> RARE -> EPIC -> UNIQUE -> LEGENDARY
     - Promotion rates: NONE->RARE 100%, RARE->EPIC 15%, EPIC->UNIQUE 3.5%, UNIQUE->LEGENDARY 1.4%
     - Pity guarantees: RARE->EPIC 10 cubes, EPIC->UNIQUE 42 cubes, UNIQUE->LEGENDARY 107 cubes
@@ -3516,18 +3590,15 @@ def execute_cube_use(
     if active_listing:
         return False, f"⚠️ [장비 #{target_item.id}]은(는) 현재 거래소/직거래에 판매 등록 중입니다! 등록 취소(!장비회수) 후 큐브를 사용해주세요.", None
 
-    user_debt = getattr(user, "debt", 0) or 0
-    if user_debt > 0 and (user.points - CUBE_COST) < user_debt:
-        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여금을 남기는 큐브 강화를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
+    user_cube_count = getattr(user, "cube_count", 0) or 0
+    if user_cube_count <= 0:
+        return False, (
+            f"⚠️ 보유한 큐브가 없습니다! 상점에서 큐브를 먼저 구매해주세요.\n"
+            f"💡 구매 명령어: !큐브구매 [수량] (1개당 {CUBE_COST:,}P | 내 포인트: {user.points:,}P)"
+        ), None
 
-    if user.points < CUBE_COST:
-        return False, f"⚠️ 포인트가 부족합니다! (필요: {CUBE_COST:,}P | 보유: {user.points:,}P | 부족: {CUBE_COST - user.points:,}P)", None
-
-    # Deduct cost and credit to Treasury
-    user.points -= CUBE_COST
-    if getattr(state, "treasury_pool", None) is None:
-        state.treasury_pool = DEFAULT_TREASURY_POOL
-    state.treasury_pool += CUBE_COST
+    # Consume 1 Cube from inventory
+    user.cube_count = user_cube_count - 1
 
     # Credit 1 Cube Fragment
     user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 1
@@ -3620,14 +3691,14 @@ def execute_cube_use(
         pity_info = "• 🌟 최고 등급(레전드리) 도달 완료! (종결 옵션 3줄을 노려보세요)"
 
     reply = (
-        f"🔮✨ [미라클 큐브 사용] {user.username}님이 [장비 #{target_item.id} {target_item.name}]에 큐브를 사용했습니다! "
-        f"(15,000P ➔ 국고 적립){promo_banner}\n"
+        f"🔮✨ [미라클 큐브 사용] {user.username}님이 [장비 #{target_item.id} {target_item.name}]에 큐브 1개를 사용했습니다! "
+        f"(남은 큐브: {user.cube_count:,}개){promo_banner}\n"
         f"📋 [잠재 등급: {CUBE_TIER_DISPLAY.get(new_tier, new_tier)}]\n"
         f"  • 줄 1: {line1['text']}\n"
         f"  • 줄 2: {line2['text']}\n"
         f"  • 줄 3: {line3['text']}\n"
         f"{pity_info}\n"
-        f"🧩 큐브 조각: {user.cube_fragments}개 (!큐브조각 으로 10개당 15,000P 환급) | 잔여: {user.points:,}P"
+        f"🧩 큐브 조각: {user.cube_fragments}개 (!큐브조각 으로 10개당 15,000P 환급) | 📦 보유 큐브: {user.cube_count:,}개"
     )
 
     details = {
@@ -3641,6 +3712,7 @@ def execute_cube_use(
         "pity_triggered": pity_triggered,
         "pity_count": target_item.pity_count,
         "cube_cost": CUBE_COST,
+        "cube_count": user.cube_count,
         "cube_fragments": user.cube_fragments,
         "lines": [line1, line2, line3],
         "remaining_points": user.points,
@@ -3761,10 +3833,17 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
             f"• #{it.id} {tag_str} {it.name}{pot_badge} | 채굴 {info['yield_multiplier']}배{bp_str}, 크리+{info['crit_bonus']}%, 쿨{info['cooldown_minutes']}분 ({next_str})"
         )
 
+    cube_cnt = getattr(user, "cube_count", 0) or 0
+    frag_cnt = getattr(user, "cube_fragments", 0) or 0
+    lines.append(
+        f"📦 [소비 인벤토리] 🔮 미라클 큐브: {cube_cnt:,}개 (구매: !큐브구매 [수량]) | 🧩 큐브 조각: {frag_cnt:,}개 (!큐브조각 으로 10개당 15,000P 환급)"
+    )
     lines.append(
         "💡 명령어 안내:\n"
         "• 장비 교체: !장착 [장비번호]\n"
-        "• 큐브 잠재: !큐브 [장비번호] (15,000P ➔ 국고 | 10조각 모아 !큐브조각 환급)\n"
+        "• 큐브 구매: !큐브구매 [수량] (1개당 15,000P ➔ 국고 적립)\n"
+        "• 큐브 사용: !큐브 [장비번호] (보유 큐브 1개 소모하여 3줄 잠재 재설정)\n"
+        "• 큐브 조각: !큐브조각 (10개 모아 15,000P 환급)\n"
         "• 선택 강화: !강화 [장비번호] (비어있으면 장착 장비 강화)\n"
         "• 새 곡괭이 구매: !곡괭이구매 [0/5/10]\n"
         "• 피버 확인: !피버 | 거래소: !장비장터, !장비등록 [번호] [가격]"
@@ -3807,16 +3886,21 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
                     pot_lines.append(f"  • 줄 {i}: {line_raw}")
         pot_block = f"\n🔮 [잠재능력: {CUBE_TIER_DISPLAY.get(pot_tier, pot_tier)}{pity_str}]\n" + "\n".join(pot_lines)
     else:
-        pot_block = "\n🔮 [잠재능력: 없음] (!큐브 로 15,000P에 3줄 잠재 개방 가능!)"
+        pot_block = "\n🔮 [잠재능력: 없음] (!큐브구매 후 !큐브 로 3줄 잠재 개방 가능!)"
 
-    frag_str = f"\n🧩 큐브 조각: {getattr(user, 'cube_fragments', 0)}개 (!큐브조각 으로 10개당 15,000P 환급)"
+    cube_cnt = getattr(user, "cube_count", 0) or 0
+    frag_cnt = getattr(user, "cube_fragments", 0) or 0
+    frag_str = (
+        f"\n📦 보유 큐브: {cube_cnt:,}개 (!큐브 로 사용 | 구매: !큐브구매 [수량])\n"
+        f"🧩 큐브 조각: {frag_cnt:,}개 (!큐브조각 으로 10개당 15,000P 환급)"
+    )
 
     if curr_lvl >= 25:
         return (
             f"{fever_banner}⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
             f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동){pot_block}{frag_str}\n"
-            f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 큐브: !큐브 | 인벤토리: !내장비 | 거래소: !장비장터"
+            f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 큐브 구매: !큐브구매 [수량] | 큐브 사용: !큐브 | 인벤토리: !내장비 | 거래소: !장비장터"
         )
     else:
         next_item = get_pickaxe_info(curr_lvl + 1, event_state=sf_state)
@@ -3854,7 +3938,7 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
             f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost_str}]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
             f"  └ 다음 효과: {next_item['desc']}{pot_block}{frag_str}\n"
-            f"💡 명령어: !강화 [장비번호], !큐브 [장비번호], !큐브조각, !장착 [장비번호], !곡괭이구매 [0/5/10], !피버, !내장비, !장비장터"
+            f"💡 명령어: !강화 [장비번호], !큐브구매 [수량], !큐브 [장비번호], !큐브조각, !장착 [장비번호], !곡괭이구매 [0/5/10], !피버, !내장비, !장비장터"
         )
 
 def get_pickaxe_table_guide() -> str:

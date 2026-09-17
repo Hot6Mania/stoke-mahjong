@@ -52,6 +52,7 @@ from trading_engine import (
     get_auto_mining_status,
     get_user_equipped_item,
     get_user_cooldown_status,
+    execute_buy_cubes,
     execute_cube_use,
     execute_cube_fragment_exchange
 )
@@ -62,7 +63,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
 • 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간, !쿨타임
-• 장비: !내장비, !장착 [번호], !강화 [번호], !큐브 [번호], !큐브조각, !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
+• 장비: !내장비, !장착 [번호], !강화 [번호], !큐브구매 [수량], !큐브 [번호], !큐브조각, !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -284,14 +285,20 @@ def handle_chat_command(
         else:
             am_str = " | 자동채굴: 💤OFF"
 
+        cube_cnt = getattr(user, "cube_count", 0) or 0
+        frag_cnt = getattr(user, "cube_fragments", 0) or 0
+        cube_str = ""
+        if cube_cnt > 0 or frag_cnt > 0:
+            cube_str = f" | 큐브: {cube_cnt}개(조각: {frag_cnt})"
+
         if pos_summaries:
             pos_str = " | ".join(pos_summaries)
             reply = (
-                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str} | "
+                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str}{cube_str} | "
                 f"보유: [{pos_str}]"
             )
         else:
-            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str} | 보유 포지션이 없습니다."
+            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str}{cube_str} | 보유 포지션이 없습니다."
 
         return reply, None
 
@@ -734,6 +741,13 @@ def handle_chat_command(
 
         # General viewer query
         return get_starforce_event_guide(db), None
+
+    # 8-11. Maple Cube Purchase (!큐브구매, !큐브사기, !buycube, !cube구매)
+    if cmd in ["!큐브구매", "!큐브사기", "!buycube", "!cube구매", "!큐브구입", "!미라클큐브구매"]:
+        qty_token = tokens[1] if len(tokens) >= 2 else "1"
+        success, reply, details = execute_buy_cubes(db, user_id, username, qty_token)
+        event = {"type": "cube_buy", "data": details} if success and details else None
+        return reply, event
 
     # 8-12. Maple Cube Potential Reset (!큐브, !cube, !미라클큐브, !블랙큐브, !잠재, !잠재능력)
     if cmd in ["!큐브", "!cube", "!미라클큐브", "!블랙큐브", "!잠재", "!잠재능력", "!큐브사용"]:

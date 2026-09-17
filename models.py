@@ -47,6 +47,7 @@ class User(Base):
     auto_mining_end_time = Column(Float, default=0.0, nullable=True)
     auto_mining_session_mined = Column(Float, default=0.0, nullable=False)
     auto_mining_session_points = Column(Integer, default=0, nullable=False)
+    cube_count = Column(Integer, default=0, nullable=False)
     cube_fragments = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 

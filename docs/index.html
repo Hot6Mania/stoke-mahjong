@@ -1211,11 +1211,12 @@
                 </div>
                 <h4 style="margin: 24px 0 10px; font-size: 16px; color: #a855f7;">🔮 메이플스토리 큐브(Cube) 잠재능력 3줄 시스템</h4>
                 <div class="callout" style="background: rgba(168, 85, 247, 0.08); border-left: 4px solid #a855f7; margin-bottom: 16px;">
-                    포인트를 소모하여 곡괭이에 메이플스토리 스타일의 <strong>잠재능력 3줄</strong>을 부여하고 재설정할 수 있습니다.<br>
-                    <strong>1회 큐브 비용은 15,000P</strong>이며, 소모된 모든 비용은 <strong>100% 국고 채굴풀로 환원</strong>됩니다!<br>
-                    또한 큐브를 1회 돌릴 때마다 <strong>🧩 큐브 조각 1개</strong>가 지급되며, 10개를 모아 <code>!큐브조각</code>을 사용하면 <strong>15,000P를 전액 페이백 환급</strong>받을 수 있습니다.<br><br>
-                    • 🔮 <strong>큐브 명령어</strong> : <code>!큐브 [장비번호]</code> (번호 생략 시 현재 장착 중인 곡괭이 재설정)<br>
-                    • 🧩 <strong>조각 교환</strong> : <code>!큐브조각</code> (조각 10개 ➔ 15,000P 현금 즉시 지급)
+                    포인트를 소모하여 상점에서 미라클 큐브를 구매하고, 곡괭이에 메이플스토리 스타일의 <strong>잠재능력 3줄</strong>을 부여하고 재설정할 수 있습니다.<br>
+                    <strong>큐브 가격은 1개당 15,000P</strong>이며, 구매 시 지불된 모든 비용은 <strong>100% 국고 채굴풀로 환원</strong>됩니다!<br>
+                    보유한 큐브를 1개씩 사용하여 잠재능력을 돌릴 수 있으며, 1회 돌릴 때마다 <strong>🧩 큐브 조각 1개</strong>가 지급됩니다. 10개를 모아 <code>!큐브조각</code>을 사용하면 <strong>15,000P를 전액 페이백 환급</strong>받을 수 있습니다.<br><br>
+                    • 🛒 <strong>큐브 구매</strong> : <code>!큐브구매 [수량/최대]</code> (1개당 15,000P, 쟁여두기 가능)<br>
+                    • 🔮 <strong>큐브 사용</strong> : <code>!큐브 [장비번호]</code> (보유 큐브 1개 소모, 번호 생략 시 장착 곡괭이 재설정)<br>
+                    • 🧩 <strong>조각 교환</strong> : <code>!큐브조각</code> (조각 10개 ➔ 15,000P 현금 즉시 환급)
                 </div>
 
                 <div class="table-responsive" style="margin-bottom: 20px;">
@@ -1510,6 +1511,18 @@
                     <div class="cmd-box" onclick="copyCommand('!강화표')">
                         <div class="cmd-code">!강화표 <span class="copy-icon">📋 복사</span></div>
                         <div class="cmd-desc">메이플 0~25성 스타포스 강화 확률표, 구간별 하락/파괴 룰 안내 (!곡괭이목록)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!큐브구매 10')">
+                        <div class="cmd-code">!큐브구매 [수량] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">상점에서 미라클 큐브 구매 (1개당 15,000P ➔ 100% 국고 상금풀 적립, 쟁여두기 가능)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!큐브')">
+                        <div class="cmd-code">!큐브 [장비번호] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">보유 큐브 1개를 소모하여 잠재능력 3줄 재설정 및 등급 승급 도전 (조각 1개 획득)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!큐브조각')">
+                        <div class="cmd-code">!큐브조각 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">큐브 사용 시 모은 큐브 조각 10개를 15,000P 현금으로 100% 페이백 환급</div>
                     </div>
                     <div class="cmd-box" onclick="copyCommand('!피버')">
                         <div class="cmd-code">!피버 <span class="copy-icon">📋 복사</span></div>

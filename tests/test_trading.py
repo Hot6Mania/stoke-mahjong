@@ -2422,8 +2422,44 @@ def test_equipment_listing_buy_transfer_starforce(db_session):
     assert seller.points == initial_seller_pts + (20000 - details["tax_fee"])
 
 
+def test_cube_purchase_and_validation(db_session):
+    """Test execute_buy_cubes validation, debt checking, batch buying, and treasury pool credit."""
+    uid = "cube_buy_tester"
+    uname = "큐브구매테스터"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 100000
+    state = te.get_market_state(db_session)
+    init_treasury = state.treasury_pool
+
+    # 1. Buy 2 cubes
+    ok, reply, details = te.execute_buy_cubes(db_session, uid, uname, "2")
+    assert ok is True
+    assert details["quantity"] == 2
+    assert details["total_cost"] == 30000
+    assert user.cube_count == 2
+    assert user.points == 70000
+    assert state.treasury_pool == init_treasury + 30000
+    assert "구매 완료" in reply
+
+    # 2. Buy with invalid quantity
+    ok_inv, reply_inv, _ = te.execute_buy_cubes(db_session, uid, uname, "abc")
+    assert ok_inv is False
+    assert "사용법" in reply_inv
+
+    # 3. Buy with insufficient points
+    ok_insuf, reply_insuf, _ = te.execute_buy_cubes(db_session, uid, uname, "100")
+    assert ok_insuf is False
+    assert "부족" in reply_insuf
+
+    # 4. Buy all-in / 최대
+    ok_max, reply_max, det_max = te.execute_buy_cubes(db_session, uid, uname, "최대")
+    assert ok_max is True
+    assert det_max["quantity"] == 70000 // te.CUBE_COST  # 4 cubes (60,000P)
+    assert user.cube_count == 2 + 4
+
+
 def test_cube_first_use_and_promotion(db_session):
-    """Test first cube on NONE potential equipment promotes to RARE 100%."""
+    """Test pre-purchase requirement and first cube on NONE potential equipment promotes to RARE 100%."""
     uid = "cube_tester_1"
     uname = "큐브테스터1"
     user = te.get_or_create_user(db_session, uid, uname)
@@ -2434,14 +2470,26 @@ def test_cube_first_use_and_promotion(db_session):
     eq = items[0]
     assert eq.potential_tier == "NONE"
 
-    # Use cube
+    # 1. Use without cubes -> must fail with purchase guide
+    ok_fail, reply_fail, _ = te.execute_cube_use(db_session, uid, uname)
+    assert ok_fail is False
+    assert "보유한 큐브가 없습니다" in reply_fail
+    assert "!큐브구매" in reply_fail
+
+    # 2. Purchase 1 cube
+    ok_buy, reply_buy, det_buy = te.execute_buy_cubes(db_session, uid, uname, "1")
+    assert ok_buy is True
+    assert user.cube_count == 1
+    assert user.points == 50000 - te.CUBE_COST
+    assert state.treasury_pool == initial_treasury + te.CUBE_COST
+
+    # 3. Use cube
     ok, reply, details = te.execute_cube_use(db_session, uid, uname)
     assert ok is True
     assert details["old_tier"] == "NONE"
     assert details["new_tier"] == "RARE"
     assert details["promoted"] is True
-    assert user.points == 50000 - te.CUBE_COST
-    assert state.treasury_pool == initial_treasury + te.CUBE_COST
+    assert user.cube_count == 0
     assert user.cube_fragments == 1
     assert eq.potential_tier == "RARE"
     assert eq.pity_count == 0
@@ -2462,6 +2510,7 @@ def test_cube_pity_progression(db_session, monkeypatch):
     uname = "천장테스터"
     user = te.get_or_create_user(db_session, uid, uname)
     user.points = 10000000
+    user.cube_count = 10
     items = te.ensure_user_equipment(db_session, user)
     eq = items[0]
 
@@ -2481,6 +2530,7 @@ def test_cube_pity_progression(db_session, monkeypatch):
     assert eq.pity_count == 0
 
     # 2. EPIC -> UNIQUE at pity 42
+    user.cube_count = 10
     eq.potential_tier = "EPIC"
     eq.pity_count = 41
     db_session.commit()
@@ -2493,6 +2543,7 @@ def test_cube_pity_progression(db_session, monkeypatch):
     assert eq.pity_count == 0
 
     # 3. UNIQUE -> LEGENDARY at pity 107
+    user.cube_count = 10
     eq.potential_tier = "UNIQUE"
     eq.pity_count = 106
     db_session.commit()
@@ -2641,25 +2692,44 @@ def test_cube_casino_and_starforce_effects(db_session, monkeypatch):
 
 
 def test_cube_chat_commands(db_session):
-    """Test !큐브 and !큐브조각 via command_handler."""
+    """Test !큐브구매, !큐브, and !큐브조각 via command_handler."""
     uid = "chat_cmd_cube_user"
     uname = "채팅큐브유저"
     user = te.get_or_create_user(db_session, uid, uname)
     user.points = 100000
     items = te.ensure_user_equipment(db_session, user)
 
-    # 1. !큐브 command
+    # 1. !큐브 command without cube -> should fail and guide to !큐브구매
+    reply_fail, ev_fail = ch.handle_chat_command(db_session, uid, uname, "!큐브")
+    assert "보유한 큐브가 없습니다" in reply_fail
+    assert "!큐브구매" in reply_fail
+    assert ev_fail is None
+
+    # 2. !큐브구매 command
+    reply_buy, ev_buy = ch.handle_chat_command(db_session, uid, uname, "!큐브구매 2")
+    assert "미라클 큐브 구매 완료" in reply_buy
+    assert ev_buy is not None
+    assert ev_buy["type"] == "cube_buy"
+    assert ev_buy["data"]["cube_count"] == 2
+
+    # 3. !내정보 includes cube count
+    reply_info, _ = ch.handle_chat_command(db_session, uid, uname, "!내정보")
+    assert "큐브: 2개" in reply_info
+
+    # 4. !큐브 command with cube -> succeeds and consumes 1 cube
     reply, event = ch.handle_chat_command(db_session, uid, uname, "!큐브")
     assert "미라클 큐브 사용" in reply
     assert event is not None
     assert event["type"] == "cube_use"
+    assert event["data"]["cube_count"] == 1
 
-    # 2. Check pickaxe view includes potential
+    # 5. Check pickaxe view includes potential & cubes
     reply_pick, _ = ch.handle_chat_command(db_session, uid, uname, "!곡괭이")
     assert "잠재능력:" in reply_pick
+    assert "보유 큐브:" in reply_pick
     assert "큐브 조각:" in reply_pick
 
-    # 3. Exchange fragments command (!큐브조각)
+    # 6. Exchange fragments command (!큐브조각)
     user.cube_fragments = 10
     db_session.commit()
     reply_frag, ev_frag = ch.handle_chat_command(db_session, uid, uname, "!큐브조각")

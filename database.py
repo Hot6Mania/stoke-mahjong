@@ -69,6 +69,7 @@ def init_db():
                 "ALTER TABLE users ADD COLUMN auto_mining_end_time FLOAT DEFAULT 0.0",
                 "ALTER TABLE users ADD COLUMN auto_mining_session_mined FLOAT DEFAULT 0.0",
                 "ALTER TABLE users ADD COLUMN auto_mining_session_points INTEGER DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN cube_count INTEGER DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN cube_fragments INTEGER DEFAULT 0",
                 "ALTER TABLE user_equipments ADD COLUMN potential_tier VARCHAR DEFAULT 'NONE'",
                 "ALTER TABLE user_equipments ADD COLUMN potential_line_1 VARCHAR",
