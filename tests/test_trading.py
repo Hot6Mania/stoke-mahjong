@@ -814,6 +814,11 @@ def test_product_quote_stripping_and_10x_5x_trading(db_session):
     assert te.parse_product_type("5") is None
     assert te.parse_product_type("5배") == ProductType.FIVE_X
     assert te.parse_product_type("10배") == ProductType.TEN_X
+    assert te.parse_product_type("10레") == ProductType.TEN_X
+    assert te.parse_product_type("10버") == ProductType.TEN_X
+    assert te.parse_product_type("10레버") == ProductType.TEN_X
+    assert te.parse_product_type("5레") == ProductType.FIVE_X
+    assert te.parse_product_type("5버") == ProductType.FIVE_X
     assert te.parse_product_type("10X_INV") == ProductType.TEN_X_INV
     assert te.parse_product_type("5X_INV") == ProductType.FIVE_X_INV
 
@@ -838,6 +843,23 @@ def test_product_quote_stripping_and_10x_5x_trading(db_session):
     assert r3 is not None
     assert "✅ [매수 체결] [구매 완료]" in r3
     assert "5X" in r3
+
+    # Reset balance for next tests
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 50000
+    db_session.commit()
+
+    # Buy with 10레 shorthand
+    r_le, ev_le = ch.handle_chat_command(db_session, uid, uname, "!매수 10레 1")
+    assert r_le is not None
+    assert "✅ [매수 체결] [구매 완료]" in r_le
+    assert "10X" in r_le
+
+    # Direct buy with !10버 1
+    r_beo, ev_beo = ch.handle_chat_command(db_session, uid, uname, "!10버 1")
+    assert r_beo is not None
+    assert "✅ [매수 체결] [구매 완료]" in r_beo
+    assert "10X" in r_beo
 
     # Sell 10X
     r4, ev4 = ch.handle_chat_command(db_session, uid, uname, "!매도 10X 1")

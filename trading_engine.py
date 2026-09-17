@@ -31,6 +31,9 @@ PRODUCT_SYNONYMS = {
     "1X": ProductType.ONE_X,
     "1x": ProductType.ONE_X,
     "1배": ProductType.ONE_X,
+    "1레": ProductType.ONE_X,
+    "1버": ProductType.ONE_X,
+    "1레버": ProductType.ONE_X,
     "기본": ProductType.ONE_X,
     "기본주": ProductType.ONE_X,
     "현물": ProductType.ONE_X,
@@ -38,9 +41,11 @@ PRODUCT_SYNONYMS = {
     "2X": ProductType.TWO_X,
     "2x": ProductType.TWO_X,
     "2배": ProductType.TWO_X,
+    "2레": ProductType.TWO_X,
+    "2버": ProductType.TWO_X,
+    "2레버": ProductType.TWO_X,
     "2배레버": ProductType.TWO_X,
     "2배레버리지": ProductType.TWO_X,
-    "2레버": ProductType.TWO_X,
     "2X레버": ProductType.TWO_X,
     "레버리지": ProductType.TWO_X,
     "레버": ProductType.TWO_X,
@@ -48,25 +53,31 @@ PRODUCT_SYNONYMS = {
     "3X": ProductType.THREE_X,
     "3x": ProductType.THREE_X,
     "3배": ProductType.THREE_X,
+    "3레": ProductType.THREE_X,
+    "3버": ProductType.THREE_X,
+    "3레버": ProductType.THREE_X,
     "3배레버": ProductType.THREE_X,
     "3배레버리지": ProductType.THREE_X,
-    "3레버": ProductType.THREE_X,
     "3X레버": ProductType.THREE_X,
 
     "5X": ProductType.FIVE_X,
     "5x": ProductType.FIVE_X,
     "5배": ProductType.FIVE_X,
+    "5레": ProductType.FIVE_X,
+    "5버": ProductType.FIVE_X,
+    "5레버": ProductType.FIVE_X,
     "5배레버": ProductType.FIVE_X,
     "5배레버리지": ProductType.FIVE_X,
-    "5레버": ProductType.FIVE_X,
     "5X레버": ProductType.FIVE_X,
 
     "10X": ProductType.TEN_X,
     "10x": ProductType.TEN_X,
     "10배": ProductType.TEN_X,
+    "10레": ProductType.TEN_X,
+    "10버": ProductType.TEN_X,
+    "10레버": ProductType.TEN_X,
     "10배레버": ProductType.TEN_X,
     "10배레버리지": ProductType.TEN_X,
-    "10레버": ProductType.TEN_X,
     "10X레버": ProductType.TEN_X,
 
     "INV": ProductType.INV,
@@ -147,9 +158,9 @@ def parse_product_type(text: str) -> Optional[ProductType]:
     if cleaned in PRODUCT_SYNONYMS:
         return PRODUCT_SYNONYMS[cleaned]
 
-    # Handle forms like "10x", "5x", "10배", "5배"
+    # Handle forms like "10x", "5x", "10배", "5배", "10레", "10버", "10레버"
     upper_c = cleaned.upper()
-    for suffix in ["X", "배"]:
+    for suffix in ["X", "배", "레", "버", "레버", "배레버"]:
         if upper_c.endswith(suffix):
             prefix = upper_c[:-len(suffix)].strip()
             if prefix in ["1", "2", "3", "5", "10"]:
