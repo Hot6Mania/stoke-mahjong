@@ -235,10 +235,30 @@ def handle_chat_command(
             else: # buy, all-in, margin buy
                 return "⚠️ [거래 마감] 경기가 진행 중이므로 매수할 수 없습니다. (조회, 채굴, 대출 명령만 가능)", None
 
-    # 4. Direct All-in Buy Order (!올인, !allin, !풀매수, !전액매수, !매수올인, !구매올인)
-    if cmd in ["!올인", "!allin", "!풀매수", "!전액매수", "!매수올인", "!구매올인"]:
+    # 4. Direct All-in Buy Order (!올인, !allin, !풀매수, !전액매수, !매수올인, !구매올인, !올인10배, !풀매수10X 등)
+    allin_cmds = ["!올인", "!allin", "!풀매수", "!전액매수", "!매수올인", "!구매올인"]
+    matched_allin_cmd = None
+    allin_rem_product = None
+    for ac in allin_cmds:
+        if cmd == ac:
+            matched_allin_cmd = ac
+            break
+        elif cmd.startswith(ac):
+            rem = cmd[len(ac):].strip()
+            p_cand = parse_product_type(f"{rem}X" if rem in ["1", "2", "3", "5", "10"] else rem)
+            if p_cand:
+                matched_allin_cmd = ac
+                allin_rem_product = p_cand.value
+                break
+
+    if matched_allin_cmd:
+        state = get_market_state(db)
+        if is_market_locked(db, state):
+            db.rollback()
+            return "⚠️ [거래 마감] 경기가 진행 중이므로 매수할 수 없습니다. (조회, 채굴, 대출 명령만 가능)", None
+
         is_margin = False
-        product_str = None
+        product_str = allin_rem_product
         for t in tokens[1:]:
             clean_t = t.strip().strip("'\"`’‘“”,;[]()").strip()
             parsed_prod = parse_product_type(clean_t)
@@ -343,6 +363,17 @@ def handle_chat_command(
 
         t1 = tokens[1].strip().strip("'\"`’‘“”,;[]()").strip()
         t2 = tokens[2].strip().strip("'\"`’‘“”,;[]()").strip() if len(tokens) >= 3 else ""
+
+        # Check if t1 has attached all-in suffix (e.g. 10배올인, 10X올인, 10배풀매수, 10롱올인)
+        for aiw in ["올인", "풀매수", "전액", "전액매수", "올인매수", "빚올인", "빚투", "전부", "다", "최대"]:
+            if t1.endswith(aiw) and len(t1) > len(aiw):
+                prod_part = t1[:-len(aiw)].strip()
+                p_cand = parse_product_type(f"{prod_part}X" if prod_part in ["1", "2", "3", "5", "10"] else prod_part)
+                if p_cand:
+                    t1 = p_cand.value
+                    if not t2:
+                        t2 = aiw
+                    break
 
         p1 = parse_product_type(t1)
         p2 = parse_product_type(t2) if (t2 and not t2.isdigit()) else None
@@ -552,10 +583,28 @@ def handle_chat_command(
             return "🚫 카지노 개장은 스트리머(치즈나베)만 진행할 수 있습니다!", None
         duration = 3.0
         max_bet = 100000
-        if len(tokens) >= 2 and tokens[1].replace(".", "", 1).isdigit():
-            duration = float(tokens[1])
-        if len(tokens) >= 3 and tokens[2].isdigit():
-            max_bet = int(tokens[2])
+        for token in tokens[1:]:
+            clean_tok = token.replace(",", "").strip()
+            if clean_tok.endswith("만"):
+                try:
+                    val = float(clean_tok[:-1])
+                    max_bet = int(val * 10000)
+                    continue
+                except ValueError:
+                    pass
+            if clean_tok.endswith("분"):
+                try:
+                    duration = float(clean_tok[:-1])
+                    continue
+                except ValueError:
+                    pass
+            if clean_tok.replace(".", "", 1).isdigit():
+                num = float(clean_tok)
+                if num >= 1000:
+                    max_bet = int(num)
+                else:
+                    duration = num
+        max_bet = max(100000, max_bet)
         success, reply, details = open_casino(db, duration_minutes=duration, max_bet=max_bet)
         event = {"type": "casino_open", "data": details} if success and details else None
         return reply, event

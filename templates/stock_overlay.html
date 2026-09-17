@@ -513,9 +513,10 @@
                 const d = data.data;
                 if (d) {
                     const feeStr = d.fee ? ` (수수료 ${Number(d.fee).toLocaleString()}P 국고 적립)` : '';
+                    const totalAmt = d.cost || d.payout || (d.quantity * (d.price || currentStockPrice));
                     const toastText = type === 'trade_buy'
-                        ? `🛒 [구매 완료] ${d.username}님이 ${d.product_type} ${d.quantity}주를 구매했습니다! (체결가: ${Number(d.price || currentStockPrice).toLocaleString()}P${feeStr})`
-                        : `💰 [판매 완료] ${d.username}님이 ${d.product_type} ${d.quantity}주를 판매했습니다! (체결가: ${Number(d.price || currentStockPrice).toLocaleString()}P${feeStr})`;
+                        ? `🛒 [구매 완료] ${d.username}님이 ${d.product_type} ${d.quantity}주(총 ${Number(totalAmt).toLocaleString()}P)를 구매했습니다! (단가: ${Number(d.price || currentStockPrice).toLocaleString()}P${feeStr})`
+                        : `💰 [판매 완료] ${d.username}님이 ${d.product_type} ${d.quantity}주(총 ${Number(totalAmt).toLocaleString()}P)를 판매했습니다! (단가: ${Number(d.price || currentStockPrice).toLocaleString()}P${feeStr})`;
                     showTickerToast(toastText, 'trade', 7000);
                     if (d.treasury_pool !== undefined && treasuryValEl) {
                         treasuryValEl.textContent = `${Math.floor(d.treasury_pool).toLocaleString()}P`;

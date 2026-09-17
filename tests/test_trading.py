@@ -1269,4 +1269,68 @@ def test_abbreviation_guide_command(db_session):
     help_reply, _ = ch.handle_chat_command(db_session, uid, uname, "!명령어")
     assert "!약어" in help_reply
 
+def test_allin_purchase_message_and_casino_limit_100k(db_session):
+    """Verify all-in purchases display total amount (총 얼마P) and casino limit defaults to 100,000P."""
+    uid = "allin_msg_user"
+    uname = "올인메시지러"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 50000
+    db_session.commit()
+
+    # 1. Buying by count displays total purchase amount
+    r_cnt, ev_cnt = ch.handle_chat_command(db_session, uid, uname, "!10배 1주")
+    assert "구매 완료" in r_cnt
+    assert "총" in r_cnt
+    assert "P" in r_cnt
+
+    # 2. Buying with all-in (!10배 올인) displays total purchase amount and all-in label
+    user.points = 50000
+    db_session.commit()
+    r_allin1, ev_allin1 = ch.handle_chat_command(db_session, uid, uname, "!10배 올인")
+    assert "구매 완료" in r_allin1
+    assert "전액 올인" in r_allin1
+    assert "총" in r_allin1
+    assert "P" in r_allin1
+
+    # 3. Attached form !10배올인 displays total amount and all-in label
+    user.points = 50000
+    db_session.commit()
+    r_allin2, ev_allin2 = ch.handle_chat_command(db_session, uid, uname, "!10배올인")
+    assert "구매 완료" in r_allin2
+    assert "전액 올인" in r_allin2
+    assert "총" in r_allin2
+
+    # 4. !올인10배 and !풀매수10X attached forms
+    user.points = 50000
+    db_session.commit()
+    r_allin3, ev_allin3 = ch.handle_chat_command(db_session, uid, uname, "!올인10배")
+    assert "구매 완료" in r_allin3
+    assert "전액 올인" in r_allin3
+    assert "10X" in r_allin3
+
+    # 5. !매수 10배올인 attached form
+    user.points = 50000
+    db_session.commit()
+    r_allin4, ev_allin4 = ch.handle_chat_command(db_session, uid, uname, "!매수 10배올인")
+    assert "구매 완료" in r_allin4
+    assert "전액 올인" in r_allin4
+
+    # 6. Casino limit: legacy 10,000 in DB is auto-upgraded to 100,000
+    state = te.get_market_state(db_session)
+    state.casino_max_bet = 10000
+    state.casino_is_open = True
+    db_session.commit()
+
+    c_state = te.get_casino_state(db_session)
+    assert c_state["max_bet"] >= 100000
+
+    # Streamer opening casino with !카지노오픈 defaults to 100,000P
+    r_open, _ = ch.handle_chat_command(db_session, "admin", "스트리머", "!카지노오픈")
+    assert "100,000P" in r_open
+
+    # Streamer opening casino with Korean unit: !카지노오픈 10만
+    r_open2, _ = ch.handle_chat_command(db_session, "admin", "스트리머", "!카지노오픈 10만")
+    assert "100,000P" in r_open2
+
+
 

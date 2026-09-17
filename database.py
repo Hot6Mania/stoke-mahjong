@@ -89,7 +89,7 @@ def init_db():
             if getattr(state, "day_open_price", None) is None or state.day_open_price <= 0:
                 state.day_open_price = state.current_price or 2340
                 updated = True
-            if getattr(state, "casino_max_bet", None) is None or state.casino_max_bet <= 10000:
+            if getattr(state, "casino_max_bet", None) is None or state.casino_max_bet < 100000:
                 state.casino_max_bet = 100000
                 updated = True
             if updated:

@@ -742,7 +742,8 @@
                         if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
                         if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
                         const feeStr = msg.data.fee ? ` (수수료 ${Number(msg.data.fee).toLocaleString()}P 국고 적립)` : "";
-                        showTickerMessage("trade", `🛒 [구매 완료] <strong>${msg.data.username}</strong>님이 ${msg.data.product_type} ${msg.data.quantity}주를 구매했습니다! (${Number(msg.data.cost).toLocaleString()}P${feeStr})`, 7000);
+                        const totalCost = msg.data.cost || (msg.data.quantity * (msg.data.price || 0));
+                        showTickerMessage("trade", `🛒 [구매 완료] <strong>${msg.data.username}</strong>님이 ${msg.data.product_type} ${msg.data.quantity}주(총 ${Number(totalCost).toLocaleString()}P)를 구매했습니다! (단가: ${Number(msg.data.price || 0).toLocaleString()}P${feeStr})`, 7000);
                     }
 
                     if (msg.type === "donation_charged" && msg.data) {
@@ -755,7 +756,8 @@
                         if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
                         if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
                         const feeStr = msg.data.fee ? ` (수수료 ${Number(msg.data.fee).toLocaleString()}P 국고 적립)` : "";
-                        showTickerMessage("trade", `💰 [판매 완료] <strong>${msg.data.username}</strong>님이 ${msg.data.product_type} ${msg.data.quantity}주를 판매했습니다! (+${Number(msg.data.payout).toLocaleString()}P${feeStr})`, 7000);
+                        const totalPayout = msg.data.payout || (msg.data.quantity * (msg.data.price || 0));
+                        showTickerMessage("trade", `💰 [판매 완료] <strong>${msg.data.username}</strong>님이 ${msg.data.product_type} ${msg.data.quantity}주(총 ${Number(totalPayout).toLocaleString()}P)를 판매했습니다! (단가: ${Number(msg.data.price || 0).toLocaleString()}P${feeStr})`, 7000);
                     }
 
                     if (msg.type === "casino_open" && msg.data) {

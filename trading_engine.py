@@ -454,7 +454,13 @@ def execute_buy(
     db.refresh(pos)
 
     qty_display = f"{int(quantity)}" if quantity.is_integer() else f"{quantity:.2f}"
-    msg = f"✅ [매수 체결] [구매 완료] {user.username}님이 {product_type.value} {qty_display}주를 구매했습니다! (매수 완료 | 체결가: {current_price:,}P, 수수료: {fee:,}P 국고 적립, 잔여: {user.points:,}P)"
+    is_allin = clean_qty_str in ["올인", "all", "전액", "풀매수", "올인매수", "전액매수", "최대", "전부", "다"]
+    allin_label = "전액 올인 " if is_allin else ""
+    msg = (
+        f"✅ [매수 체결] [구매 완료] {user.username}님이 {product_type.value} {qty_display}주(총 {cost:,}P)를 "
+        f"{allin_label}구매했습니다! "
+        f"(매수 완료 | 체결단가: {current_price:,}P, 수수료: {fee:,}P 국고 적립, 잔여: {user.points:,}P)"
+    )
     return True, msg, {
         "user_id": user.id,
         "username": user.username,
@@ -575,13 +581,13 @@ def execute_margin_buy(
     if borrow_amount > 0:
         msg = (
             f"💳🔥 [빚투 / 신용 올인 체결] {user.username}님 국고 대출 {borrow_amount:,}P 실행 후 "
-            f"{product_type.value} {qty_display}주를 올인 구매했습니다! (풀매수 완료 | "
-            f"체결가: {current_price:,}P | 총 채무: {user.debt:,}P | 잔여 현금: {user.points:,}P)"
+            f"{product_type.value} {qty_display}주(총 {cost:,}P)를 전액 올인 구매했습니다! (풀매수 완료 | "
+            f"체결단가: {current_price:,}P | 총 채무: {user.debt:,}P | 잔여 현금: {user.points:,}P)"
         )
     else:
         msg = (
-            f"✅ [매수 체결] [구매 완료] {user.username}님이 {product_type.value} {qty_display}주를 올인 구매했습니다! (매수 완료 | "
-            f"체결가: {current_price:,}P, 수수료: {fee:,}P 국고 적립, 잔여: {user.points:,}P)"
+            f"✅ [매수 체결] [구매 완료] {user.username}님이 {product_type.value} {qty_display}주(총 {cost:,}P)를 전액 올인 구매했습니다! (매수 완료 | "
+            f"체결단가: {current_price:,}P, 수수료: {fee:,}P 국고 적립, 잔여: {user.points:,}P)"
         )
 
     return True, msg, {
@@ -1900,7 +1906,15 @@ def get_casino_state(db: Session) -> Dict[str, Any]:
     state = get_market_state(db)
     is_open = bool(getattr(state, "casino_is_open", False))
     end_time = float(getattr(state, "casino_end_time", 0.0) or 0.0)
-    max_bet = int(getattr(state, "casino_max_bet", DEFAULT_CASINO_MAX_BET) or DEFAULT_CASINO_MAX_BET)
+    raw_max = getattr(state, "casino_max_bet", DEFAULT_CASINO_MAX_BET)
+    max_bet = int(raw_max) if raw_max and int(raw_max) > 0 else DEFAULT_CASINO_MAX_BET
+    if max_bet <= 10000:
+        max_bet = 100000
+        state.casino_max_bet = 100000
+        try:
+            db.commit()
+        except Exception:
+            pass
 
     now = time.time()
     if is_open and end_time > 0 and now >= end_time:
@@ -1929,6 +1943,8 @@ def open_casino(db: Session, duration_minutes: float = 3.0, max_bet: int = 10000
     state = get_market_state(db)
     now = time.time()
     end_time = (now + duration_minutes * 60.0) if duration_minutes > 0 else 0.0
+    if not max_bet or max_bet <= 10000:
+        max_bet = 100000
     max_bet = max(MIN_CASINO_BET, int(max_bet))
 
     state.casino_is_open = True
@@ -1994,7 +2010,9 @@ def execute_slot_gamble(
 
     # Parse bet amount
     clean_bet = str(bet_token).strip().lower()
-    max_bet = c_state["max_bet"]
+    max_bet = c_state.get("max_bet", 100000)
+    if max_bet <= 10000:
+        max_bet = 100000
     if clean_bet in ["올인", "all", "풀베팅", "전액", "최대"]:
         bet = min(user.points, max_bet)
     else:
@@ -2147,7 +2165,9 @@ def execute_dice_gamble(
 
     # Parse bet amount
     clean_bet = str(bet_token).strip().lower()
-    max_bet = c_state["max_bet"]
+    max_bet = c_state.get("max_bet", 100000)
+    if max_bet <= 10000:
+        max_bet = 100000
     if clean_bet in ["올인", "all", "풀베팅", "전액", "최대"]:
         bet = min(user.points, max_bet)
     else:
