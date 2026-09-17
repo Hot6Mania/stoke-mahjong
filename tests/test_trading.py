@@ -1591,10 +1591,18 @@ def test_random_mining_tiers_structure():
         assert t["multiplier"] > 0
 
 def test_mining_tier_coal_immunity_and_jackpot_rate():
-    # 1. Test 15+ pickaxe level never rolls Coal (C)
-    for _ in range(200):
+    # 1. Test 15+ pickaxe level never rolls Coal (C) and has generous high tier rates
+    results = []
+    for _ in range(500):
         t = te.roll_mining_tier(crit_bonus=45.0, pickaxe_level=15)
         assert t["code"] != "C", "15성 이상 곡괭이는 석탄(C) 광맥이 나오지 않아야 합니다."
+        results.append(t["code"])
+
+    # 15성 여유로운 보정: 잭팟(EX+UR++UR) >= 12% 및 고등급(SR+) >= 50%
+    jackpot_count = sum(1 for c in results if c in ["EX", "UR+", "UR"])
+    high_tier_count = sum(1 for c in results if c in ["EX", "UR+", "UR", "SSR", "SR"])
+    assert jackpot_count / len(results) >= 0.12, f"15성 잭팟 확률({jackpot_count/len(results):.2%})이 기대치보다 낮습니다."
+    assert high_tier_count / len(results) >= 0.50, f"15성 고등급 출현율({high_tier_count/len(results):.2%})이 기대치보다 낮습니다."
 
     # 2. Test pickaxe info contains coal immunity description for 15+
     info_14 = te.get_pickaxe_info(14)
@@ -2313,7 +2321,7 @@ def test_starforce_fever_frequent_intervals(db_session):
 
 
 
-def test_cooldown_command(db_session):
+def test_cooldown_command(db_session, monkeypatch):
     """Test !쿨타임 command and its aliases (!쿨, !cooldown, !cd, !채굴쿨)."""
     uid = "cooldown_tester"
     uname = "쿨타임체커"
@@ -2334,7 +2342,15 @@ def test_cooldown_command(db_session):
         r_alias, _ = ch.handle_chat_command(db_session, uid, uname, alias)
         assert "쿨타임 & 타이머 현황" in r_alias
 
-    # Mine once to put pickaxe on cooldown
+    # Mine once to put pickaxe on cooldown (mock to N tier so EX cooldown reduction doesn't reset it)
+    monkeypatch.setattr(te, "roll_mining_tier", lambda *a, **kw: {
+        "code": "N",
+        "name": "⛏️ [평범한 구리 광맥 일반 채굴 (37.0%)]",
+        "multiplier": 1.0,
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0,
+    })
     ok_mine, r_mine, _ = te.execute_mining(db_session, uid, uname)
     assert ok_mine is True
 

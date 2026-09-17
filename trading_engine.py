@@ -2168,27 +2168,46 @@ def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[st
     for tier in MINING_TIERS:
         code = tier["code"]
         base_prob = tier["prob"]
-        if code == "EX":
-            w = base_prob + cb * 0.028      # 천화 신화 잭팟
-        elif code == "UR+":
-            w = base_prob + cb * 0.070      # 구련보등 더블역만
-        elif code == "UR":
-            w = base_prob + cb * 0.120      # 국사무쌍 역만
-        elif code == "SSR":
-            w = base_prob + cb * 0.180      # 다이아몬드 광맥
-        elif code == "SR":
-            w = base_prob + cb * 0.180      # 황금 광맥
-        elif code == "R":
-            w = base_prob + cb * 0.100      # 은 광맥
-        elif code == "N":
-            w = max(0.0, base_prob - cb * 0.250)  # 일반 구리 광맥 감소율
-        elif code == "C":
-            if is_golden_or_above:
-                w = 0.0  # ★15성(황금 곡괭이) 이상은 석탄 광맥 0% 완전 면제!
+        if is_golden_or_above:
+            # ★ 15성(황금 곡괭이) 이상 여유롭고 풍성한 고등급 채굴 보정
+            if code == "EX":
+                w = base_prob + cb * 0.048      # 천화 신화 잭팟 (~2.3% ~ 4.0%)
+            elif code == "UR+":
+                w = base_prob + cb * 0.115      # 구련보등 더블역만 (~5.9% ~ 9.8%)
+            elif code == "UR":
+                w = base_prob + cb * 0.190      # 국사무쌍 역만 (~10.4% ~ 16.5%)
+            elif code == "SSR":
+                w = base_prob + cb * 0.270      # 다이아몬드 광맥 (~16.9% ~ 24.6%)
+            elif code == "SR":
+                w = base_prob + cb * 0.260      # 황금 광맥 (~25.3% ~ 28.7%)
+            elif code == "R":
+                w = base_prob + cb * 0.050      # 은 광맥
+            elif code == "N":
+                w = max(0.0, base_prob - cb * 0.500)  # 일반 구리 광맥 빠른 소멸
+            elif code == "C":
+                w = 0.0  # ★15성(황금 곡괭이) 이상 석탄 광맥 0% 완전 면제
             else:
-                w = max(0.0, base_prob - cb * 0.200)  # 15성 미만 석탄 꽝 감소율
+                w = base_prob
         else:
-            w = base_prob
+            # 15성 미만 일반 성장 보정
+            if code == "EX":
+                w = base_prob + cb * 0.028      # 천화 신화 잭팟
+            elif code == "UR+":
+                w = base_prob + cb * 0.070      # 구련보등 더블역만
+            elif code == "UR":
+                w = base_prob + cb * 0.120      # 국사무쌍 역만
+            elif code == "SSR":
+                w = base_prob + cb * 0.180      # 다이아몬드 광맥
+            elif code == "SR":
+                w = base_prob + cb * 0.180      # 황금 광맥
+            elif code == "R":
+                w = base_prob + cb * 0.100      # 은 광맥
+            elif code == "N":
+                w = max(0.0, base_prob - cb * 0.250)  # 일반 구리 광맥 감소율
+            elif code == "C":
+                w = max(0.0, base_prob - cb * 0.200)  # 석탄 꽝 감소율
+            else:
+                w = base_prob
         weights.append(max(0.0, w))
 
     total_w = sum(weights)
