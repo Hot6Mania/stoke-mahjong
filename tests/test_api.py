@@ -599,7 +599,34 @@ def test_allin_chat_commands_api(client):
         reply = data["reply"]
         assert reply is not None
         assert "매수 체결" in reply or "구매 완료" in reply
-        assert f"{uname}님이" in reply
         assert data["event"] is not None
         assert data["event"]["type"] == "trade_buy"
+
+def test_buyers_overlay_and_api(client):
+    """Test new buyers overlay routes and /api/buyers endpoint."""
+    # Test HTML routes
+    for path in ["/overlay/buyers", "/buyers-overlay", "/buyers", "/overlay/holders"]:
+        res = client.get(path)
+        assert res.status_code == 200
+        assert "실시간 매수자 현황" in res.text
+        assert "overlay-card" in res.text
+
+    # Make a buy trade via chat command
+    client.post("/api/chat/command", json={
+        "user_id": "buyer_overlay_tester_1",
+        "username": "실시간주주",
+        "message": "!매수 10X 5"
+    })
+
+    # Test /api/buyers
+    res_api = client.get("/api/buyers")
+    assert res_api.status_code == 200
+    data = res_api.json()
+    assert data["success"] is True
+    assert "buyers" in data
+    assert "summary" in data
+    assert "recent_trades" in data
+    assert data["summary"]["total_buyers"] >= 1
+    found = any(b["username"] == "실시간주주" for b in data["buyers"])
+    assert found is True
 

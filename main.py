@@ -97,8 +97,20 @@ def extract_day_start_points(score_str: str) -> Optional[int]:
     return None
 
 # ---------------------------------------------------------
-# 5-Minute Free Trading Window Timer Manager
+# 5-Minute Free Trading Window Timer Manager & Recent Trades
 # ---------------------------------------------------------
+from collections import deque
+recent_trades: deque = deque(maxlen=20)
+
+def record_trade_event(event: Optional[Dict[str, Any]]):
+    if event and event.get("type") in ("trade_buy", "trade_sell"):
+        data = event.get("data") or {}
+        recent_trades.appendleft({
+            "type": event["type"],
+            "data": data,
+            "timestamp": time.time()
+        })
+
 FREE_TRADING_SECONDS = 300 # 5 minutes (300 seconds)
 free_trading_end_time: Optional[float] = None
 free_trading_task: Optional[asyncio.Task] = None
@@ -565,13 +577,15 @@ class ChzzkBot:
                                     try:
                                         reply, event = handle_chat_command(db, user_id, nickname, msg)
                                         if event:
+                                            record_trade_event(event)
                                             # Broadcast trade/order update to OBS overlay immediately
                                             leaderboard = te.get_leaderboard(db, top_n=3)
                                             state = te.get_market_state(db)
                                             await manager.broadcast({
                                                 **event,
                                                 "leaderboard": leaderboard,
-                                                "market_state": serialize_market_state(state)
+                                                "market_state": serialize_market_state(state),
+                                                "recent_trades": list(recent_trades)
                                             })
 
                                         if reply:
@@ -752,6 +766,16 @@ async def get_mahjong_overlay():
     """Serves the Standalone OBS Mahjong Stats Overlay (matching 7500 style)."""
     mahjong_path = os.path.join(TEMPLATES_DIR, "mahjong_overlay.html")
     with open(mahjong_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+@app.get("/overlay/buyers", response_class=HTMLResponse)
+@app.get("/buyers-overlay", response_class=HTMLResponse)
+@app.get("/buyers", response_class=HTMLResponse)
+@app.get("/overlay/holders", response_class=HTMLResponse)
+async def get_buyers_overlay():
+    """Serves the Standalone OBS Current Buyers & Shareholders Overlay."""
+    buyers_path = os.path.join(TEMPLATES_DIR, "buyers_overlay.html")
+    with open(buyers_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1056,12 +1080,14 @@ async def api_chat_command(req: ChatCommandRequest, db=Depends(get_db)):
         asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
 
     if event:
+        record_trade_event(event)
         leaderboard = te.get_leaderboard(db, top_n=3)
         state = te.get_market_state(db)
         await manager.broadcast({
             **event,
             "leaderboard": leaderboard,
-            "market_state": serialize_market_state(state)
+            "market_state": serialize_market_state(state),
+            "recent_trades": list(recent_trades)
         })
 
     return {
@@ -1183,6 +1209,16 @@ async def api_casino_status(db=Depends(get_db)):
 @app.get("/api/leaderboard")
 async def api_get_leaderboard(top_n: int = 3, db=Depends(get_db)):
     return te.get_leaderboard(db, top_n=top_n)
+
+@app.get("/api/buyers")
+async def api_get_buyers(limit: int = 100, db=Depends(get_db)):
+    """GET /api/buyers - Returns real-time list of current buyers/shareholders with positions, valuation, and market breakdown."""
+    data = te.get_current_buyers(db, limit=limit)
+    return {
+        "success": True,
+        **data,
+        "recent_trades": list(recent_trades)
+    }
 
 @app.get("/api/user/{user_id}")
 async def api_get_user(user_id: str, db=Depends(get_db)):

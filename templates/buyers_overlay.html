@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 매수자 & 주주 현황 오버레이</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            color: #ffffff;
+            background: transparent;
+            margin: 0;
+            padding: 16px;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Main Container Card */
+        .overlay-card {
+            width: 520px;
+            max-width: 95vw;
+            max-height: 92vh;
+            background: rgba(15, 23, 42, 0.88);
+            border: 1.5px solid rgba(255, 255, 255, 0.16);
+            border-radius: 16px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 24px rgba(56, 189, 248, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* Header */
+        .card-header {
+            padding: 14px 18px 12px;
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.6) 100%);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .title-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .title-icon {
+            font-size: 20px;
+            filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.5));
+        }
+
+        .title-text {
+            font-size: 17px;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, #ffffff 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            color: #4ade80;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            text-transform: uppercase;
+        }
+
+        .live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background-color: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+            animation: pulseLive 1.5s infinite;
+        }
+
+        @keyframes pulseLive {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px #22c55e; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        /* Stock Price Mini Pill */
+        .stock-price-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .price-val {
+            color: #f8fafc;
+            font-size: 14px;
+            font-weight: 900;
+        }
+
+        .diff-tag {
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .diff-up {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .diff-down {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+
+        .diff-same {
+            background: rgba(148, 163, 184, 0.2);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        /* Summary Stats & Long/Short Bar */
+        .summary-bar {
+            padding: 10px 18px;
+            background: rgba(15, 23, 42, 0.4);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stat-item {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 6px 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 700;
+        }
+
+        .stat-value {
+            font-size: 13px;
+            font-weight: 900;
+            color: #f1f5f9;
+        }
+
+        /* Sentiment Bar */
+        .sentiment-container {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .sentiment-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .long-label {
+            color: #f87171;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .short-label {
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .sentiment-bar-track {
+            width: 100%;
+            height: 7px;
+            background: #1e293b;
+            border-radius: 9999px;
+            overflow: hidden;
+            display: flex;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sentiment-bar-long {
+            background: linear-gradient(90deg, #ef4444, #f97316);
+            height: 100%;
+            transition: width 0.6s ease;
+        }
+
+        .sentiment-bar-short {
+            background: linear-gradient(90deg, #38bdf8, #3b82f6);
+            height: 100%;
+            transition: width 0.6s ease;
+        }
+
+        /* Buyers List */
+        .buyers-list-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            max-height: 480px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+
+        .buyers-list-wrapper::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .buyers-list-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        /* Buyer Row Card */
+        .buyer-row {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .buyer-row:hover {
+            background: rgba(51, 65, 85, 0.7);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateX(2px);
+        }
+
+        .buyer-row.flash {
+            animation: flashAnimation 1.5s ease-out;
+        }
+
+        @keyframes flashAnimation {
+            0% { background: rgba(250, 204, 21, 0.35); border-color: #facc15; }
+            100% { background: rgba(30, 41, 59, 0.6); border-color: rgba(255, 255, 255, 0.08); }
+        }
+
+        .buyer-left {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+        }
+
+        .rank-badge {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 900;
+            flex-shrink: 0;
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .rank-1 {
+            background: linear-gradient(135deg, #eab308, #ca8a04);
+            color: #000;
+            font-weight: 900;
+            box-shadow: 0 0 10px rgba(234, 179, 8, 0.5);
+            border: none;
+        }
+
+        .rank-2 {
+            background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+            color: #000;
+            font-weight: 900;
+            border: none;
+        }
+
+        .rank-3 {
+            background: linear-gradient(135deg, #d97706, #b45309);
+            color: #fff;
+            font-weight: 900;
+            border: none;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .user-name-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .user-name {
+            font-size: 13px;
+            font-weight: 800;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+        }
+
+        .debt-tag {
+            font-size: 9px;
+            font-weight: 900;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: rgba(239, 68, 68, 0.25);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            flex-shrink: 0;
+        }
+
+        .user-subinfo {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: #94a3b8;
+        }
+
+        /* Product Badges */
+        .prod-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 900;
+            flex-shrink: 0;
+        }
+
+        .prod-10x { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
+        .prod-5x { background: rgba(249, 115, 22, 0.25); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.5); }
+        .prod-1x { background: rgba(16, 185, 129, 0.25); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.5); }
+        .prod-inv10 { background: rgba(59, 130, 246, 0.25); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.5); }
+        .prod-inv5 { background: rgba(14, 165, 233, 0.25); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.5); }
+        .prod-inv2 { background: rgba(139, 92, 246, 0.25); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.5); }
+        .prod-default { background: rgba(100, 116, 139, 0.25); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.4); }
+
+        .buyer-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .current-val {
+            font-size: 13px;
+            font-weight: 900;
+            color: #facc15;
+            letter-spacing: -0.3px;
+        }
+
+        .pnl-badge {
+            font-size: 10.5px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .pnl-up {
+            color: #f87171;
+        }
+
+        .pnl-down {
+            color: #60a5fa;
+        }
+
+        .pnl-zero {
+            color: #94a3b8;
+        }
+
+        /* Empty State */
+        .empty-state {
+            padding: 36px 20px;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .empty-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+            opacity: 0.8;
+        }
+
+        /* Recent Trade Footer Bar */
+        .card-footer {
+            padding: 8px 14px;
+            background: rgba(15, 23, 42, 0.95);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+
+        .footer-badge {
+            background: #2563eb;
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: 900;
+            padding: 2px 6px;
+            border-radius: 4px;
+            flex-shrink: 0;
+            text-transform: uppercase;
+        }
+
+        .footer-badge.buy {
+            background: #dc2626;
+        }
+
+        .footer-badge.sell {
+            background: #2563eb;
+        }
+
+        .footer-ticker-text {
+            color: #e2e8f0;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+        }
+
+        /* Compact Mode Override (?compact=true) */
+        body.compact-mode .overlay-card {
+            width: 380px;
+        }
+        body.compact-mode .stats-grid {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="overlay-card" id="overlay-card">
+        <!-- Header -->
+        <div class="card-header">
+            <div class="header-top">
+                <div class="title-group">
+                    <span class="title-icon">👥</span>
+                    <span class="title-text">실시간 매수자 현황</span>
+                    <div class="live-badge">
+                        <div class="live-dot"></div>
+                        <span>LIVE</span>
+                    </div>
+                </div>
+                <div class="stock-price-pill" id="stock-price-pill">
+                    <span class="price-val mono" id="hdr-price">--P</span>
+                    <span class="diff-tag diff-same mono" id="hdr-diff">0.0%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary & Sentiment -->
+        <div class="summary-bar">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-label">보유 주주</span>
+                    <span class="stat-value mono" id="stat-holders">0명</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">총 주식 평가액</span>
+                    <span class="stat-value mono" id="stat-total-val">0P</span>
+                </div>
+            </div>
+            <!-- Dual-color Market Sentiment Bar -->
+            <div class="sentiment-container">
+                <div class="sentiment-labels">
+                    <span class="long-label" id="label-long">📈 롱 50.0%</span>
+                    <span class="short-label" id="label-short">📉 숏 50.0%</span>
+                </div>
+                <div class="sentiment-bar-track">
+                    <div class="sentiment-bar-long" id="bar-long" style="width: 50%;"></div>
+                    <div class="sentiment-bar-short" id="bar-short" style="width: 50%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Buyers List Container -->
+        <div class="buyers-list-wrapper" id="buyers-list">
+            <div class="empty-state">
+                <div class="empty-icon">⏳</div>
+                <div>매수자 명부를 불러오는 중입니다...</div>
+            </div>
+        </div>
+
+        <!-- Bottom Latest Trade Bar -->
+        <div class="card-footer" id="card-footer">
+            <span class="footer-badge buy" id="footer-badge">최근 체결</span>
+            <span class="footer-ticker-text" id="footer-ticker">대기 중...</span>
+        </div>
+    </div>
+
+    <script>
+        // Check query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('compact') === 'true' || urlParams.get('mode') === 'compact') {
+            document.body.classList.add('compact-mode');
+        }
+        const limitParam = parseInt(urlParams.get('limit')) || 100;
+
+        let lastDataHash = "";
+        let previousBuyersMap = new Map();
+
+        // Get Product Tag Class
+        function getProductTagClass(prod) {
+            const p = String(prod || "").toUpperCase();
+            if (p === "10X" || p === "TEN_X") return "prod-10x";
+            if (p === "5X" || p === "FIVE_X") return "prod-5x";
+            if (p === "1X" || p === "ONE_X") return "prod-1x";
+            if (p.includes("10X_INV") || p.includes("10숏")) return "prod-inv10";
+            if (p.includes("5X_INV") || p.includes("5숏")) return "prod-inv5";
+            if (p.includes("2X_INV") || p.includes("곱버스")) return "prod-inv2";
+            return "prod-default";
+        }
+
+        // Render Buyers
+        function renderBuyers(data) {
+            const listEl = document.getElementById("buyers-list");
+            const buyers = data.buyers || [];
+            const summary = data.summary || {};
+
+            // Update Header Stock Price
+            if (summary.current_price !== undefined) {
+                const hdrPriceEl = document.getElementById("hdr-price");
+                const hdrDiffEl = document.getElementById("hdr-diff");
+                if (hdrPriceEl) hdrPriceEl.textContent = `${Number(summary.current_price).toLocaleString()}P`;
+                if (hdrDiffEl) {
+                    const diffPct = Number(summary.day_diff_pct || 0);
+                    const sign = diffPct > 0 ? "+" : "";
+                    hdrDiffEl.textContent = `${sign}${diffPct.toFixed(1)}%`;
+                    hdrDiffEl.className = "diff-tag mono " + (diffPct > 0 ? "diff-up" : (diffPct < 0 ? "diff-down" : "diff-same"));
+                }
+            }
+
+            // Update Summary Stats
+            const statHolders = document.getElementById("stat-holders");
+            const statTotalVal = document.getElementById("stat-total-val");
+            if (statHolders) statHolders.textContent = `${summary.total_buyers || 0}명 (${summary.total_positions || 0}건)`;
+            if (statTotalVal) statTotalVal.textContent = `${Number(summary.total_current_value || 0).toLocaleString()}P`;
+
+            // Update Sentiment Bar
+            const longRatio = summary.long_ratio !== undefined ? Number(summary.long_ratio) : 50.0;
+            const shortRatio = summary.short_ratio !== undefined ? Number(summary.short_ratio) : 50.0;
+            const barLong = document.getElementById("bar-long");
+            const barShort = document.getElementById("bar-short");
+            const labelLong = document.getElementById("label-long");
+            const labelShort = document.getElementById("label-short");
+
+            if (barLong) barLong.style.width = `${longRatio}%`;
+            if (barShort) barShort.style.width = `${shortRatio}%`;
+            if (labelLong) labelLong.textContent = `📈 롱 ${longRatio.toFixed(1)}%`;
+            if (labelShort) labelShort.textContent = `📉 숏 ${shortRatio.toFixed(1)}%`;
+
+            // Render Rows
+            if (buyers.length === 0) {
+                listEl.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📈</div>
+                        <div>현재 주식을 보유 중인 매수자가 없습니다.</div>
+                        <div style="font-size: 11px; margin-top: 4px; color: #64748b;">채팅창에 '!10배 올인' 또는 '!매수'를 입력해 첫 주주가 되어보세요!</div>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = "";
+            buyers.forEach((b, index) => {
+                const rank = index + 1;
+                const rankClass = rank === 1 ? "rank-1" : (rank === 2 ? "rank-2" : (rank === 3 ? "rank-3" : ""));
+                const prodClass = getProductTagClass(b.product_type);
+                const pnl = Number(b.pnl_pct || 0);
+                const pnlSign = pnl > 0 ? "+" : "";
+                const pnlClass = pnl > 0 ? "pnl-up" : (pnl < 0 ? "pnl-down" : "pnl-zero");
+                const pnlIcon = pnl > 0 ? "▲" : (pnl < 0 ? "▼" : "-");
+                const debtHtml = b.has_debt ? `<span class="debt-tag">💳 빚투</span>` : "";
+
+                // Check if this row is newly added or changed for flash effect
+                const prevKey = `${b.user_id}_${b.product_type}`;
+                const prevQty = previousBuyersMap.get(prevKey);
+                const isFlash = prevQty !== undefined && prevQty !== b.quantity;
+
+                html += `
+                    <div class="buyer-row ${isFlash ? 'flash' : ''}">
+                        <div class="buyer-left">
+                            <div class="rank-badge mono ${rankClass}">${rank}</div>
+                            <div class="user-info">
+                                <div class="user-name-line">
+                                    <span class="user-name" title="${b.username}">${b.username}</span>
+                                    ${debtHtml}
+                                </div>
+                                <div class="user-subinfo">
+                                    <span class="prod-tag ${prodClass}">${b.product_name}</span>
+                                    <span class="mono">${Number(b.quantity).toLocaleString()}주</span>
+                                    <span class="mono" style="color: #64748b;">(평단 ${Number(b.entry_price).toLocaleString()}P)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="buyer-right">
+                            <span class="current-val mono">${Number(b.current_value).toLocaleString()}P</span>
+                            <span class="pnl-badge mono ${pnlClass}">
+                                <span>${pnlIcon}</span>
+                                <span>${pnlSign}${pnl.toFixed(1)}%</span>
+                                <span style="font-size: 9px; opacity: 0.8;">(${b.unrealized_pnl >= 0 ? '+' : ''}${Number(b.unrealized_pnl).toLocaleString()}P)</span>
+                            </span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            listEl.innerHTML = html;
+
+            // Update Previous Map for Flash Detection
+            previousBuyersMap.clear();
+            buyers.forEach(b => {
+                previousBuyersMap.set(`${b.user_id}_${b.product_type}`, b.quantity);
+            });
+
+            // Update Recent Trades Ticker if present
+            if (data.recent_trades && data.recent_trades.length > 0) {
+                const lastTrade = data.recent_trades[0];
+                updateFooterTrade(lastTrade);
+            }
+        }
+
+        function updateFooterTrade(trade) {
+            const footerBadge = document.getElementById("footer-badge");
+            const footerTicker = document.getElementById("footer-ticker");
+            if (!trade || !trade.data) return;
+
+            const d = trade.data;
+            const isBuy = trade.type === "trade_buy";
+
+            if (footerBadge) {
+                footerBadge.className = "footer-badge " + (isBuy ? "buy" : "sell");
+                footerBadge.textContent = isBuy ? "방금 매수" : "방금 매도";
+            }
+
+            if (footerTicker) {
+                const totalAmt = d.cost || d.payout || (d.quantity * (d.price || 0));
+                const amtStr = totalAmt ? `(총 ${Number(totalAmt).toLocaleString()}P)` : '';
+                footerTicker.textContent = `${d.username}님 ${d.product_type} ${d.quantity}주 ${amtStr} ${isBuy ? '매수 완료' : '매도 완료'}`;
+            }
+        }
+
+        // Fetch Buyers Data via API
+        async function fetchBuyers() {
+            try {
+                const res = await fetch(`/api/buyers?limit=${limitParam}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success) {
+                        renderBuyers(data);
+                    }
+                }
+            } catch (err) {
+                console.error("[BuyersOverlay] Fetch error:", err);
+            }
+        }
+
+        // WebSocket Connection for instant updates
+        let ws = null;
+        function connectWs() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log("[BuyersOverlay] WebSocket Connected");
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    const type = msg.type;
+
+                    // Immediately re-fetch buyers when a trade or price change occurs
+                    if (type === "trade_buy" || type === "trade_sell" || type === "settle" || type === "market_update" || type === "price_update" || type === "settle_match") {
+                        fetchBuyers();
+                        if (msg.data && (type === "trade_buy" || type === "trade_sell")) {
+                            updateFooterTrade(msg);
+                        }
+                    }
+                } catch (e) {
+                    console.error("[BuyersOverlay] WS parse error:", e);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log("[BuyersOverlay] WS disconnected, retrying in 3s...");
+                setTimeout(connectWs, 3000);
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+        }
+
+        // Initialize
+        fetchBuyers();
+        connectWs();
+        // Periodic sync every 4 seconds as reliable fallback
+        setInterval(fetchBuyers, 4000);
+    </script>
+</body>
+</html>

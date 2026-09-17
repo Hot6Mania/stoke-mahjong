@@ -1731,6 +1731,125 @@ def get_leaderboard(db: Session, top_n: int = 3) -> List[Dict[str, Any]]:
 
     return ranked
 
+def get_current_buyers(db: Session, limit: int = 100) -> Dict[str, Any]:
+    """
+    Retrieve all current shareholders/buyers holding active positions (quantity > 0).
+    Includes detailed per-position information, valuation, PnL, and market breakdown summary.
+    """
+    state = get_market_state(db)
+    current_price = state.current_price
+
+    positions = db.query(Position).filter(Position.quantity > 0).all()
+
+    buyers = []
+    unique_users = set()
+    total_invested = 0
+    total_current_val = 0
+    long_count = 0
+    short_count = 0
+    long_value = 0
+    short_value = 0
+
+    # Friendly Korean labels for each product
+    product_names = {
+        ProductType.ONE_X: "1X 본주",
+        ProductType.TWO_X: "2X 레버리지",
+        ProductType.THREE_X: "3X 레버리지",
+        ProductType.FIVE_X: "5X 레버리지",
+        ProductType.TEN_X: "10X 레버리지 (10배 롱)",
+        ProductType.INV: "1X 인버스 (1배 숏)",
+        ProductType.TWO_X_INV: "2X 곱버스 (2배 숏)",
+        ProductType.THREE_X_INV: "3X 인버스",
+        ProductType.FIVE_X_INV: "5X 인버스",
+        ProductType.TEN_X_INV: "10X 인버스 (10배 숏)",
+    }
+
+    for pos in positions:
+        user = pos.user
+        if not user:
+            continue
+        uid_lower = (user.id or "").lower()
+        uname_lower = (user.username or "").lower()
+        if (
+            any(uid_lower.startswith(p) for p in ("fresh_", "test_", "viewer_", "strictly_", "dummy_", "sim_", "bug_", "user_temp", "u_"))
+            or any(uname_lower.startswith(p) for p in ("테스터", "유저_", "새유저", "철통잠금", "더미", "테스트", "임시유저", "임시"))
+            or uname_lower in ("테스트유저", "시청자1", "타이머만료유저", "후원테스터", "마진유저", "임시유저")
+            or uid_lower in ("user_temp_123", "u_매수_10x_올인")
+        ):
+            continue
+
+        val = calculate_position_valuation(pos, current_price)
+        curr_val = int(round(val["current_value"]))
+        invested = int(round(pos.invested_cash))
+        unrealized = int(round(val["unrealized_pnl"]))
+        pnl_pct = round(val["pnl_pct"], 2)
+
+        unique_users.add(user.id)
+        total_invested += invested
+        total_current_val += curr_val
+
+        is_short = ("_INV" in pos.product_type.value) or (pos.product_type == ProductType.INV)
+        if is_short:
+            short_count += 1
+            short_value += curr_val
+        else:
+            long_count += 1
+            long_value += curr_val
+
+        qty_display = int(pos.quantity) if pos.quantity.is_integer() else round(pos.quantity, 2)
+        entry_p = int(round(pos.entry_price)) if pos.entry_price else current_price
+
+        buyers.append({
+            "user_id": user.id,
+            "username": user.username,
+            "product_type": pos.product_type.value,
+            "product_name": product_names.get(pos.product_type, pos.product_type.value),
+            "is_short": is_short,
+            "quantity": qty_display,
+            "entry_price": entry_p,
+            "invested_cash": invested,
+            "current_value": curr_val,
+            "unrealized_pnl": unrealized,
+            "pnl_pct": pnl_pct,
+            "user_cash": user.points,
+            "has_debt": (getattr(user, "debt", 0) or 0) > 0,
+            "debt": getattr(user, "debt", 0) or 0
+        })
+
+    # Sort buyers by current valuation descending
+    buyers.sort(key=lambda b: b["current_value"], reverse=True)
+    if limit > 0:
+        buyers = buyers[:limit]
+
+    total_val_all = long_value + short_value
+    long_ratio = round((long_value / total_val_all * 100.0), 1) if total_val_all > 0 else 50.0
+    short_ratio = round(100.0 - long_ratio, 1) if total_val_all > 0 else 50.0
+
+    day_open = getattr(state, "day_open_price", current_price) or current_price
+    day_diff = current_price - day_open
+    day_diff_pct = round((day_diff / float(day_open)) * 100.0, 2) if day_open > 0 else 0.0
+
+    return {
+        "buyers": buyers,
+        "summary": {
+            "total_buyers": len(unique_users),
+            "total_positions": len(buyers),
+            "total_invested": total_invested,
+            "total_current_value": total_current_val,
+            "long_count": long_count,
+            "short_count": short_count,
+            "long_value": long_value,
+            "short_value": short_value,
+            "long_ratio": long_ratio,
+            "short_ratio": short_ratio,
+            "current_price": current_price,
+            "day_open_price": day_open,
+            "day_diff": day_diff,
+            "day_diff_pct": day_diff_pct,
+            "is_market_locked": is_market_locked(db, state)
+        }
+    }
+
 # ---------------------------------------------------------
 # Chzzk Donation -> Point Charging (1 KRW : 100 Points)
 # ---------------------------------------------------------
