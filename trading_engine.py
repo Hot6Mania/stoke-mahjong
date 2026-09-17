@@ -351,6 +351,56 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
             "UNIQUE": (30.0, "주식 거래 및 송금 수수료 30% 감면"),
             "LEGENDARY": (60.0, "주식 거래 및 송금 수수료 60% 감면"),
         }
+    },
+    "STARFORCE_SUCCESS_BOOST": {
+        "name": "스타포스 성공률 증가",
+        "unit": "%",
+        "icon": "⭐",
+        "tiers": {
+            "EPIC": (1.5, "스타포스 강화 성공률 +1.5%"),
+            "UNIQUE": (3.0, "스타포스 강화 성공률 +3.0%"),
+            "LEGENDARY": (6.0, "스타포스 강화 성공률 +6.0%"),
+        }
+    },
+    "MINING_CD_REDUCTION": {
+        "name": "채굴 쿨타임 단축",
+        "unit": "분",
+        "icon": "⌛",
+        "tiers": {
+            "EPIC": (1, "채굴 기본 쿨타임 -1분 영구 단축"),
+            "UNIQUE": (2, "채굴 기본 쿨타임 -2분 영구 단축"),
+            "LEGENDARY": (3, "채굴 기본 쿨타임 -3분 영구 단축"),
+        }
+    },
+    "TREASURY_LOOT_PCT": {
+        "name": "국고 풀 갈취",
+        "unit": "%",
+        "icon": "🏛️",
+        "tiers": {
+            "EPIC": (0.05, "채굴 시 국고 상금풀의 0.05% 추가 갈취"),
+            "UNIQUE": (0.10, "채굴 시 국고 상금풀의 0.10% 추가 갈취"),
+            "LEGENDARY": (0.25, "채굴 시 국고 상금풀의 0.25% 추가 갈취"),
+        }
+    },
+    "DIVIDEND_BOOST_PCT": {
+        "name": "배당금 수령 증폭",
+        "unit": "%",
+        "icon": "📈",
+        "tiers": {
+            "EPIC": (25.0, "마작 경기 배당금 수령액 +25% 증폭"),
+            "UNIQUE": (50.0, "마작 경기 배당금 수령액 +50% 증폭"),
+            "LEGENDARY": (100.0, "마작 경기 배당금 수령액 +100% (2배!) 증폭"),
+        }
+    },
+    "GOBLIN_JACKPOT_CHANCE": {
+        "name": "황금 고블린 잭팟",
+        "unit": "%",
+        "icon": "👹",
+        "tiers": {
+            "EPIC": (1.0, "채굴 시 1% 확률로 황금 고블린 토벌 (+50,000P 잭팟)"),
+            "UNIQUE": (2.0, "채굴 시 2% 확률로 황금 고블린 토벌 (+150,000P 잭팟)"),
+            "LEGENDARY": (3.0, "채굴 시 3% 확률로 황금 고블린 토벌 (+300,000P 잭팟)"),
+        }
     }
 }
 
@@ -427,6 +477,12 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
         "safeguard_pct": 0.0,
         "auto_duration_pct": 0.0,
         "fee_discount_pct": 0.0,
+        "starforce_success_boost": 0.0,
+        "mining_cd_reduction": 0,
+        "treasury_loot_pct": 0.0,
+        "dividend_boost_pct": 0.0,
+        "goblin_chance": 0.0,
+        "goblin_reward": 0,
     }
     if not item:
         return effects
@@ -459,6 +515,19 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
                 effects["auto_duration_pct"] += val
             elif code == "FEE_DISCOUNT":
                 effects["fee_discount_pct"] += val
+            elif code == "STARFORCE_SUCCESS_BOOST":
+                effects["starforce_success_boost"] += val
+            elif code == "MINING_CD_REDUCTION":
+                effects["mining_cd_reduction"] += int(val)
+            elif code == "TREASURY_LOOT_PCT":
+                effects["treasury_loot_pct"] += val
+            elif code == "DIVIDEND_BOOST_PCT":
+                effects["dividend_boost_pct"] += val
+            elif code == "GOBLIN_JACKPOT_CHANCE":
+                effects["goblin_chance"] += val
+                line_tier = data.get("tier", "EPIC")
+                reward = 50000 if line_tier == "EPIC" else (150000 if line_tier == "UNIQUE" else 300000)
+                effects["goblin_reward"] += reward
         except Exception:
             continue
 
@@ -471,6 +540,11 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
     effects["safeguard_pct"] = min(90.0, effects["safeguard_pct"])
     effects["auto_duration_pct"] = min(200.0, effects["auto_duration_pct"])
     effects["fee_discount_pct"] = min(90.0, effects["fee_discount_pct"])
+    effects["starforce_success_boost"] = min(20.0, effects["starforce_success_boost"])
+    effects["mining_cd_reduction"] = min(8, effects["mining_cd_reduction"])
+    effects["treasury_loot_pct"] = min(1.0, effects["treasury_loot_pct"])
+    effects["dividend_boost_pct"] = min(300.0, effects["dividend_boost_pct"])
+    effects["goblin_chance"] = min(15.0, effects["goblin_chance"])
     return effects
 
 def get_user_fee_discount_pct(db: Session, user: User) -> float:
@@ -1392,6 +1466,11 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
                 u = p.user
                 payout = max(1, int(round(p.quantity * new_price * div_rate))) if (p.quantity > 0 and new_price > 0) else 0
                 if payout > 0:
+                    eq = get_user_equipped_item(db, u)
+                    pot_eff = get_equipment_potential_effects(eq) if eq else {}
+                    div_boost_pct = min(300.0, float(pot_eff.get("dividend_boost_pct", 0.0)))
+                    if div_boost_pct > 0:
+                        payout = int(round(payout * (1.0 + div_boost_pct / 100.0)))
                     u.points += payout
                     u.total_dividends = (u.total_dividends or 0) + payout
                     dividends_distributed.append({
@@ -1399,7 +1478,8 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
                         "username": u.username,
                         "payout": payout,
                         "shares": p.quantity,
-                        "rate_pct": div_rate * 100.0
+                        "rate_pct": div_rate * 100.0,
+                        "dividend_boost_pct": div_boost_pct
                     })
 
     # Process pending limit orders
@@ -2561,7 +2641,13 @@ def get_user_cooldown_status(db: Session, user_id: str, username: str) -> str:
     user.pickaxe_level = star
     pick_info = get_pickaxe_info(star)
     cd_min = pick_info["cooldown_minutes"]
-    cd_sec = pick_info["cooldown_seconds"]
+    pot_eff = get_equipment_potential_effects(equipped_item) if equipped_item else {}
+    pot_cd_red = pot_eff.get("mining_cd_reduction", 0)
+    effective_cd_min = max(2, cd_min - pot_cd_red)
+    cd_sec = effective_cd_min * 60
+
+    cd_tip = f"쿨 {effective_cd_min}분" if pot_cd_red == 0 else f"쿨 {effective_cd_min}분(⚡잠재 -{pot_cd_red}분)"
+    eq_name = equipped_item.name if equipped_item else pick_info["name"]
 
     if user.last_mined_at:
         last_t = user.last_mined_at if user.last_mined_at.tzinfo else user.last_mined_at.replace(tzinfo=timezone.utc)
@@ -2569,11 +2655,11 @@ def get_user_cooldown_status(db: Session, user_id: str, username: str) -> str:
         if elapsed < cd_sec:
             rem_cd = int(cd_sec - elapsed)
             rem_m, rem_s = divmod(rem_cd, 60)
-            mine_status = f"⏳ {rem_m}분 {rem_s}초 남음 ({equipped_item.name}, ★{star}성, 쿨 {cd_min}분)"
+            mine_status = f"⏳ {rem_m}분 {rem_s}초 남음 ({eq_name}, ★{star}성, {cd_tip})"
         else:
-            mine_status = f"✨ 즉시 채굴 가능! ({equipped_item.name}, ★{star}성, 쿨 {cd_min}분) ➔ !채굴"
+            mine_status = f"✨ 즉시 채굴 가능! ({eq_name}, ★{star}성, {cd_tip}) ➔ !채굴"
     else:
-        mine_status = f"✨ 즉시 채굴 가능! ({equipped_item.name}, ★{star}성, 쿨 {cd_min}분) ➔ !채굴"
+        mine_status = f"✨ 즉시 채굴 가능! ({eq_name}, ★{star}성, {cd_tip}) ➔ !채굴"
 
     # 2. Auto-Mining Status
     end_am = float(getattr(user, "auto_mining_end_time", 0.0) or 0.0)
@@ -2669,6 +2755,9 @@ def execute_mining(
     pot_yield_bonus = pot_effects.get("yield_boost", 0.0)
     pot_bonus_cash = pot_effects.get("bonus_cash", 0)
     pot_cd_reset_pct = pot_effects.get("cd_reset_pct", 0.0)
+    pot_cd_red = pot_effects.get("mining_cd_reduction", 0)
+    effective_cd_min = max(2, cooldown_min - pot_cd_red)
+    cooldown_sec = effective_cd_min * 60
 
     # 2. Cooldown check based on pickaxe cooldown
     if user.last_mined_at:
@@ -2679,7 +2768,7 @@ def execute_mining(
         if elapsed < cooldown_sec:
             rem = int(cooldown_sec - elapsed)
             rem_m, rem_s = divmod(rem, 60)
-            return False, f"⏳ [채굴 쿨타임] 다음 채굴까지 {rem_m}분 {rem_s}초 남았습니다. ({pickaxe['name']} 쿨타임: {cooldown_min}분)", {"remaining_seconds": rem}
+            return False, f"⏳ [채굴 쿨타임] 다음 채굴까지 {rem_m}분 {rem_s}초 남았습니다. ({pickaxe['name']} 쿨타임: {effective_cd_min}분)", {"remaining_seconds": rem}
 
     if getattr(state, "treasury_pool", None) is None:
         state.treasury_pool = DEFAULT_TREASURY_POOL
@@ -2714,6 +2803,23 @@ def execute_mining(
 
     total_bonus_cash = bonus_cash + pickaxe_bonus_cash + pot_bonus_cash
 
+    # Potential: TREASURY_LOOT_PCT (국고 털이범)
+    pot_loot_pct = pot_effects.get("treasury_loot_pct", 0.0)
+    treasury_looted_cash = 0
+    if pot_loot_pct > 0 and state.treasury_pool > 0:
+        treasury_looted_cash = min(500000, int(round(state.treasury_pool * (pot_loot_pct / 100.0))))
+        if treasury_looted_cash > 0:
+            state.treasury_pool = max(0.0, state.treasury_pool - treasury_looted_cash)
+            total_bonus_cash += treasury_looted_cash
+
+    # Potential: GOBLIN_JACKPOT_CHANCE (황금 고블린 잭팟)
+    pot_goblin_chance = pot_effects.get("goblin_chance", 0.0)
+    pot_goblin_reward = pot_effects.get("goblin_reward", 0)
+    goblin_triggered = False
+    if pot_goblin_chance > 0 and random.uniform(0, 100) < pot_goblin_chance:
+        goblin_triggered = True
+        total_bonus_cash += pot_goblin_reward
+
     bonus_10x = tier.get("bonus_10x", 0.0)
     cd_reduction = tier.get("cooldown_reduction", 0)
     tier_name = tier["name"]
@@ -2736,7 +2842,7 @@ def execute_mining(
         user.last_mined_at = None
         next_cd_msg = "⚡ [잠재 쿨초 발동!] 지금 바로 재채굴 가능!"
     elif cd_reduction > 0:
-        boosted_cd = max(0, cooldown_min - cd_reduction)
+        boosted_cd = max(0, effective_cd_min - cd_reduction)
         if boosted_cd == 0:
             user.last_mined_at = None
             next_cd_msg = "⚡ 쿨타임 즉시 초기화!! (지금 바로 재채굴 가능)"
@@ -2745,7 +2851,7 @@ def execute_mining(
             next_cd_msg = f"{boosted_cd}분 (부스터 발동!)"
     else:
         user.last_mined_at = now_utc
-        next_cd_msg = f"{cooldown_min}분"
+        next_cd_msg = f"{effective_cd_min}분"
 
 
     # 5. Check if user has debt -> Forced Labor Mode (탄광 노역 채굴)
@@ -2877,6 +2983,10 @@ def execute_mining(
         extras.append(f"곡괭이 보너스 +{pickaxe_bonus_cash:,}P")
     if pot_bonus_cash > 0:
         extras.append(f"잠재 현금 +{pot_bonus_cash:,}P")
+    if treasury_looted_cash > 0:
+        extras.append(f"🏛️국고 털이 +{treasury_looted_cash:,}P")
+    if goblin_triggered:
+        extras.append(f"👹황금고블린 잭팟 +{pot_goblin_reward:,}P")
     if bonus_10x > 0:
         extras.append(f"🔥 10X 레버리지 +{format_quantity(bonus_10x)}주")
     if cd_reset_triggered:
@@ -2885,8 +2995,9 @@ def execute_mining(
 
     qty_str = format_quantity(shares_awarded)
     jackpot_tag = "🌟🎰 [일확천금 신화 탄생!!] " if tier_code in ["EX", "UR+"] else ""
+    goblin_banner = f"🎉👹💰 [황금 고블린 토벌 잭팟!!] +{pot_goblin_reward:,}P 초대형 보너스!\n" if goblin_triggered else ""
     msg = (
-        f"{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
+        f"{goblin_banner}{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
         f"(+{actual_cost:,}P 상당{extras_str} | 보유 현금: {user.points:,}P | 국고 잔여: {int(state.treasury_pool):,}P | 다음 채굴: {next_cd_msg})"
     )
     return True, msg, {
@@ -2902,6 +3013,9 @@ def execute_mining(
         "bonus_cash": bonus_cash,
         "pickaxe_bonus_cash": pickaxe_bonus_cash,
         "potential_bonus_cash": pot_bonus_cash,
+        "treasury_looted_cash": treasury_looted_cash,
+        "goblin_triggered": goblin_triggered,
+        "goblin_reward": pot_goblin_reward if goblin_triggered else 0,
         "total_bonus_cash": total_bonus_cash,
         "bonus_10x_shares": bonus_10x,
         "cooldown_reduction_minutes": cd_reduction,
@@ -2995,11 +3109,17 @@ def execute_pickaxe_upgrade(
     m_rate = current_item["maintain_rate"]
     d_rate = current_item["drop_rate"]
 
+    pot_success_boost = min(20.0, float(pot_effects.get("starforce_success_boost", 0.0)))
+    if pot_success_boost > 0 and s_rate < 100.0:
+        s_rate = min(99.0, s_rate + pot_success_boost)
+
     fever_suffix = ""
     if current_item.get("is_discounted"):
         fever_suffix = " (🔥30% 할인 피버 적용)"
     if pot_discount_pct > 0:
         fever_suffix += f" (🔨잠재 {int(pot_discount_pct)}%할인)"
+    if pot_success_boost > 0:
+        fever_suffix += f" (⭐성공률 +{pot_success_boost:.1f}%)"
 
     if roll < s_rate:
         outcome = "success"
@@ -3911,26 +4031,43 @@ def get_user_pickaxe_status(
 
     other_items_note = f"\n🎒 다른 보유 장비: 총 {len(items)}개 (!내장비 로 전체 목록 확인)" if len(items) > 1 else ""
 
+    pot_effects = get_equipment_potential_effects(equipped)
+    pot_cd_red = pot_effects.get("mining_cd_reduction", 0)
+    eff_cd = max(2, item['cooldown_minutes'] - pot_cd_red)
+    cd_info = f"{eff_cd}분" if pot_cd_red == 0 else f"{eff_cd}분(⚡잠재 -{pot_cd_red}분)"
+
     if curr_lvl >= 25:
         return (
             f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
-            f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
+            f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {cd_info}\n"
             f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동){pot_block}{frag_str}{other_items_note}\n"
             f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 큐브 구매: !큐브구매 [수량] | 큐브 사용: !큐브 | 인벤토리: !내장비 | 거래소: !장비장터"
         )
     else:
         next_item = get_pickaxe_info(curr_lvl + 1, event_state=sf_state)
         cost = item["upgrade_cost"]
+        pot_sf_disc = min(50.0, float(pot_effects.get("starforce_discount_pct", 0.0)))
+        if pot_sf_disc > 0:
+            cost = max(100, int(round(cost * (1.0 - pot_sf_disc / 100.0))))
         cost_str = f"{cost:,}P"
         if item.get("is_discounted"):
             cost_str += f" (🔥30% 할인! 기존: {item['base_cost']:,}P)"
+        elif pot_sf_disc > 0:
+            cost_str += f" (🔨잠재 {int(pot_sf_disc)}% 할인)"
 
         s_rate = item["success_rate"]
         m_rate = item["maintain_rate"]
         d_rate = item["drop_rate"]
         dest_rate = item["destroy_rate"]
 
-        rate_parts = [f"성공 {s_rate:.2f}%" if s_rate % 1 else f"성공 {int(s_rate)}%"]
+        pot_sb = min(20.0, float(pot_effects.get("starforce_success_boost", 0.0)))
+        if pot_sb > 0 and s_rate < 100.0:
+            s_rate = min(99.0, s_rate + pot_sb)
+            s_tag = f"성공 {s_rate:.2f}%(⭐+{pot_sb:.1f}%)" if s_rate % 1 else f"성공 {int(s_rate)}%(⭐+{pot_sb:.1f}%)"
+        else:
+            s_tag = f"성공 {s_rate:.2f}%" if s_rate % 1 else f"성공 {int(s_rate)}%"
+
+        rate_parts = [s_tag]
         if item.get("is_guaranteed_100"):
             rate_parts[0] = "⭐성공 100% (피버 확정!)"
         if m_rate > 0:
@@ -3950,7 +4087,7 @@ def get_user_pickaxe_status(
 
         return (
             f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
-            f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
+            f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {cd_info}\n"
             f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost_str}]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
             f"  └ 다음 효과: {next_item['desc']}{pot_block}{frag_str}{other_items_note}\n"

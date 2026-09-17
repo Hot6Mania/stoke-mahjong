@@ -2755,6 +2755,74 @@ def test_status_window_aliases(db_session):
         assert event is None
 
 
+def test_new_potential_options_hooks(db_session, monkeypatch):
+    """Test the 5 new potential options: Starforce success boost, mining CD reduction, treasury loot, dividend boost, and goblin jackpot."""
+    uid = "new_opt_tester"
+    uname = "신규옵션테스터"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 500000
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 10000000  # 10 million points
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+
+    # 1. Test MINING_CD_REDUCTION (cooldown reduction from 15 min to 12 min)
+    eq.potential_tier = "LEGENDARY"
+    eq.potential_line_1 = json.dumps({"code": "MINING_CD_REDUCTION", "val": 3, "text": "-3분"})
+    eq.potential_line_2 = json.dumps({"code": "TREASURY_LOOT_PCT", "val": 0.25, "text": "0.25%"})
+    eq.potential_line_3 = json.dumps({"code": "GOBLIN_JACKPOT_CHANCE", "val": 3.0, "tier": "LEGENDARY", "text": "3%"})
+    db_session.commit()
+
+    cd_status = te.get_user_cooldown_status(db_session, uid, uname)
+    assert "12분" in cd_status
+
+    # 2. Test TREASURY_LOOT_PCT and GOBLIN_JACKPOT_CHANCE in mining
+    # Force goblin roll to succeed (< 3%)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0.5)
+    ok_mine, reply_mine, det_mine = te.execute_mining(db_session, uid, uname)
+    assert ok_mine is True
+    assert det_mine["treasury_looted_cash"] == int(10000000 * 0.0025)  # 25,000P
+    assert det_mine["goblin_triggered"] is True
+    assert det_mine["goblin_reward"] == 300000
+    assert "국고 털이" in reply_mine
+    assert "황금고블린" in reply_mine
+
+    # 3. Test STARFORCE_SUCCESS_BOOST
+    eq.potential_line_1 = json.dumps({"code": "STARFORCE_SUCCESS_BOOST", "val": 6.0, "text": "+6.0%"})
+    db_session.commit()
+    # Starforce roll: pass if below (success_rate + 6.0%)
+    sf_info = te.get_pickaxe_info(eq.starforce)
+    base_s = sf_info["success_rate"]
+    # Mock roll just above base_s but below base_s + 6.0
+    monkeypatch.setattr(random, "uniform", lambda a, b: base_s + 1.0)
+    ok_sf, reply_sf, det_sf = te.execute_pickaxe_upgrade(db_session, uid, uname)
+    assert ok_sf is True
+    assert det_sf["outcome"] == "success"
+    assert "성공" in reply_sf
+
+    # 4. Test DIVIDEND_BOOST_PCT in settlement
+    eq.potential_line_1 = json.dumps({"code": "DIVIDEND_BOOST_PCT", "val": 100.0, "text": "+100%"})
+    db_session.commit()
+    # Buy 10 shares of 1X
+    pos = Position(
+        user_id=user.id,
+        product_type=ProductType.ONE_X,
+        quantity=10.0,
+        entry_price=1000.0,
+        invested_cash=10000.0
+    )
+    db_session.add(pos)
+    mstate = te.get_market_state(db_session)
+    mstate.current_rank_point = 1000
+    mstate.current_price = 1000
+    db_session.commit()
+    det_settle = te.settle_match(db_session, rank=1, point_delta=0)
+    div_entry = next((d for d in det_settle["dividends"] if d["user_id"] == user.id and d["shares"] == 10.0), None)
+    assert div_entry is not None
+    assert div_entry["payout"] == 1000
+    assert div_entry["dividend_boost_pct"] == 100.0
+
+
 
 
 
