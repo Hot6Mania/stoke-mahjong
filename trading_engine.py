@@ -2097,21 +2097,21 @@ def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
         code = tier["code"]
         base_prob = tier["prob"]
         if code == "EX":
-            w = base_prob + cb * 0.08      # e.g. +8% at cb=100
+            w = base_prob + cb * 0.015      # toned down from 0.08 (천화 신화 잭팟 희소성 유지)
         elif code == "UR+":
-            w = base_prob + cb * 0.14     # e.g. +14% at cb=100
+            w = base_prob + cb * 0.035     # toned down from 0.14 (구련보등 더블역만)
         elif code == "UR":
-            w = base_prob + cb * 0.20     # e.g. +20% at cb=100
+            w = base_prob + cb * 0.070     # toned down from 0.20 (국사무쌍 역만)
         elif code == "SSR":
-            w = base_prob + cb * 0.28     # e.g. +28% at cb=100
+            w = base_prob + cb * 0.150     # toned down from 0.28 (다이아몬드 광맥)
         elif code == "SR":
-            w = base_prob + cb * 0.20     # e.g. +20% at cb=100
+            w = base_prob + cb * 0.180     # toned down from 0.20 (황금 광맥)
         elif code == "R":
-            w = base_prob + cb * 0.10     # e.g. +10% at cb=100
+            w = base_prob + cb * 0.100     # 은 광맥
         elif code == "N":
-            w = max(0.0, base_prob - cb * 0.40)
+            w = max(0.0, base_prob - cb * 0.250)  # 완화된 일반 구리 광맥 감소율
         elif code == "C":
-            w = max(0.0, base_prob - cb * 0.50)
+            w = max(0.0, base_prob - cb * 0.200)  # 완화된 석탄 꽝 감소율 (고성에서도 가끔 출현)
         else:
             w = base_prob
         weights.append(max(0.0, w))
