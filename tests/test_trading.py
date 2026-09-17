@@ -1018,19 +1018,19 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     assert ok_jackpot is True
     assert details_jackpot["is_jackpot"] is True
     assert "777 JACKPOT" in reply_jackpot
-    assert details_jackpot["net_payout"] == 50000
+    assert details_jackpot["net_payout"] == 100000  # 20% of 500k treasury pool = 100,000P
     db_session.refresh(user)
     assert user.points > 100000
 
-    # 5. Rig slot spin to Yakuman 6x: ['🀄', '🀄', '🀄']
+    # 5. Rig slot spin to Yakuman 10x: ['🀄', '🀄', '🀄']
     user.points = 50000
     db_session.commit()
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["🀄", "🀄", "🀄"])
     ok_yaku, reply_yaku, details_yaku = te.execute_slot_gamble(db_session, uid, uname, "1000")
     assert ok_yaku is True
-    assert details_yaku["net_payout"] == 5000
+    assert details_yaku["net_payout"] == 9000  # 10x total payout (net +9,000P)
     db_session.refresh(user)
-    assert user.points == 50000 + 5000
+    assert user.points == 50000 + 9000
 
     # 6. Rig slot spin to Loss: ['💣', '🍒', '🍇']
     user.points = 50000
@@ -1046,35 +1046,37 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     db_session.refresh(state)
     assert state.treasury_pool == treasury_before + 2000
 
-    # 7. Rig slot spin to 2-matching standard pair: ['🍒', '🍒', '💣'] -> 1.2x payout (net +0.2x)
+    # 7. Rig slot spin to 2-matching standard pair: ['🍒', '🍒', '💣'] -> 1.5x payout (net +0.5x)
     user.points = 50000
     db_session.commit()
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["🍒", "🍒", "💣"])
     ok_pair, reply_pair, details_pair = te.execute_slot_gamble(db_session, uid, uname, "1000")
     assert ok_pair is True
     assert details_pair["won"] is True
-    assert details_pair["net_payout"] == 200 # 1.2x total payout (net +0.2x)
+    assert details_pair["net_payout"] == 500 # 1.5x total payout (net +0.5x)
     db_session.refresh(user)
-    assert user.points == 50200
+    assert user.points == 50500
 
-    # 8. Rig slot spin to 2-matching high pair: ['💎', '💎', '🍒'] -> 1.6x payout (net +0.6x)
+    # 8. Rig slot spin to 2-matching high pair: ['💎', '💎', '🍒'] -> 2.0x payout (net +1.0x)
     user.points = 50000
     db_session.commit()
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["💎", "💎", "🍒"])
     ok_hpair, reply_hpair, details_hpair = te.execute_slot_gamble(db_session, uid, uname, "1000")
     assert ok_hpair is True
     assert details_hpair["won"] is True
-    assert details_hpair["net_payout"] == 600 # 1.6x total payout (net +0.6x)
+    assert details_hpair["net_payout"] == 1000 # 2.0x total payout (net +1.0x)
     db_session.refresh(user)
-    assert user.points == 50600
+    assert user.points == 51000
 
-    # 9. Bet up to 100,000P on slot succeeds and net payout is capped at MAX_CASINO_PAYOUT (100,000P)
+    # 9. Bet up to 100,000P on slot succeeds and net payout is NOT capped at 100k (uncapped big win!)
     user.points = 200000
     db_session.commit()
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["🀄", "🀄", "🀄"])
     ok_100k, reply_100k, details_100k = te.execute_slot_gamble(db_session, uid, uname, "100000")
     assert ok_100k is True
-    assert details_100k["net_payout"] == 100000  # Capped at 100,000P instead of 500,000P!
+    assert details_100k["net_payout"] == 900000  # 10x total payout (net +900,000P uncapped!)
+    db_session.refresh(user)
+    assert user.points == 200000 + 900000
 
     # 10. Bet over 100,000P on slot is rejected
     ok_over, reply_over, _ = te.execute_slot_gamble(db_session, uid, uname, "100001")
@@ -1174,7 +1176,7 @@ def test_casino_chat_commands(db_session):
     r_odds, ev_odds = ch.handle_chat_command(db_session, viewer_id, viewer_name, "!슬롯확률")
     assert r_odds is not None
     assert "국고 슬롯 공식 확률" in r_odds
-    assert "31.1%" in r_odds
+    assert "37.1%" in r_odds
     assert "777" in r_odds
     assert ev_odds is None
 
