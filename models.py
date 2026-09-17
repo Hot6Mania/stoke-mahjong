@@ -73,7 +73,7 @@ class MarketState(Base):
     free_trading_end_time = Column(Float, default=0.0, nullable=True)
     casino_is_open = Column(Boolean, default=False, nullable=False)
     casino_end_time = Column(Float, default=0.0, nullable=True)
-    casino_max_bet = Column(Integer, default=10000, nullable=False)
+    casino_max_bet = Column(Integer, default=100000, nullable=False)
 
 class LimitOrder(Base):
     __tablename__ = "orders_limit"

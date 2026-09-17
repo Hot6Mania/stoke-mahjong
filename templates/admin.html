@@ -426,7 +426,7 @@
                 </div>
                 <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
                     <span>배팅 한도:</span>
-                    <strong id="admin-casino-maxbet" style="color: #4ade80; font-size: 15px;">10,000P</strong>
+                    <strong id="admin-casino-maxbet" style="color: #4ade80; font-size: 15px;">100,000P</strong>
                 </div>
             </div>
 
@@ -452,7 +452,7 @@
                     </div>
                     <div class="form-group" style="flex: 1; min-width: 160px;">
                         <label style="font-size: 12px;">1회 최대 배팅 한도 (P)</label>
-                        <input class="input" type="number" id="input-casino-maxbet" value="10000" min="1000" step="5000">
+                        <input class="input" type="number" id="input-casino-maxbet" value="100000" min="1000" step="10000">
                     </div>
                     <button class="btn btn-primary" style="background: #f59e0b; font-weight: 800;" onclick="openCasinoCustom()">🎰 커스텀 개장 실행</button>
                 </div>
@@ -1414,7 +1414,7 @@
 
         let casinoIsOpen = false;
         let casinoRemaining = 0;
-        let casinoMaxBet = 10000;
+        let casinoMaxBet = 100000;
 
         function updateCasinoDisplay() {
             const badge = document.getElementById("casino-status-badge");
@@ -1423,39 +1423,34 @@
             const maxbetEl = document.getElementById("admin-casino-maxbet");
 
             if (maxbetEl) maxbetEl.textContent = `${casinoMaxBet.toLocaleString()}P`;
-
-            if (!casinoIsOpen) {
+            if (casinoIsOpen) {
                 if (badge) {
-                    badge.className = "status-pill red";
-                    badge.textContent = "영업 마감";
+                    badge.textContent = "OPEN (영업중)";
+                    badge.style.background = "#22c55e";
+                    badge.style.color = "#0f172a";
                 }
-                if (textEl) {
-                    textEl.textContent = "영업 마감";
-                    textEl.style.color = "#ef4444";
-                }
+                if (textEl) textEl.textContent = "🔥 카지노 정상 운영 중 (채팅 베팅 활성화)";
                 if (timerEl) {
-                    timerEl.textContent = "마감됨";
-                    timerEl.style.color = "#94a3b8";
+                    if (casinoRemaining > 0) {
+                        const m = Math.floor(casinoRemaining / 60);
+                        const s = casinoRemaining % 60;
+                        timerEl.textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+                        timerEl.style.color = "#38bdf8";
+                    } else {
+                        timerEl.textContent = "무제한";
+                        timerEl.style.color = "#a855f7";
+                    }
                 }
             } else {
                 if (badge) {
-                    badge.className = "status-pill green";
-                    badge.textContent = "🔥 카지노 영업중";
+                    badge.textContent = "CLOSED (마감)";
+                    badge.style.background = "#64748b";
+                    badge.style.color = "#ffffff";
                 }
-                if (textEl) {
-                    textEl.textContent = "🔥 영업중 (도파민 ON)";
-                    textEl.style.color = "#4ade80";
-                }
+                if (textEl) textEl.textContent = "🔒 현재 도박장이 닫혀 있습니다.";
                 if (timerEl) {
-                    if (casinoRemaining < 0) {
-                        timerEl.textContent = "무제한 개장";
-                        timerEl.style.color = "#a78bfa";
-                    } else {
-                        const m = Math.floor(casinoRemaining / 60);
-                        const s = casinoRemaining % 60;
-                        timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-                        timerEl.style.color = casinoRemaining <= 30 ? "#ef4444" : "#fbbf24";
-                    }
+                    timerEl.textContent = "--:--";
+                    timerEl.style.color = "#94a3b8";
                 }
             }
         }
@@ -1467,7 +1462,7 @@
                 if (data.success) {
                     casinoIsOpen = data.casino.is_open;
                     casinoRemaining = data.casino.remaining_sec;
-                    casinoMaxBet = data.casino.max_bet || 10000;
+                    casinoMaxBet = data.casino.max_bet || 100000;
                     const pool = data.treasury.treasury_pool || 0;
                     const poolEl = document.getElementById("admin-casino-pool");
                     const potEl = document.getElementById("admin-casino-jackpot-pot");
@@ -1481,13 +1476,13 @@
         }
 
         async function openCasinoQuick(minutes) {
-            const maxBet = parseInt(document.getElementById("input-casino-maxbet").value) || 10000;
+            const maxBet = parseInt(document.getElementById("input-casino-maxbet").value) || 100000;
             openCasino(minutes, maxBet);
         }
 
         async function openCasinoCustom() {
             const dur = parseFloat(document.getElementById("input-casino-duration").value) || 3.0;
-            const maxBet = parseInt(document.getElementById("input-casino-maxbet").value) || 10000;
+            const maxBet = parseInt(document.getElementById("input-casino-maxbet").value) || 100000;
             openCasino(dur, maxBet);
         }
 

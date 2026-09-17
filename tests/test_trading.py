@@ -939,11 +939,11 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     assert ok is False
     assert "오픈" in reply
 
-    # Open casino with 10,000P max bet
-    te.open_casino(db_session, duration_minutes=5.0, max_bet=10000)
+    # Open casino with 100,000P max bet
+    te.open_casino(db_session, duration_minutes=5.0, max_bet=100000)
 
     # 2. Exceeding max bet
-    ok2, reply2, _ = te.execute_slot_gamble(db_session, uid, uname, "20000")
+    ok2, reply2, _ = te.execute_slot_gamble(db_session, uid, uname, "150000")
     assert ok2 is False
     assert "최대 베팅 한도" in reply2
 
@@ -1016,13 +1016,24 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     db_session.refresh(user)
     assert user.points == 51500
 
+    # 9. Bet up to 100,000P on slot succeeds
+    user.points = 200000
+    db_session.commit()
+    ok_100k, reply_100k, details_100k = te.execute_slot_gamble(db_session, uid, uname, "100000")
+    assert ok_100k is True
+
+    # 10. Bet over 100,000P on slot is rejected
+    ok_over, reply_over, _ = te.execute_slot_gamble(db_session, uid, uname, "100001")
+    assert ok_over is False
+    assert "최대 베팅 한도" in reply_over
+
 def test_casino_dice_gamble(db_session, monkeypatch):
     """Test 2-dice high-roller battle mechanics including odd/even/high/low and double 5x critical."""
     uid = "gambler_dice_1"
     uname = "주사위의신"
     user = te.get_or_create_user(db_session, uid, uname)
     user.points = 50000
-    te.open_casino(db_session, duration_minutes=5.0, max_bet=10000)
+    te.open_casino(db_session, duration_minutes=5.0, max_bet=100000)
 
     # 1. Even win: roll (2, 4) -> sum = 6
     dice_results = iter([2, 4])
@@ -1053,6 +1064,19 @@ def test_casino_dice_gamble(db_session, monkeypatch):
     assert details_7["net_payout"] == -1000
     assert "국고로 귀속" in reply_7
 
+    # 4. Bet up to 100,000P on dice succeeds
+    user.points = 200000
+    db_session.commit()
+    dice_100k = iter([2, 4])
+    monkeypatch.setattr("random.randint", lambda a, b: next(dice_100k))
+    ok_100k, _, det_100k = te.execute_dice_gamble(db_session, uid, uname, "짝", "100000")
+    assert ok_100k is True
+
+    # 5. Bet over 100,000P on dice is rejected
+    ok_over, reply_over, _ = te.execute_dice_gamble(db_session, uid, uname, "짝", "100001")
+    assert ok_over is False
+    assert "최대 베팅 한도" in reply_over
+
 def test_casino_chat_commands(db_session):
     """Test full chat command handling for streamer and viewers."""
     viewer_id = "normal_viewer_99"
@@ -1065,17 +1089,18 @@ def test_casino_chat_commands(db_session):
     assert "🚫 카지노 개장은 스트리머(치즈나베)만 진행할 수 있습니다!" in r1
     assert ev1 is None
 
-    # Streamer opening casino -> allowed
-    r2, ev2 = ch.handle_chat_command(db_session, streamer_id, streamer_name, "!카지노오픈 5 20000")
+    # Streamer opening casino with default max bet -> 100,000P
+    r2, ev2 = ch.handle_chat_command(db_session, streamer_id, streamer_name, "!카지노오픈 5")
     assert "OPEN" in r2 or "열었습니다" in r2
+    assert "100,000P" in r2
     assert ev2 is not None
     assert ev2["type"] == "casino_open"
-    assert ev2 is not None
-    assert ev2["type"] == "casino_open"
+    assert ev2["data"]["max_bet"] == 100000
 
-    # Viewer querying casino status
+    # Viewer querying casino status shows 100,000P limit
     r3, _ = ch.handle_chat_command(db_session, viewer_id, viewer_name, "!카지노")
     assert "영업중" in r3
+    assert "100,000P" in r3
 
     # Viewer playing slot
     r4, ev4 = ch.handle_chat_command(db_session, viewer_id, viewer_name, "!슬롯 1000")

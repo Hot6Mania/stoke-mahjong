@@ -125,7 +125,7 @@ def serialize_market_state(state) -> Dict[str, Any]:
     c_open = getattr(state, "casino_is_open", False) or False
     c_end = getattr(state, "casino_end_time", 0.0) or 0.0
     c_rem = max(0, int(c_end - time.time())) if c_end and c_end > 0 else (0 if not c_open else -1)
-    c_max_bet = getattr(state, "casino_max_bet", 10000) or 10000
+    c_max_bet = getattr(state, "casino_max_bet", 100000) or 100000
     if c_open and c_end and c_end > 0 and time.time() > c_end:
         c_open = False
         c_rem = 0
@@ -722,7 +722,7 @@ class BankruptcyJudgeRequest(BaseModel):
 
 class CasinoOpenRequest(BaseModel):
     duration_minutes: float = 3.0
-    max_bet: int = 10000
+    max_bet: int = 100000
 
 # ---------------------------------------------------------
 # Web Views & OBS Overlay
@@ -1130,7 +1130,7 @@ async def api_judge_bankruptcy(req: BankruptcyJudgeRequest, db=Depends(get_db)):
 async def api_casino_open(req: Optional[CasinoOpenRequest] = None, db=Depends(get_db)):
     """POST /api/casino/open - Streamer opens casino via Admin panel."""
     dur = req.duration_minutes if req else 3.0
-    max_b = req.max_bet if req else 10000
+    max_b = req.max_bet if req else 100000
     success, reply, details = te.open_casino(db, duration_minutes=dur, max_bet=max_b)
     if not success:
         raise HTTPException(status_code=400, detail=reply)

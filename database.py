@@ -51,7 +51,7 @@ def init_db():
                 "ALTER TABLE market_state ADD COLUMN free_trading_end_time FLOAT DEFAULT 0.0",
                 "ALTER TABLE market_state ADD COLUMN casino_is_open BOOLEAN DEFAULT 0",
                 "ALTER TABLE market_state ADD COLUMN casino_end_time FLOAT DEFAULT 0.0",
-                "ALTER TABLE market_state ADD COLUMN casino_max_bet INTEGER DEFAULT 10000",
+                "ALTER TABLE market_state ADD COLUMN casino_max_bet INTEGER DEFAULT 100000",
                 "ALTER TABLE users ADD COLUMN last_mined_at DATETIME",
                 "ALTER TABLE users ADD COLUMN total_mined FLOAT DEFAULT 0.0",
                 "ALTER TABLE users ADD COLUMN total_dividends INTEGER DEFAULT 0",
@@ -76,7 +76,8 @@ def init_db():
                 day_open_price=initial_price,
                 is_trading_locked=False,
                 last_settlement_delta=0,
-                treasury_pool=500000.0
+                treasury_pool=500000.0,
+                casino_max_bet=100000
             )
             db.add(state)
             db.commit()
@@ -87,6 +88,9 @@ def init_db():
                 updated = True
             if getattr(state, "day_open_price", None) is None or state.day_open_price <= 0:
                 state.day_open_price = state.current_price or 2340
+                updated = True
+            if getattr(state, "casino_max_bet", None) is None or state.casino_max_bet <= 10000:
+                state.casino_max_bet = 100000
                 updated = True
             if updated:
                 db.commit()

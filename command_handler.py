@@ -485,7 +485,7 @@ def handle_chat_command(
         if not is_streamer:
             return "🚫 카지노 개장은 스트리머(치즈나베)만 진행할 수 있습니다!", None
         duration = 3.0
-        max_bet = 10000
+        max_bet = 100000
         if len(tokens) >= 2 and tokens[1].replace(".", "", 1).isdigit():
             duration = float(tokens[1])
         if len(tokens) >= 3 and tokens[2].isdigit():

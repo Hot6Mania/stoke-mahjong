@@ -1866,7 +1866,7 @@ def get_donation_history(db: Session, limit: int = 20) -> List[Dict[str, Any]]:
 # =========================================================
 # Community Treasury Casino & Gambling Engine (국고 카지노)
 # =========================================================
-DEFAULT_CASINO_MAX_BET: int = 10000
+DEFAULT_CASINO_MAX_BET: int = 100000
 MIN_CASINO_BET: int = 100
 
 SLOT_SYMBOLS = ["💣", "🍒", "🍇", "🔔", "💎", "🀄", "7️⃣"]
@@ -1901,7 +1901,7 @@ def get_casino_state(db: Session) -> Dict[str, Any]:
         "treasury_pool": getattr(state, "treasury_pool", DEFAULT_TREASURY_POOL)
     }
 
-def open_casino(db: Session, duration_minutes: float = 3.0, max_bet: int = 10000) -> Tuple[bool, str, Dict[str, Any]]:
+def open_casino(db: Session, duration_minutes: float = 3.0, max_bet: int = 100000) -> Tuple[bool, str, Dict[str, Any]]:
     """Open community treasury casino for specified minutes (0 = unlimited)."""
     state = get_market_state(db)
     now = time.time()
