@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from database import Base
-from models import User, Position, MarketState, LimitOrder, ProductType, OrderType, OrderStatus
+from models import User, Position, MarketState, LimitOrder, ProductType, OrderType, OrderStatus, UserEquipment, EquipmentListing
 import trading_engine as te
 import command_handler as ch
 
@@ -2326,6 +2326,99 @@ def test_cooldown_command(db_session):
     te.set_auto_mining(db_session, uid, uname, enable=True)
     reply_am, _ = ch.handle_chat_command(db_session, uid, uname, "!쿨타임")
     assert "자동 채굴: 🟢 가동 중" in reply_am
+
+
+def test_equipment_listing_starforce_preservation(db_session):
+    """Test that listing an equipment does not reset its starforce to 0, even if it's the user's only item."""
+    uid = "seller_preserve_test"
+    uname = "스타포스보존자"
+    user = te.get_or_create_user(db_session, uid, uname)
+
+    # Give user a single 8-star equipment (just like 메루1's bug report)
+    items = te.ensure_user_equipment(db_session, user)
+    assert len(items) == 1
+    items[0].starforce = 8
+    items[0].name = te.get_pickaxe_info(8)["name"]
+    user.pickaxe_level = 8
+    db_session.commit()
+    target_eq_id = items[0].id
+
+    # List the equipment on the marketplace
+    ok, reply, details = te.execute_list_equipment(db_session, uid, uname, str(target_eq_id), "50000")
+    assert ok is True
+    assert details["starforce"] == 8
+    listing_id = details["listing_id"]
+
+    # Refresh equipment from db and verify its starforce is STILL 8
+    eq_in_db = db_session.query(UserEquipment).filter_by(id=target_eq_id).first()
+    assert eq_in_db.starforce == 8, f"Expected 8, got {eq_in_db.starforce}"
+    assert "★8성" in eq_in_db.name
+    assert eq_in_db.is_equipped is False
+
+    # Check inventory query (!내장비)
+    inv_reply = te.get_user_inventory_status(db_session, uid, uname)
+    assert "★8성" in inv_reply
+    assert f"거래#{listing_id}판매중" in inv_reply
+
+    # Check marketplace listings query (!장비장터)
+    mkt_reply = te.get_equipment_market_listings(db_session)
+    assert "★8성" in mkt_reply
+    assert f"거래 #{listing_id}" in mkt_reply
+
+    # Verify calling ensure_user_equipment again does NOT reset the item's starforce
+    items_again = te.ensure_user_equipment(db_session, user)
+    db_session.refresh(eq_in_db)
+    assert eq_in_db.starforce == 8
+
+    # Reclaim/cancel listing (!장비회수)
+    ok_cancel, r_cancel, _ = te.execute_cancel_equipment_listing(db_session, uid, uname, str(listing_id))
+    assert ok_cancel is True
+    db_session.refresh(eq_in_db)
+    assert eq_in_db.starforce == 8
+    assert eq_in_db.is_equipped is True
+    assert user.pickaxe_level == 8
+
+
+def test_equipment_listing_buy_transfer_starforce(db_session):
+    """Test that buying a listed equipment transfers the item with full starforce and equips it on buyer."""
+    seller_id = "seller_user"
+    buyer_id = "buyer_user"
+    seller = te.get_or_create_user(db_session, seller_id, "판매자")
+    buyer = te.get_or_create_user(db_session, buyer_id, "구매자")
+    buyer.points = 100000
+    db_session.commit()
+
+    # Seller has 15-star golden pickaxe
+    seller_items = te.ensure_user_equipment(db_session, seller)
+    seller_items[0].starforce = 15
+    seller_items[0].name = te.get_pickaxe_info(15)["name"]
+    seller.pickaxe_level = 15
+    db_session.commit()
+    target_id = seller_items[0].id
+
+    # Record initial seller points
+    initial_seller_pts = seller.points
+
+    # Seller lists item for 20000P
+    ok_list, _, details = te.execute_list_equipment(db_session, seller_id, "판매자", str(target_id), "20000")
+    assert ok_list is True
+    listing_id = details["listing_id"]
+
+    # Buyer buys the item
+    ok_buy, reply_buy, _ = te.execute_buy_equipment_listing(db_session, buyer_id, "구매자", str(listing_id))
+    assert ok_buy is True
+
+    # Buyer now has the 15-star golden pickaxe equipped
+    bought_eq = db_session.query(UserEquipment).filter_by(id=target_id).first()
+    assert bought_eq.user_id == buyer_id
+    assert bought_eq.starforce == 15
+    assert bought_eq.is_equipped is True
+    assert buyer.pickaxe_level == 15
+
+    # Seller has received points minus tax
+    assert seller.points == initial_seller_pts + (20000 - details["tax_fee"])
+
+
 
 
 

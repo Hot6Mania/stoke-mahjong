@@ -2177,21 +2177,60 @@ def ensure_user_equipment(db: Session, user: User) -> List[UserEquipment]:
         db.refresh(item)
         items = [item]
     else:
-        equipped = [i for i in items if i.is_equipped]
+        # Items actively listed for sale on the marketplace cannot be equipped
+        active_listed_ids = {
+            l.equipment_id for l in db.query(EquipmentListing.equipment_id)
+            .filter(EquipmentListing.seller_id == user.id, EquipmentListing.status == "ACTIVE").all()
+        }
+        # Unequip any actively listed items
+        for it in items:
+            if it.id in active_listed_ids and it.is_equipped:
+                it.is_equipped = False
+
+        unlisted_items = [it for it in items if it.id not in active_listed_ids]
+        if not unlisted_items:
+            # User has all items on sale in marketplace! Grant a basic starter 0-star pickaxe
+            info0 = get_pickaxe_info(0)
+            starter = UserEquipment(
+                user_id=user.id,
+                equipment_type="PICKAXE",
+                name=info0["name"],
+                starforce=0,
+                is_equipped=True,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(starter)
+            db.commit()
+            db.refresh(starter)
+            items.append(starter)
+            unlisted_items = [starter]
+
+        equipped = [i for i in unlisted_items if i.is_equipped]
         if not equipped:
-            items[0].is_equipped = True
-            equipped = [items[0]]
+            # Equip highest starforce unlisted item
+            unlisted_items.sort(key=lambda x: x.starforce, reverse=True)
+            unlisted_items[0].is_equipped = True
+            equipped = [unlisted_items[0]]
             db.commit()
         elif len(equipped) > 1:
             for eq in equipped[1:]:
                 eq.is_equipped = False
             db.commit()
-        # If user.pickaxe_level was updated directly outside and there is only 1 item, sync it
-        if len(items) == 1 and getattr(user, "pickaxe_level", None) is not None and user.pickaxe_level != equipped[0].starforce:
+            equipped = [equipped[0]]
+
+        # If user.pickaxe_level was updated directly outside (e.g. legacy unit test) and there is only 1 item,
+        # sync it ONLY if it is not an actively listed marketplace item
+        if (
+            len(items) == 1
+            and equipped
+            and equipped[0].id not in active_listed_ids
+            and getattr(user, "pickaxe_level", None) is not None
+            and user.pickaxe_level != equipped[0].starforce
+        ):
             equipped[0].starforce = max(0, min(25, int(user.pickaxe_level)))
             equipped[0].name = get_pickaxe_info(equipped[0].starforce)["name"]
             db.commit()
-        else:
+        elif equipped:
             user.pickaxe_level = equipped[0].starforce
     return items
 
@@ -2899,13 +2938,32 @@ def execute_list_equipment(
     # If item was equipped, unequip it and equip another item if available
     if target_item.is_equipped:
         target_item.is_equipped = False
-        remaining = [it for it in user_items if it.id != target_item.id]
-        if remaining:
+
+    active_listed_ids = {
+        l.equipment_id for l in db.query(EquipmentListing.equipment_id)
+        .filter(EquipmentListing.seller_id == user.id, EquipmentListing.status == "ACTIVE").all()
+    }
+    active_listed_ids.add(target_item.id)
+
+    remaining = [it for it in user_items if it.id != target_item.id and it.id not in active_listed_ids]
+    if remaining:
+        if not any(it.is_equipped for it in remaining):
             remaining.sort(key=lambda x: x.starforce, reverse=True)
             remaining[0].is_equipped = True
             user.pickaxe_level = remaining[0].starforce
-        else:
-            user.pickaxe_level = 0
+    else:
+        # User has no unlisted items left to equip; create a starter 0-star pickaxe so user always has an active pickaxe
+        info0 = get_pickaxe_info(0)
+        starter = UserEquipment(
+            user_id=user.id,
+            equipment_type="PICKAXE",
+            name=info0["name"],
+            starforce=0,
+            is_equipped=True,
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(starter)
+        user.pickaxe_level = 0
 
     listing = EquipmentListing(
         seller_id=user.id,
@@ -3007,9 +3065,12 @@ def execute_buy_equipment_listing(
     eq.user_id = buyer.id
     eq.is_equipped = False
 
-    # Auto equip if buyer currently has no equipped items
+    # Auto equip if buyer currently has no equipped items or only a 0-star starter pickaxe
     buyer_items = db.query(UserEquipment).filter_by(user_id=buyer.id).all()
-    if not any(it.is_equipped for it in buyer_items):
+    equipped = [it for it in buyer_items if it.is_equipped]
+    if not equipped or (len(equipped) == 1 and equipped[0].starforce == 0 and eq.starforce > 0):
+        for it in buyer_items:
+            it.is_equipped = False
         eq.is_equipped = True
         buyer.pickaxe_level = eq.starforce
 
@@ -3067,13 +3128,30 @@ def execute_cancel_equipment_listing(
     if listing.seller_id != user_id:
         return False, "⚠️ 본인이 등록한 거래만 취소할 수 있습니다!", None
 
+    user = get_or_create_user(db, user_id, username)
     listing.status = "CANCELLED"
     listing.resolved_at = datetime.now(timezone.utc)
+
+    eq = listing.equipment
+    if eq:
+        # If user currently has no equipped item or only has a 0-star starter pickaxe, auto-equip the reclaimed item!
+        user_items = db.query(UserEquipment).filter_by(user_id=user.id).all()
+        equipped = [it for it in user_items if it.is_equipped]
+        if not equipped or (len(equipped) == 1 and equipped[0].starforce < eq.starforce):
+            for it in user_items:
+                it.is_equipped = (it.id == eq.id)
+            eq.is_equipped = True
+            user.pickaxe_level = eq.starforce
     db.commit()
 
-    eq_name = listing.equipment.name if listing.equipment else "장비"
-    reply = f"📦↩️ [장비 등록 취소] 거래 #{listing.id}의 [{eq_name}] 판매 등록이 취소되어 인벤토리로 안전하게 회수되었습니다!"
-    return True, reply, {"listing_id": listing.id}
+    eq_name = eq.name if eq else "장비"
+    star_str = f" (★{eq.starforce}성)" if eq else ""
+    reply = f"📦↩️ [장비 등록 취소] 거래 #{listing.id}의 [{eq_name}{star_str}] 판매 등록이 취소되어 인벤토리로 안전하게 회수되었습니다!"
+    if eq and eq.is_equipped:
+        reply += " (주 장비로 자동 재장착되었습니다!)"
+    else:
+        reply += f" (장착: !장착 {eq.id if eq else ''})"
+    return True, reply, {"listing_id": listing.id, "equipment_id": eq.id if eq else None}
 
 def get_equipment_market_listings(db: Session, target_user_id: Optional[str] = None) -> str:
     """Returns active marketplace listings."""
