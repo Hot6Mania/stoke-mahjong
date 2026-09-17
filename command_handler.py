@@ -49,7 +49,9 @@ from trading_engine import (
     get_starforce_event_guide,
     set_auto_mining,
     renew_auto_mining,
-    get_auto_mining_status
+    get_auto_mining_status,
+    get_user_equipped_item,
+    get_user_cooldown_status
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -57,7 +59,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간
+• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간, !쿨타임
 • 장비: !내장비, !장착 [번호], !강화 [번호], !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
@@ -201,7 +203,10 @@ def handle_chat_command(
             sf_str = "💤 피버 대기중 (돌발 발동)"
 
         # 4. User Mining Cooldown
-        pick_lvl = getattr(user, "pickaxe_level", 0) or 0
+        equipped_item = get_user_equipped_item(db, user)
+        pick_lvl = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0) or 0
+        pick_lvl = max(0, min(25, int(pick_lvl)))
+        user.pickaxe_level = pick_lvl
         pick_info = get_pickaxe_info(pick_lvl)
         pickaxe_cd = pick_info["cooldown_seconds"]
         mine_str = "⛏️ 즉시 가능"
@@ -228,6 +233,10 @@ def handle_chat_command(
 
         reply = f"⏱️ [현재 남은 시간] 거래: {trade_str} | 도박: {casino_str} | 스타포스: {sf_str} | 내 채굴: {mine_str} | 자동채굴: {auto_str}"
         return reply, None
+
+    # 2-2. Dedicated Cooldown Query (!쿨타임, !쿨, !cooldown, !cd, !채굴쿨)
+    if cmd in ["!쿨타임", "!쿨", "!cooldown", "!cd", "!채굴쿨"]:
+        return get_user_cooldown_status(db, user_id, username), None
 
     # 3. Account / Wallet Query (보유와 채굴을 '보유'로 완전 통합)
     if cmd in ["!내정보", "!지갑", "!내주식", "!계좌", "!잔고"]:

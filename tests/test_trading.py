@@ -2262,6 +2262,73 @@ def test_auto_mining_system_and_commands(db_session, monkeypatch):
     assert ev_off["type"] == "auto_mining_toggle"
 
 
+def test_starforce_fever_extended_intervals(db_session):
+    """Test that Star Force Fever event intervals are extended to 1.5~3 hours and durations 5~10 mins."""
+    assert te.STARFORCE_EVENT_MIN_INTERVAL_MINUTES == 90.0
+    assert te.STARFORCE_EVENT_MAX_INTERVAL_MINUTES == 180.0
+    assert te.STARFORCE_EVENT_DURATIONS == [5.0, 7.0, 10.0]
+
+    # Check guide text
+    guide = te.get_starforce_event_guide(db_session)
+    assert "1.5~3시간" in guide
+
+    # Test open event
+    now = time.time()
+    ok, reply, details = te.open_starforce_event(db_session, duration_minutes=7.0, event_type_str="할인")
+    assert ok is True
+    assert details["is_active"] is True
+    assert details["event_type"] == "DISCOUNT_30"
+
+    state = te.get_market_state(db_session)
+    assert state.sf_next_event_time >= state.sf_event_end_time + (90.0 * 60.0) - 1.0
+    assert state.sf_next_event_time <= state.sf_event_end_time + (180.0 * 60.0) + 1.0
+
+    # Test close event
+    ok_close, _, _ = te.close_starforce_event(db_session)
+    assert ok_close is True
+    db_session.refresh(state)
+    assert state.sf_event_type is None
+    assert state.sf_next_event_time >= now + (90.0 * 60.0) - 1.0
+    assert state.sf_next_event_time <= now + (180.0 * 60.0) + 1.0
+
+
+def test_cooldown_command(db_session):
+    """Test !쿨타임 command and its aliases (!쿨, !cooldown, !cd, !채굴쿨)."""
+    uid = "cooldown_tester"
+    uname = "쿨타임체커"
+    user = te.get_or_create_user(db_session, uid, uname)
+
+    # Initial state: ready to mine, auto-mining OFF
+    reply, event = ch.handle_chat_command(db_session, uid, uname, "!쿨타임")
+    assert event is None
+    assert "쿨타임 & 타이머 현황" in reply
+    assert "채굴 쿨:" in reply
+    assert "즉시 채굴 가능" in reply
+    assert "자동 채굴: 💤 OFF" in reply
+    assert "주식장:" in reply
+    assert "스타포스 피버:" in reply
+
+    # Aliases
+    for alias in ["!쿨", "!cooldown", "!cd", "!채굴쿨"]:
+        r_alias, _ = ch.handle_chat_command(db_session, uid, uname, alias)
+        assert "쿨타임 & 타이머 현황" in r_alias
+
+    # Mine once to put pickaxe on cooldown
+    ok_mine, r_mine, _ = te.execute_mining(db_session, uid, uname)
+    assert ok_mine is True
+
+    # Now !쿨타임 should report remaining cooldown
+    reply_cd, _ = ch.handle_chat_command(db_session, uid, uname, "!쿨타임")
+    assert "남음" in reply_cd
+    assert "즉시 채굴 가능" not in reply_cd
+
+    # Enable auto-mining
+    te.set_auto_mining(db_session, uid, uname, enable=True)
+    reply_am, _ = ch.handle_chat_command(db_session, uid, uname, "!쿨타임")
+    assert "자동 채굴: 🟢 가동 중" in reply_am
+
+
+
 
 
 

@@ -1302,6 +1302,11 @@ STARFORCE_EVENT_TYPES: Dict[str, Dict[str, Any]] = {
     }
 }
 
+# Star Force Fever Event Interval & Duration Settings (Significantly extended to avoid being too frequent)
+STARFORCE_EVENT_MIN_INTERVAL_MINUTES = 90.0   # 1.5 hours
+STARFORCE_EVENT_MAX_INTERVAL_MINUTES = 180.0  # 3.0 hours
+STARFORCE_EVENT_DURATIONS = [5.0, 7.0, 10.0]  # 5~10 minutes
+
 def get_starforce_event_state(
     db: Session,
     force_trigger: bool = False,
@@ -1310,7 +1315,7 @@ def get_starforce_event_state(
 ) -> Dict[str, Any]:
     """
     Retrieve current Star Force Fever Event state.
-    Handles spontaneous trigger at random intervals, random duration (5~15 min), and automatic expiration.
+    Handles spontaneous trigger at random intervals (1.5~3 hours), random duration (5~10 min), and automatic expiration.
     """
     state = get_market_state(db)
     now = time.time()
@@ -1325,8 +1330,8 @@ def get_starforce_event_state(
         ev_type = None
         title = None
         end_time = 0.0
-        # Schedule next spontaneous event in 20 ~ 45 minutes
-        next_time = now + random.uniform(20.0, 45.0) * 60.0
+        # Schedule next spontaneous event in 90 ~ 180 minutes (1.5 ~ 3 hours)
+        next_time = now + random.uniform(STARFORCE_EVENT_MIN_INTERVAL_MINUTES, STARFORCE_EVENT_MAX_INTERVAL_MINUTES) * 60.0
         state.sf_event_type = None
         state.sf_event_title = None
         state.sf_event_end_time = 0.0
@@ -1340,7 +1345,7 @@ def get_starforce_event_state(
     # 2. Initialization or Spontaneous Random Trigger
     if not ev_type:
         if not next_time or next_time <= 0:
-            next_time = now + random.uniform(15.0, 35.0) * 60.0
+            next_time = now + random.uniform(STARFORCE_EVENT_MIN_INTERVAL_MINUTES, STARFORCE_EVENT_MAX_INTERVAL_MINUTES) * 60.0
             state.sf_next_event_time = next_time
             try:
                 db.commit()
@@ -1363,13 +1368,13 @@ def get_starforce_event_state(
             if manual_duration and manual_duration > 0:
                 dur_minutes = float(manual_duration)
             else:
-                dur_minutes = random.choice([5.0, 8.0, 10.0, 12.0, 15.0])
+                dur_minutes = random.choice(STARFORCE_EVENT_DURATIONS)
 
             conf = STARFORCE_EVENT_TYPES[chosen_type]
             ev_type = chosen_type
             title = conf["title"]
             end_time = now + dur_minutes * 60.0
-            next_time = end_time + random.uniform(20.0, 45.0) * 60.0
+            next_time = end_time + random.uniform(STARFORCE_EVENT_MIN_INTERVAL_MINUTES, STARFORCE_EVENT_MAX_INTERVAL_MINUTES) * 60.0
 
             state.sf_event_type = ev_type
             state.sf_event_title = title
@@ -1425,7 +1430,7 @@ def open_starforce_event(
     conf = STARFORCE_EVENT_TYPES[ev_type]
     dur_min = max(1.0, float(duration_minutes or 10.0))
     end_time = now + dur_min * 60.0
-    next_time = end_time + random.uniform(20.0, 45.0) * 60.0
+    next_time = end_time + random.uniform(STARFORCE_EVENT_MIN_INTERVAL_MINUTES, STARFORCE_EVENT_MAX_INTERVAL_MINUTES) * 60.0
 
     state.sf_event_type = ev_type
     state.sf_event_title = conf["title"]
@@ -1456,7 +1461,7 @@ def close_starforce_event(db: Session) -> Tuple[bool, str, Dict[str, Any]]:
     state.sf_event_type = None
     state.sf_event_title = None
     state.sf_event_end_time = 0.0
-    state.sf_next_event_time = now + random.uniform(20.0, 45.0) * 60.0
+    state.sf_next_event_time = now + random.uniform(STARFORCE_EVENT_MIN_INTERVAL_MINUTES, STARFORCE_EVENT_MAX_INTERVAL_MINUTES) * 60.0
     db.commit()
     db.refresh(state)
 
@@ -1481,7 +1486,13 @@ def get_starforce_event_guide(db: Session) -> str:
         )
     else:
         next_m = sf["next_remaining_sec"] // 60
-        next_str = f"약 {next_m}분 후 예정" if next_m > 0 else "곧 발생 예정"
+        next_h, next_mod_m = divmod(next_m, 60)
+        if next_h > 0:
+            next_str = f"약 {next_h}시간 {next_mod_m}분 후 예정"
+        elif next_m > 0:
+            next_str = f"약 {next_m}분 후 예정"
+        else:
+            next_str = "곧 발생 예정"
         return (
             f"⭐ [스타포스 돌발 피버 이벤트 안내]\n"
             f"• 현재 상태: 대기 중 (다음 돌발 피버: {next_str})\n"
@@ -1489,7 +1500,7 @@ def get_starforce_event_guide(db: Session) -> str:
             f"  1. 💸 비용 30% 할인: 전 구간 강화 비용 30% 파격 세일\n"
             f"  2. ⭐ 5·10·15성 100% 성공: ★5성, ★10성, ★15성(파괴위험구간) 100% 무조건 확정 성공!\n"
             f"  3. ✨🌟 샤이닝 스타포스: 30% 할인 + 5/10/15성 100% 성공 동시 발동!\n"
-            f"💡 피버는 20~45분 주기로 5~15분간 랜덤 돌발 발생합니다! (스트리머 명령어: !피버 [분] [종류])"
+            f"💡 피버는 약 1.5~3시간 주기로 5~10분간 랜덤 돌발 발생합니다! (스트리머 명령어: !피버 [분] [종류])"
         )
 
 def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -2193,6 +2204,107 @@ def get_user_equipped_item(db: Session, user: User) -> UserEquipment:
     items[0].is_equipped = True
     db.commit()
     return items[0]
+
+def get_user_cooldown_status(db: Session, user_id: str, username: str) -> str:
+    """
+    Returns dedicated status breakdown of mining cooldown, auto-mining timer, and server timers.
+    Used by !쿨타임 (!쿨, !cooldown, !cd, !채굴쿨).
+    """
+    user = get_or_create_user(db, user_id, username)
+    # Quick catch-up tick for auto-mining
+    try:
+        execute_auto_mining_tick(db, user)
+    except Exception:
+        pass
+
+    state = get_market_state(db)
+    now = time.time()
+    now_utc = datetime.now(timezone.utc)
+
+    # 1. Pickaxe & Mining Cooldown
+    equipped_item = get_user_equipped_item(db, user)
+    star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0) or 0
+    star = max(0, min(25, int(star)))
+    user.pickaxe_level = star
+    pick_info = get_pickaxe_info(star)
+    cd_min = pick_info["cooldown_minutes"]
+    cd_sec = pick_info["cooldown_seconds"]
+
+    if user.last_mined_at:
+        last_t = user.last_mined_at if user.last_mined_at.tzinfo else user.last_mined_at.replace(tzinfo=timezone.utc)
+        elapsed = (now_utc - last_t).total_seconds()
+        if elapsed < cd_sec:
+            rem_cd = int(cd_sec - elapsed)
+            rem_m, rem_s = divmod(rem_cd, 60)
+            mine_status = f"⏳ {rem_m}분 {rem_s}초 남음 ({equipped_item.name}, ★{star}성, 쿨 {cd_min}분)"
+        else:
+            mine_status = f"✨ 즉시 채굴 가능! ({equipped_item.name}, ★{star}성, 쿨 {cd_min}분) ➔ !채굴"
+    else:
+        mine_status = f"✨ 즉시 채굴 가능! ({equipped_item.name}, ★{star}성, 쿨 {cd_min}분) ➔ !채굴"
+
+    # 2. Auto-Mining Status
+    end_am = float(getattr(user, "auto_mining_end_time", 0.0) or 0.0)
+    am_enabled = bool(getattr(user, "auto_mining_enabled", False))
+    if am_enabled and end_am > now:
+        rem_am = int(end_am - now)
+        h_am, mod_am = divmod(rem_am, 3600)
+        m_am, s_am = divmod(mod_am, 60)
+        time_am_str = f"{h_am}시간 {m_am}분 {s_am}초" if h_am > 0 else f"{m_am}분 {s_am}초"
+        auto_status = f"🟢 가동 중 (잔여: {time_am_str} | 연장: !자동채굴 갱신)"
+    elif am_enabled:
+        auto_status = f"⚠️ 세션 만료 (!자동채굴 갱신 필요)"
+    else:
+        auto_status = f"💤 OFF (시작: !자동채굴 on)"
+
+    # 3. Market Trading Status
+    end_t = float(getattr(state, "free_trading_end_time", 0.0) or 0.0)
+    is_locked = bool(getattr(state, "is_trading_locked", True))
+    rem_trade = max(0, int(end_t - now)) if (not is_locked and end_t > 0) else 0
+    if not is_locked and rem_trade > 0:
+        m_t, s_t = divmod(rem_trade, 60)
+        trade_status = f"🟢 장 열림 ({m_t}분 {s_t}초 후 마감)"
+    elif not is_locked:
+        trade_status = "🟢 장 열림 (자유 거래)"
+    else:
+        trade_status = "🔒 거래 마감 (경기 중)"
+
+    # 4. Casino Status
+    c_state = get_casino_state(db)
+    if c_state["is_open"]:
+        rem_c = c_state["remaining_sec"]
+        if 0 < rem_c < 99999:
+            m_c, s_c = divmod(rem_c, 60)
+            casino_status = f"🎰 오픈 ({m_c}분 {s_c}초 남음)"
+        else:
+            casino_status = "🎰 오픈 (무제한)"
+    else:
+        casino_status = "💤 마감"
+
+    # 5. Star Force Fever Status
+    sf_state = get_starforce_event_state(db)
+    if sf_state.get("is_active"):
+        rem_sf = sf_state["remaining_sec"]
+        m_sf, s_sf = divmod(rem_sf, 60)
+        sf_status = f"🔥 {sf_state['event_type_name']} ({m_sf}분 {s_sf}초 남음) ➔ !강화"
+    else:
+        next_m = sf_state["next_remaining_sec"] // 60
+        next_h, next_mod_m = divmod(next_m, 60)
+        if next_h > 0:
+            next_str = f"약 {next_h}시간 {next_mod_m}분 후 예정"
+        elif next_m > 0:
+            next_str = f"약 {next_m}분 후 예정"
+        else:
+            next_str = "곧 발생 예정"
+        sf_status = f"💤 대기 중 ({next_str})"
+
+    return (
+        f"⏳ [{username}님의 쿨타임 & 타이머 현황]\n"
+        f"• ⛏️ 채굴 쿨: {mine_status}\n"
+        f"• 🤖 자동 채굴: {auto_status}\n"
+        f"• 📈 주식장: {trade_status} | 🎰 카지노: {casino_status}\n"
+        f"• ⭐ 스타포스 피버: {sf_status}"
+    )
+
 
 def execute_mining(
     db: Session,
