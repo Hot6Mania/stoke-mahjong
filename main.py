@@ -796,6 +796,12 @@ class ChatCommandRequest(BaseModel):
     username: str
     message: str
 
+class TransferRequest(BaseModel):
+    sender_id: str
+    sender_username: Optional[str] = "이체자"
+    target_name: str
+    amount: str
+
 class BankruptcyJudgeRequest(BaseModel):
     app_id: int
     verdict: str
@@ -1169,6 +1175,27 @@ async def api_chat_command(req: ChatCommandRequest, db=Depends(get_db)):
         "reply": reply,
         "event": event
     }
+
+@app.post("/api/transfer")
+async def api_transfer(req: TransferRequest, db=Depends(get_db)):
+    """API endpoint to execute account transfer between users."""
+    success, reply, details = te.execute_transfer(
+        db, req.sender_id, req.sender_username or "이체자", req.target_name, req.amount
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=reply)
+
+    event = {"type": "account_transfer", "data": details}
+    record_trade_event(event)
+    leaderboard = te.get_leaderboard(db, top_n=3)
+    state = te.get_market_state(db)
+    await manager.broadcast({
+        **event,
+        "leaderboard": leaderboard,
+        "market_state": serialize_market_state(state),
+        "recent_trades": list(recent_trades)
+    })
+    return {"success": True, "reply": reply, "details": details}
 
 @app.get("/api/market/state")
 async def api_market_state(db=Depends(get_db)):

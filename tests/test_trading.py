@@ -1433,6 +1433,150 @@ def test_allin_and_int_quantity_trading_pipeline(db_session):
     r_sell, ev_sell = ch.handle_chat_command(db_session, uid, uname, "!매도 1X 전량")
     assert "매도 체결" in r_sell or "판매 완료" in r_sell
 
+def test_parse_korean_amount():
+    assert te.parse_korean_amount("10000") == 10000
+    assert te.parse_korean_amount("10,000") == 10000
+    assert te.parse_korean_amount("10000P") == 10000
+    assert te.parse_korean_amount("10000원") == 10000
+    assert te.parse_korean_amount("1만") == 10000
+    assert te.parse_korean_amount("5만") == 50000
+    assert te.parse_korean_amount("10만") == 100000
+    assert te.parse_korean_amount("1.5만") == 15000
+    assert te.parse_korean_amount("5천") == 5000
+    assert te.parse_korean_amount("1억") == 100000000
+    assert te.parse_korean_amount("invalid") is None
+    assert te.parse_korean_amount("") is None
+    assert te.parse_korean_amount(None) is None
+
+def test_calculate_transfer_tax():
+    # Below 10,000P: 0% tax (면세)
+    tax, rate, label = te.calculate_transfer_tax(5000)
+    assert tax == 0
+    assert rate == 0.0
+    assert label == "면세"
+
+    tax, rate, label = te.calculate_transfer_tax(9999)
+    assert tax == 0
+
+    # 10,000P ~ 99,999P: 5% tax (고액 이체세)
+    tax, rate, label = te.calculate_transfer_tax(10000)
+    assert tax == 500
+    assert rate == 0.05
+    assert label == "고액 이체세"
+
+    tax, rate, label = te.calculate_transfer_tax(50000)
+    assert tax == 2500
+
+    # 100,000P+: 10% tax (초고액 증여세)
+    tax, rate, label = te.calculate_transfer_tax(100000)
+    assert tax == 10000
+    assert rate == 0.10
+    assert label == "초고액 증여세"
+
+    tax, rate, label = te.calculate_transfer_tax(200000)
+    assert tax == 20000
+
+def test_execute_transfer_tax_and_protection(db_session):
+    u1 = te.get_or_create_user(db_session, "u1_transfer", "보내는사람")
+    u2 = te.get_or_create_user(db_session, "u2_transfer", "받는사람")
+    u1.points = 200000
+    u2.points = 10000
+    db_session.commit()
+
+    state = te.get_market_state(db_session)
+    treasury_initial = state.treasury_pool
+
+    # 1. Tax-free transfer (< 10,000P): e.g. 5,000P
+    ok, reply, details = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "받는사람", "5000")
+    assert ok is True
+    assert details["amount"] == 5000
+    assert details["tax"] == 0
+    assert details["recipient_net"] == 5000
+    assert u1.points == 195000
+    assert u2.points == 15000
+    assert state.treasury_pool == treasury_initial
+    assert "면세" in reply
+
+    # 2. Transfer with 5% tax (>= 10,000P): e.g. 20,000P (tax = 1,000P, net = 19,000P)
+    ok, reply, details = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "받는사람", "20000")
+    assert ok is True
+    assert details["amount"] == 20000
+    assert details["tax"] == 1000
+    assert details["recipient_net"] == 19000
+    assert u1.points == 175000
+    assert u2.points == 34000
+    assert state.treasury_pool == treasury_initial + 1000
+    assert "고액 이체세(5%): 1,000P 국고 적립" in reply
+
+    # 3. Super high transfer with 10% tax (>= 100,000P): e.g. 100,000P (tax = 10,000P, net = 90,000P)
+    ok, reply, details = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "받는사람", "10만")
+    assert ok is True
+    assert details["amount"] == 100000
+    assert details["tax"] == 10000
+    assert details["recipient_net"] == 90000
+    assert u1.points == 75000
+    assert u2.points == 124000
+    assert state.treasury_pool == treasury_initial + 1000 + 10000
+    assert "초고액 증여세(10%): 10,000P 국고 적립" in reply
+
+    # 4. Self-transfer protection
+    ok, reply, _ = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "보내는사람", "10000")
+    assert ok is False
+    assert "본인 계좌" in reply
+
+    # 5. Non-existent recipient
+    ok, reply, _ = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "존재하지않는유저", "10000")
+    assert ok is False
+    assert "찾을 수 없습니다" in reply
+
+    # 6. Insufficient funds
+    ok, reply, _ = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "받는사람", "99999999")
+    assert ok is False
+    assert "부족" in reply
+
+    # 7. Debt protection: Cannot transfer borrowed funds out to launder before bankruptcy
+    u1.debt = 50000
+    u1.points = 60000 # Own net cash = 10,000P
+    db_session.commit()
+
+    # Attempt to transfer 20,000P (> max_sendable 10,000P) -> rejected
+    ok, reply, _ = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "받는사람", "20000")
+    assert ok is False
+    assert "채무" in reply or "빚" in reply
+
+    # Attempt to transfer 10,000P (<= max_sendable 10,000P) -> accepted
+    ok, reply, details = te.execute_transfer(db_session, "u1_transfer", "보내는사람", "받는사람", "10000")
+    assert ok is True
+
+def test_transfer_chat_commands(db_session):
+    u1 = te.get_or_create_user(db_session, "cmd_sender", "송금러")
+    u2 = te.get_or_create_user(db_session, "cmd_receiver", "수신러")
+    u1.points = 100000
+    u2.points = 10000
+    db_session.commit()
+
+    # 1. Standard syntax: !송금 [닉네임] [금액]
+    r, ev = ch.handle_chat_command(db_session, "cmd_sender", "송금러", "!송금 수신러 5000")
+    assert "이체 완료" in r
+    assert ev is not None
+    assert ev["type"] == "account_transfer"
+
+    # 2. Syntax with @ mention and Korean amount: !이체 @수신러 2만
+    r, ev = ch.handle_chat_command(db_session, "cmd_sender", "송금러", "!이체 @수신러 2만")
+    assert "이체 완료" in r
+    assert ev["data"]["amount"] == 20000
+
+    # 3. Reversed syntax: !송금 [금액] [닉네임]
+    r, ev = ch.handle_chat_command(db_session, "cmd_sender", "송금러", "!송금 10000 수신러")
+    assert "이체 완료" in r
+    assert ev["data"]["amount"] == 10000
+
+    # 4. Incomplete syntax: !송금
+    r, ev = ch.handle_chat_command(db_session, "cmd_sender", "송금러", "!송금")
+    assert "계좌이체 사용법" in r
+    assert ev is None
+
+
 
 
 

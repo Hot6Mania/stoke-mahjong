@@ -659,3 +659,42 @@ def test_buyers_overlay_and_api(client):
     found = any(b["username"] == "실시간주주" for b in data["buyers"])
     assert found is True
 
+def test_transfer_api_endpoint(client):
+    """Test POST /api/transfer endpoint."""
+    # Seed sender and receiver via chat command
+    client.post("/api/chat/command", json={
+        "user_id": "api_sender",
+        "username": "API송금인",
+        "message": "!내정보"
+    })
+    client.post("/api/chat/command", json={
+        "user_id": "api_receiver",
+        "username": "API수신인",
+        "message": "!내정보"
+    })
+
+    # Test transfer via POST /api/transfer
+    res = client.post("/api/transfer", json={
+        "sender_id": "api_sender",
+        "sender_username": "API송금인",
+        "target_name": "API수신인",
+        "amount": "20000"
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["details"]["amount"] == 20000
+    assert data["details"]["tax"] == 1000 # 5% tax
+    assert data["details"]["recipient_net"] == 19000
+
+    # Test transfer failure with self
+    res_err = client.post("/api/transfer", json={
+        "sender_id": "api_sender",
+        "sender_username": "API송금인",
+        "target_name": "API송금인",
+        "amount": "1000"
+    })
+    assert res_err.status_code == 400
+    assert "본인 계좌" in res_err.json()["detail"]
+
+

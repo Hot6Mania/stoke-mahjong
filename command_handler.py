@@ -29,7 +29,9 @@ from trading_engine import (
     execute_slot_gamble,
     execute_dice_gamble,
     settle_match,
-    format_quantity
+    format_quantity,
+    execute_transfer,
+    parse_korean_amount
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -37,7 +39,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !대출 [금액/최대], !상환, !채굴, !국고, !남은시간
+• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !국고, !남은시간
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -49,6 +51,7 @@ GUIDE_LIMIT = "💡 지정가 사용법: !지정가 [매수/매도] [종목] [�
 GUIDE_LIQUIDATE = "💡 청산 사용법: !청산 [종목/전량] (예: !청산 10X, !청산 전량)"
 GUIDE_BORROW = "💡 대출 사용법: !대출 [금액/최대] (경기 중에도 24시간 상시 가능, 예: !대출 최대, !대출 30000 | 개장 중엔 !빚올인 10X)"
 GUIDE_REPAY = "💡 상환 사용법: !상환 [금액/전액] (예: !상환 20000, !상환 전액)"
+GUIDE_TRANSFER = "💡 계좌이체 사용법: !송금 [받는분닉네임] [금액/올인] (예: !송금 치즈나베 10000, !이체 @CYTFT 5만, !송금 닉네임 올인)\n• 1만P 이상 이체 시 5% 고액 이체세가 국고로 자동 적립됩니다. (1만P 미만 면세, 10만P 이상 10%)"
 GUIDE_CASINO = "🎰 [국고 카지노 사용법]\n• 슬롯머신: !슬롯 [금액/올인] (확률 확인: !슬롯확률)\n• 주사위: !주사위 [홀/짝/대/소] [금액/올인]\n• 카지노 상태: !카지노\n* 스트리머 전용: !정산 [등수] [점수], !카지노오픈 [분] [최대한도], !카지노마감"
 
 def handle_chat_command(
@@ -569,6 +572,35 @@ def handle_chat_command(
         amt_str = tokens[1] if len(tokens) >= 2 else "전액"
         success, reply, details = execute_repay(db, user_id, username, amt_str)
         event = {"type": "loan_repay", "data": details} if success and details else None
+        return reply, event
+
+    # 12-1. Account Transfer / Wire Transfer (계좌이체 / 송금)
+    if cmd in ["!송금", "!이체", "!보내기", "!전송", "!transfer", "!send"]:
+        if len(tokens) < 3:
+            return GUIDE_TRANSFER, None
+
+        allin_words = ["올인", "all", "전액", "전부", "다", "최대"]
+
+        def is_amount(s: str) -> bool:
+            clean = s.strip().lower().replace(",", "").replace("p", "").replace("원", "")
+            if clean in allin_words:
+                return True
+            return parse_korean_amount(s) is not None
+
+        t1 = tokens[1].strip()
+        t_last = tokens[-1].strip()
+
+        # Check if first argument is amount (e.g. !송금 10000 치즈나베, !송금 5만 @CYTFT, !송금 올인 철수)
+        if is_amount(t1) and not is_amount(t_last):
+            amt_str = t1
+            target_str = " ".join(tokens[2:])
+        else:
+            # Standard order: !송금 [닉네임] [금액] (e.g. !송금 치즈나베 10000, !이체 @치즈나베 5만)
+            amt_str = t_last
+            target_str = " ".join(tokens[1:-1])
+
+        success, reply, details = execute_transfer(db, user_id, username, target_str, amt_str)
+        event = {"type": "account_transfer", "data": details} if success and details else None
         return reply, event
 
     # 13. Bankruptcy / Rehabilitation (Na-bae Judge's Court)

@@ -3,8 +3,10 @@ import math
 import json
 import hashlib
 import random
+import re
 from datetime import datetime, timezone
 from typing import Dict, Any, Tuple, List, Optional
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from models import (
     User, Position, MarketState, LimitOrder, ProductType,
@@ -205,6 +207,80 @@ DEFAULT_TREASURY_POOL: float = 500000.0
 TRADING_FEE_RATE: float = 0.01  # 1% 거래 수수료 -> 국고 채굴풀 자동 적립
 MAX_LOAN_LIMIT: int = 50000     # 최대 50,000P 신용 대출 한도
 LOAN_INTEREST_RATE: float = 0.02 # 경기당 2% 대출 이자 (국고 환수)
+
+# 계좌이체 세금 정책: 1만P 이상 5%, 10만P 이상 10% (1만P 미만 면세)
+TRANSFER_TAX_THRESHOLD: int = 10000       # 1만P 이상 이체 시 세금 부과
+TRANSFER_TAX_RATE: float = 0.05           # 1만P 이상 기본 5% 이체세
+TRANSFER_HIGH_TAX_THRESHOLD: int = 100000 # 10만P 이상 초고액 이체 시
+TRANSFER_HIGH_TAX_RATE: float = 0.10      # 10만P 이상 10% 증여세
+
+def parse_korean_amount(val_str: Any) -> Optional[int]:
+    """Parse amounts like 10000, 10,000, 5만, 10만, 1.5만, 5천, 1억 into integer points."""
+    if val_str is None:
+        return None
+    s = str(val_str).strip().lower().replace(",", "").replace("p", "").replace("원", "")
+    if not s:
+        return None
+    if s.isdigit():
+        return int(s)
+
+    # 억
+    m_eok = re.match(r"^(\d+(?:\.\d+)?)\s*억$", s)
+    if m_eok:
+        try:
+            return int(round(float(m_eok.group(1)) * 100000000))
+        except ValueError:
+            return None
+
+    # 만 (e.g. 5만, 1.5만, 10만)
+    m_man = re.match(r"^(\d+(?:\.\d+)?)\s*만$", s)
+    if m_man:
+        try:
+            return int(round(float(m_man.group(1)) * 10000))
+        except ValueError:
+            return None
+
+    # 천 (e.g. 5천, 1.5천)
+    m_cheon = re.match(r"^(\d+(?:\.\d+)?)\s*천$", s)
+    if m_cheon:
+        try:
+            return int(round(float(m_cheon.group(1)) * 1000))
+        except ValueError:
+            return None
+
+    # Compound: e.g. 5만5천 or 1만2000
+    m_comp = re.match(r"^(\d+)\s*만\s*(\d+)?$", s)
+    if m_comp:
+        try:
+            man_part = int(m_comp.group(1)) * 10000
+            rem_str = m_comp.group(2)
+            rem_part = int(rem_str) if rem_str else 0
+            return man_part + rem_part
+        except ValueError:
+            return None
+
+    try:
+        f = float(s)
+        return int(round(f))
+    except ValueError:
+        return None
+
+def calculate_transfer_tax(amount: int) -> Tuple[int, float, str]:
+    """
+    Calculate transfer tax based on amount:
+    - < 10,000P: 0% (면세)
+    - 10,000P ~ 99,999P: 5% (고액 이체세)
+    - >= 100,000P: 10% (초고액 증여세)
+    Returns: (tax_amount, tax_rate, tax_label)
+    """
+    if amount >= TRANSFER_HIGH_TAX_THRESHOLD:
+        tax = max(1, int(round(amount * TRANSFER_HIGH_TAX_RATE)))
+        return tax, TRANSFER_HIGH_TAX_RATE, "초고액 증여세"
+    elif amount >= TRANSFER_TAX_THRESHOLD:
+        tax = max(1, int(round(amount * TRANSFER_TAX_RATE)))
+        return tax, TRANSFER_TAX_RATE, "고액 이체세"
+    else:
+        return 0, 0.0, "면세"
 
 def format_quantity(quantity: Any) -> str:
     """Safely format stock quantity: integer if whole number (e.g. 5), else 2 decimals (e.g. 5.25)."""
@@ -1409,6 +1485,115 @@ def execute_repay(
         "amount": repay_amount,
         "remaining_debt": user.debt,
         "cash": user.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+def execute_transfer(
+    db: Session,
+    sender_id: str,
+    sender_username: str,
+    target_name: str,
+    amount_str: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute account transfer between users:
+    !송금 [상대닉네임] [금액] / !이체 [상대닉네임] [금액]
+    - If transfer amount >= 10,000P, transfer tax is levied and credited to National Treasury Pool.
+    - If sender has debt, borrowed money cannot be transferred out to prevent bankruptcy laundering.
+    """
+    state = get_market_state(db)
+    sender = get_or_create_user(db, sender_id, sender_username)
+
+    clean_target = (target_name or "").strip().lstrip("@").strip()
+    if not clean_target:
+        return False, "💡 계좌이체 사용법: !송금 [닉네임] [금액/올인] (예: !송금 치즈나베 10000, !이체 @CYTFT 5만)", None
+
+    # Prevent self-transfer by input name
+    if clean_target.lower() == sender.username.lower() or clean_target == sender.id:
+        return False, "⚠️ 본인 계좌로는 이체할 수 없습니다.", None
+
+    # Find recipient in database
+    recipient = db.query(User).filter(func.lower(User.username) == clean_target.lower()).first()
+    if not recipient:
+        recipient = db.query(User).filter(User.id == clean_target).first()
+    if not recipient:
+        candidates = db.query(User).filter(User.username.ilike(f"%{clean_target}%")).all()
+        if len(candidates) == 1:
+            recipient = candidates[0]
+
+    if not recipient:
+        return False, f"⚠️ 받으실 유저 '{clean_target}' 님을 찾을 수 없습니다. (채팅에 참여하여 등록된 유저에게만 이체 가능)", None
+
+    if recipient.id == sender.id:
+        return False, "⚠️ 본인 계좌로는 이체할 수 없습니다.", None
+
+    # Debt protection: Cannot transfer borrowed funds out to launder before bankruptcy
+    sender_debt = getattr(sender, "debt", 0) or 0
+    if sender_debt > 0 and sender.points <= sender_debt:
+        return False, f"⚠️ 채무(빚: {sender_debt:,}P)가 보유 현금({sender.points:,}P) 이상입니다. 파산 악용 방지를 위해 먼저 !상환을 진행해주세요.", None
+
+    max_sendable = sender.points - sender_debt if sender_debt > 0 else sender.points
+
+    clean_amount_str = (amount_str or "").strip().lower()
+    if clean_amount_str in ["올인", "all", "전액", "전부", "다", "최대"]:
+        amount = max_sendable
+    else:
+        amount = parse_korean_amount(clean_amount_str)
+        if amount is None:
+            return False, f"⚠️ 유효하지 않은 이체 금액입니다: '{amount_str}' (예: !송금 {clean_target} 10000, 5만, 올인)", None
+
+    if amount <= 0:
+        return False, "⚠️ 이체 금액은 최소 1P 이상이어야 합니다.", None
+
+    if amount > sender.points:
+        return False, f"⚠️ 보유 현금이 부족합니다! (현재 잔액: {sender.points:,}P | 요청 금액: {amount:,}P)", None
+
+    if sender_debt > 0 and amount > max_sendable:
+        return False, f"⚠️ 채무(빚: {sender_debt:,}P)를 제외한 순수 이체 가능 한도는 {max_sendable:,}P입니다. 먼저 !상환을 진행해주세요.", None
+
+    # Calculate Tax
+    tax, tax_rate, tax_label = calculate_transfer_tax(amount)
+    tax_rate_pct = int(round(tax_rate * 100))
+    recipient_net = amount - tax
+
+    # Execute transfer
+    sender.points -= amount
+    recipient.points += recipient_net
+
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += tax
+
+    db.commit()
+    db.refresh(sender)
+    db.refresh(recipient)
+    db.refresh(state)
+
+    if tax > 0:
+        reply = (
+            f"💸 [계좌이체 완료] {sender.username}님 ➡️ {recipient.username}님께 {amount:,}P 이체 완료! "
+            f"(실수령: {recipient_net:,}P | {tax_label}({tax_rate_pct}%): {tax:,}P 국고 적립 | "
+            f"보낸 분 잔액: {sender.points:,}P)"
+        )
+    else:
+        reply = (
+            f"💸 [계좌이체 완료] {sender.username}님 ➡️ {recipient.username}님께 {amount:,}P 이체 완료! "
+            f"(1만P 미만 면세 | 실수령: {recipient_net:,}P | 보낸 분 잔액: {sender.points:,}P)"
+        )
+
+    details = {
+        "sender_id": sender.id,
+        "sender_username": sender.username,
+        "recipient_id": recipient.id,
+        "recipient_username": recipient.username,
+        "amount": amount,
+        "tax": tax,
+        "tax_rate_pct": tax_rate_pct,
+        "tax_label": tax_label,
+        "recipient_net": recipient_net,
+        "sender_remaining": sender.points,
+        "recipient_remaining": recipient.points,
         "treasury_pool": state.treasury_pool
     }
     return True, reply, details
