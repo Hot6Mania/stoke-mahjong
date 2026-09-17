@@ -4102,7 +4102,14 @@ def get_user_pickaxe_status(
             if line_raw:
                 try:
                     data = json.loads(line_raw) if isinstance(line_raw, str) else line_raw
-                    pot_lines.append(f"  • 줄 {i}: {data.get('text', '')}")
+                    line_text = data.get('text', '')
+                    code = data.get('code')
+                    val = data.get('val')
+                    if code == "STARFORCE_SUCCESS_BOOST" and "& 실패" not in line_text and val:
+                        line_text = f"⭐ 강화 성공률 증가 & 실패율 감소 (성공 +{float(val):.1f}% / 실패 -{float(val):.1f}%)"
+                    elif code == "STARFORCE_SAFEGUARD" and "방지" in line_text and "%" in line_text and "15성" not in line_text:
+                        line_text = f"🛡️ 15성+ 파괴 방지 (15성 이상 강화 실패 시 {float(val):.0f}% 확률 파괴 방어)"
+                    pot_lines.append(f"  • 줄 {i}: {line_text}")
                 except Exception:
                     pot_lines.append(f"  • 줄 {i}: {line_raw}")
         pot_block = f"\n🔮 [잠재능력: {CUBE_TIER_DISPLAY.get(pot_tier, pot_tier)}{pity_str}]\n" + "\n".join(pot_lines)
@@ -4147,29 +4154,59 @@ def get_user_pickaxe_status(
         d_rate = item["drop_rate"]
         dest_rate = item["destroy_rate"]
 
+        d_red = 0.0
+        m_red = 0.0
         pot_sb = min(20.0, float(pot_effects.get("starforce_success_boost", 0.0)))
         if pot_sb > 0 and s_rate < 100.0:
             boost = min(pot_sb, 99.0 - s_rate)
             s_rate += boost
             if d_rate >= boost:
                 d_rate -= boost
+                d_red = boost
             else:
+                d_red = d_rate
                 rem = boost - d_rate
                 d_rate = 0.0
                 m_rate = max(0.0, m_rate - rem)
-            s_tag = f"성공 {s_rate:.2f}%(⭐+{boost:.1f}%)" if s_rate % 1 else f"성공 {int(s_rate)}%(⭐+{boost:.1f}%)"
+                m_red = rem
+
+        def _fmt_pct(val: float) -> str:
+            v_round = round(val, 3)
+            if v_round % 1 == 0:
+                return f"{int(v_round)}%"
+            elif round(v_round, 2) == v_round:
+                return f"{v_round:.2f}%"
+            else:
+                return f"{v_round:.3f}%"
+
+        s_val_str = _fmt_pct(s_rate)
+        if pot_sb > 0 and s_rate < 100.0:
+            s_tag = f"성공 {s_val_str}(⭐+{boost:.1f}%)"
         else:
-            s_tag = f"성공 {s_rate:.2f}%" if s_rate % 1 else f"성공 {int(s_rate)}%"
+            s_tag = f"성공 {s_val_str}"
 
         rate_parts = [s_tag]
         if item.get("is_guaranteed_100"):
             rate_parts[0] = "⭐성공 100% (피버 확정!)"
+
         if m_rate > 0:
-            rate_parts.append(f"유지 {m_rate:.3f}%" if m_rate % 1 else f"유지 {int(m_rate)}%")
+            m_val_str = _fmt_pct(m_rate)
+            if m_red > 0:
+                rate_parts.append(f"유지 {m_val_str}(🔻-{m_red:.1f}%)")
+            else:
+                rate_parts.append(f"유지 {m_val_str}")
+
         if d_rate > 0:
-            rate_parts.append(f"하락 {d_rate:.3f}%" if d_rate % 1 else f"하락 {int(d_rate)}%")
+            d_val_str = _fmt_pct(d_rate)
+            if d_red > 0:
+                rate_parts.append(f"하락 {d_val_str}(🔻-{d_red:.1f}%)")
+            else:
+                rate_parts.append(f"하락 {d_val_str}")
+
         if dest_rate > 0:
-            rate_parts.append(f"💥파괴 {dest_rate:.3f}%" if dest_rate % 1 else f"💥파괴 {int(dest_rate)}%")
+            dest_val_str = _fmt_pct(dest_rate)
+            rate_parts.append(f"💥파괴 {dest_val_str}")
+
         rate_str = " | ".join(rate_parts)
 
         if item.get("is_guaranteed_100"):

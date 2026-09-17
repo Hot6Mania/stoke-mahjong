@@ -2934,6 +2934,7 @@ def test_starforce_safeguard_65_and_failure_reduction(db_session, monkeypatch):
     # Check status display reflects success boost and failure rate deduction
     status_msg = te.get_user_pickaxe_status(db_session, uid, uname)
     assert "+8.0%" in status_msg or "39.5%" in status_msg
+    assert "🔻-8.0%" in status_msg
 
     mstate = te.get_market_state(db_session)
     mstate.sf_next_event_time = time.time() + 1000.0
