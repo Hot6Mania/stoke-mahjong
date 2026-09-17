@@ -1576,6 +1576,105 @@ def test_transfer_chat_commands(db_session):
     assert "계좌이체 사용법" in r
     assert ev is None
 
+def test_random_mining_tiers_structure():
+    assert len(te.MINING_TIERS) == 6
+    total_prob = sum(t["prob"] for t in te.MINING_TIERS)
+    assert abs(total_prob - 100.0) < 1e-6
+
+    # Test rolling multiple times returns valid tiers
+    for _ in range(50):
+        t = te.roll_mining_tier()
+        assert t["code"] in ["UR", "SSR", "SR", "R", "N", "C"]
+        assert t["multiplier"] > 0
+
+def test_random_mining_and_critical_hits(db_session, monkeypatch):
+    u = "lucky_miner"
+    user = te.get_or_create_user(db_session, u, "럭키광부")
+    user.points = 1000
+    db_session.commit()
+
+    # 1. Force roll UR Tier (역만급 초대박)
+    ur_tier = {
+        "code": "UR",
+        "name": "🀄 [역만급 초대박 광맥!! (1.5%)]",
+        "prob": 1.5,
+        "multiplier": 5.0,
+        "bonus_cash": 10000,
+        "bonus_10x": 1.0,
+        "cooldown_reduction": 10,
+    }
+    monkeypatch.setattr(te, "roll_mining_tier", lambda: dict(ur_tier))
+
+    ok, msg, details = te.execute_mining(db_session, u, "럭키광부")
+    assert ok is True
+    assert "역만급 초대박" in msg
+    assert details["tier"] == "UR"
+    assert details["multiplier"] == 5.0
+    assert details["bonus_cash"] == 10000
+    assert details["bonus_10x_shares"] == 1.0
+    assert details["cooldown_reduction_minutes"] == 10
+
+    # Verify user received 1X shares, bonus cash, and 10X bonus share
+    user_db = db_session.query(User).filter_by(id=u).first()
+    assert user_db.points == 1000 + 10000 # Got 10,000P bonus cash
+    pos_1x = db_session.query(Position).filter_by(user_id=u, product_type=ProductType.ONE_X).first()
+    assert pos_1x is not None and pos_1x.quantity == details["shares_awarded"]
+    pos_10x = db_session.query(Position).filter_by(user_id=u, product_type=ProductType.TEN_X).first()
+    assert pos_10x is not None and pos_10x.quantity == 1.0
+
+    # Verify cooldown booster was applied: last_mined_at was shifted back by 10 minutes,
+    # so elapsed is treated as >= 600s, leaving only 5 minutes remaining
+    now_utc = datetime.now(timezone.utc)
+    last_t = user_db.last_mined_at
+    if last_t.tzinfo is None:
+        last_t = last_t.replace(tzinfo=timezone.utc)
+    elapsed = (now_utc - last_t).total_seconds()
+    assert elapsed >= 590 # Within ~10 min back shift
+
+    # 2. Test Debt (Forced labor) with Critical SSR Tier
+    u_debt = "debt_miner"
+    user_d = te.get_or_create_user(db_session, u_debt, "빚쟁이광부")
+    user_d.debt = 50000
+    db_session.commit()
+
+    ssr_tier = {
+        "code": "SSR",
+        "name": "💎 [다이아몬드 광맥 슈퍼 크리티컬! (4.5%)]",
+        "prob": 4.5,
+        "multiplier": 3.0,
+        "bonus_cash": 5000,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 5,
+    }
+    monkeypatch.setattr(te, "roll_mining_tier", lambda: dict(ssr_tier))
+
+    ok_d, msg_d, det_d = te.execute_mining(db_session, u_debt, "빚쟁이광부")
+    assert ok_d is True
+    assert det_d["is_forced_labor"] is True
+    assert det_d["repaid_debt"] > 5000 # At least bonus cash + shares value
+    assert user_d.debt < 50000
+
+def test_mining_commands_and_probability_guide(db_session):
+    u = "cmd_miner"
+    # Command: !채굴확률
+    r_prob, ev_prob = ch.handle_chat_command(db_session, u, "광부", "!채굴확률")
+    assert "랜덤 채굴 & 크리티컬 확률 안내" in r_prob
+    assert "역만급 초대박" in r_prob
+    assert "다이아몬드" in r_prob
+    assert "황금 광맥" in r_prob
+    assert ev_prob is None
+
+    # Alias: !채굴안내
+    r_guide, _ = ch.handle_chat_command(db_session, u, "광부", "!채굴안내")
+    assert "랜덤 채굴 & 크리티컬 확률 안내" in r_guide
+
+    # Regular !채굴
+    r_mine, ev_mine = ch.handle_chat_command(db_session, u, "광부", "!채굴")
+    assert "채굴 완료" in r_mine
+    assert ev_mine is not None
+    assert ev_mine["type"] == "mining"
+
+
 
 
 

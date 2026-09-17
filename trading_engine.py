@@ -4,7 +4,7 @@ import json
 import hashlib
 import random
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Tuple, List, Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -1239,15 +1239,88 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         "interest_collected": total_interest_collected
     }
 
+# 채굴 등급 및 크리티컬 확률/보상 테이블
+MINING_TIERS = [
+    {
+        "code": "UR",
+        "name": "🀄 [역만급 초대박 광맥!! (1.5%)]",
+        "prob": 1.5,
+        "multiplier": 5.0,
+        "bonus_cash": 10000,
+        "bonus_10x": 1.0,
+        "cooldown_reduction": 10,  # 쿨타임 5분으로 단축
+    },
+    {
+        "code": "SSR",
+        "name": "💎 [다이아몬드 광맥 슈퍼 크리티컬! (4.5%)]",
+        "prob": 4.5,
+        "multiplier": 3.0,
+        "bonus_cash": 5000,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 5,   # 쿨타임 10분으로 단축
+    },
+    {
+        "code": "SR",
+        "name": "⚡ [황금 광맥 더블 크리티컬! (14%)]",
+        "prob": 14.0,
+        "multiplier": 2.0,
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0,
+    },
+    {
+        "code": "R",
+        "name": "✨ [풍부한 은 광맥 보너스 채굴 (25%)]",
+        "prob": 25.0,
+        "multiplier_range": (1.3, 1.5),
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0,
+    },
+    {
+        "code": "N",
+        "name": "⛏️ [평범한 구리 광맥 일반 채굴 (40%)]",
+        "prob": 40.0,
+        "multiplier": 1.0,
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0,
+    },
+    {
+        "code": "C",
+        "name": "🪨 [석탄·자갈 광맥 소박 채굴 (15%)]",
+        "prob": 15.0,
+        "multiplier_range": (0.6, 0.8),
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0,
+    }
+]
+
+def roll_mining_tier() -> Dict[str, Any]:
+    """Roll random mining tier based on weighted probabilities."""
+    roll = random.random() * 100.0
+    cum = 0.0
+    for tier in MINING_TIERS:
+        cum += tier["prob"]
+        if roll < cum:
+            t = dict(tier)
+            if "multiplier_range" in t:
+                low, high = t["multiplier_range"]
+                t["multiplier"] = round(random.uniform(low, high), 2)
+            return t
+    t = dict(MINING_TIERS[4])
+    t["multiplier"] = 1.0
+    return t
+
 def execute_mining(
     db: Session,
     user_id: str,
     username: str
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Execute !채굴 (Proof of Watch mining).
-    Mines 1X base shares funded by the liquidation Treasury pool without inflation.
-    Cooldown: 15 minutes (900 seconds).
+    Execute !채굴 (Proof of Watch mining with random critical hits & rewards).
+    Cooldown: 15 minutes (900 seconds) - reducible on critical hits.
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
@@ -1268,54 +1341,104 @@ def execute_mining(
         state.treasury_pool = DEFAULT_TREASURY_POOL
 
     current_price = state.current_price
-    # 2. Dynamic Mining Reward based on Treasury Pool
-    # Grants 5% of pool, clamped between 0.1 and 1.0 share
+    # 2. Dynamic Base Reward based on Treasury Pool
     target_cash = min(float(current_price), max(current_price * 0.2, state.treasury_pool * 0.05))
-    shares_awarded = round(target_cash / current_price, 2)
+    base_shares = round(target_cash / current_price, 2)
+    if base_shares <= 0.05:
+        base_shares = 0.1 # Minimum faucet floor
+
+    # 3. Roll Random Mining Tier & Critical Hits
+    tier = roll_mining_tier()
+    multiplier = tier["multiplier"]
+    bonus_cash = tier.get("bonus_cash", 0)
+    bonus_10x = tier.get("bonus_10x", 0.0)
+    cd_reduction = tier.get("cooldown_reduction", 0)
+    tier_name = tier["name"]
+    tier_code = tier["code"]
+
+    shares_awarded = round(base_shares * multiplier, 2)
     if shares_awarded <= 0.05:
-        shares_awarded = 0.1 # Minimum faucet floor
+        shares_awarded = 0.05
     actual_cost = int(round(shares_awarded * current_price))
+    bonus_10x_cost = int(round(bonus_10x * current_price))
 
-    # Deduct from treasury pool
-    state.treasury_pool = max(0.0, state.treasury_pool - actual_cost)
+    # Deduct total mining package cost from treasury pool
+    total_mined_cost = actual_cost + bonus_cash + bonus_10x_cost
+    state.treasury_pool = max(0.0, state.treasury_pool - total_mined_cost)
 
-    # 3. Check if user has debt -> Forced Labor Mode (탄광 노역 채굴)
+    # Cooldown setup
+    if cd_reduction > 0:
+        user.last_mined_at = now_utc - timedelta(minutes=cd_reduction)
+        next_cd_msg = f"{15 - cd_reduction}분 (부스터 발동!)"
+    else:
+        user.last_mined_at = now_utc
+        next_cd_msg = "15분"
+
+    # 4. Check if user has debt -> Forced Labor Mode (탄광 노역 채굴)
     user_debt = getattr(user, "debt", 0) or 0
     if user_debt > 0:
-        repay_amt = min(user_debt, actual_cost)
+        total_payout = actual_cost + bonus_cash
+        repay_amt = min(user_debt, total_payout)
         user.debt = user_debt - repay_amt
         # Mined value returned to treasury as debt payoff
         state.treasury_pool += repay_amt
 
         # Excess cash if mined value exceeds remaining debt
-        excess = actual_cost - repay_amt
+        excess = total_payout - repay_amt
         if excess > 0:
             user.points += excess
 
-        user.last_mined_at = now_utc
-        # Note: Do not add to user.total_mined during forced labor,
-        # because the mined shares were immediately seized to repay debt.
+        # Credit bonus 10X if won
+        if bonus_10x > 0:
+            pos_10x = db.query(Position).filter_by(user_id=user.id, product_type=ProductType.TEN_X).first()
+            if pos_10x and pos_10x.quantity > 0:
+                pos_10x.quantity += bonus_10x
+                pos_10x.invested_cash += bonus_10x_cost
+                pos_10x.entry_price = pos_10x.invested_cash / pos_10x.quantity
+            else:
+                if not pos_10x:
+                    pos_10x = Position(
+                        user_id=user.id,
+                        product_type=ProductType.TEN_X,
+                        quantity=bonus_10x,
+                        entry_price=float(current_price),
+                        invested_cash=float(bonus_10x_cost)
+                    )
+                    db.add(pos_10x)
+                else:
+                    pos_10x.quantity = bonus_10x
+                    pos_10x.entry_price = float(current_price)
+                    pos_10x.invested_cash = float(bonus_10x_cost)
 
         db.commit()
         db.refresh(user)
         db.refresh(state)
 
+        bonus_10x_str = f" + 10X {format_quantity(bonus_10x)}주 획득!" if bonus_10x > 0 else ""
+        excess_str = f" (빚 완제 후 잔여 {excess:,}P 현금 입금)" if excess > 0 else ""
         msg = (
-            f"⛏️ [탄광 노역 채굴] {user.username}님 탄광 노역으로 {actual_cost:,}P 상당 채굴 완료! "
-            f"수익 {repay_amt:,}P가 국고 빚 상환에 즉시 충당되었습니다! (남은 빚: {user.debt:,}P | 쿨타임: 15분)"
+            f"⛏️ [탄광 노역 채굴 완료] {tier_name} {user.username}님 탄광 노역으로 총 {total_payout:,}P 상당 채굴! "
+            f"수익 {repay_amt:,}P가 국고 빚 상환에 즉시 충당되었습니다!{bonus_10x_str}{excess_str} "
+            f"(남은 빚: {user.debt:,}P | 다음 채굴: {next_cd_msg})"
         )
         return True, msg, {
             "user_id": user.id,
             "username": user.username,
+            "tier": tier_code,
+            "tier_name": tier_name,
+            "multiplier": multiplier,
             "shares_awarded": shares_awarded,
             "cash_value": actual_cost,
+            "bonus_cash": bonus_cash,
+            "bonus_10x_shares": bonus_10x,
+            "cooldown_reduction_minutes": cd_reduction,
             "repaid_debt": repay_amt,
             "remaining_debt": user.debt,
             "treasury_pool": state.treasury_pool,
             "is_forced_labor": True
         }
 
-    # Standard Mining Reward: Credit 1X position to user
+    # 5. Standard Mining Reward: Credit 1X position to user
     pos = db.query(Position).filter_by(user_id=user.id, product_type=ProductType.ONE_X).first()
     if pos and pos.quantity > 0:
         pos.quantity += shares_awarded
@@ -1336,24 +1459,64 @@ def execute_mining(
             pos.entry_price = float(current_price)
             pos.invested_cash = float(actual_cost)
 
-    user.last_mined_at = now_utc
+    # Credit bonus cash
+    if bonus_cash > 0:
+        user.points += bonus_cash
+
+    # Credit bonus 10X share
+    if bonus_10x > 0:
+        pos_10x = db.query(Position).filter_by(user_id=user.id, product_type=ProductType.TEN_X).first()
+        if pos_10x and pos_10x.quantity > 0:
+            pos_10x.quantity += bonus_10x
+            pos_10x.invested_cash += bonus_10x_cost
+            pos_10x.entry_price = pos_10x.invested_cash / pos_10x.quantity
+        else:
+            if not pos_10x:
+                pos_10x = Position(
+                    user_id=user.id,
+                    product_type=ProductType.TEN_X,
+                    quantity=bonus_10x,
+                    entry_price=float(current_price),
+                    invested_cash=float(bonus_10x_cost)
+                )
+                db.add(pos_10x)
+            else:
+                pos_10x.quantity = bonus_10x
+                pos_10x.entry_price = float(current_price)
+                pos_10x.invested_cash = float(bonus_10x_cost)
+
     user.total_mined = (user.total_mined or 0.0) + shares_awarded
 
     db.commit()
     db.refresh(user)
     db.refresh(state)
 
+    extras = []
+    if bonus_cash > 0:
+        extras.append(f"보너스 현금 +{bonus_cash:,}P")
+    if bonus_10x > 0:
+        extras.append(f"🔥 10X 레버리지 +{format_quantity(bonus_10x)}주")
+    extras_str = f" + {' / '.join(extras)}" if extras else ""
+
+    qty_str = format_quantity(shares_awarded)
     msg = (
-        f"⛏️ [채굴 완료] {user.username}님 1X {shares_awarded:g}주가 1X 보유에 합산되었습니다! "
-        f"(+{actual_cost:,}P 상당 | 국고 잔여: {int(state.treasury_pool):,}P | 다음 채굴: 15분 후)"
+        f"⛏️ [채굴 완료] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
+        f"(+{actual_cost:,}P 상당{extras_str} | 보유 현금: {user.points:,}P | 국고 잔여: {int(state.treasury_pool):,}P | 다음 채굴: {next_cd_msg})"
     )
     return True, msg, {
         "user_id": user.id,
         "username": user.username,
+        "tier": tier_code,
+        "tier_name": tier_name,
+        "multiplier": multiplier,
         "shares_awarded": shares_awarded,
         "cash_value": actual_cost,
+        "bonus_cash": bonus_cash,
+        "bonus_10x_shares": bonus_10x,
+        "cooldown_reduction_minutes": cd_reduction,
         "treasury_pool": state.treasury_pool,
-        "total_mined": user.total_mined
+        "total_mined": user.total_mined,
+        "is_forced_labor": False
     }
 
 def execute_borrow(
