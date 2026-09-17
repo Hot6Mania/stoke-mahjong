@@ -2282,15 +2282,15 @@ def test_auto_mining_system_and_commands(db_session, monkeypatch):
     assert ev_off["type"] == "auto_mining_toggle"
 
 
-def test_starforce_fever_extended_intervals(db_session):
-    """Test that Star Force Fever event intervals are set to 0.5~1.5 hours (30~90 min) and durations 5~10 mins."""
-    assert te.STARFORCE_EVENT_MIN_INTERVAL_MINUTES == 30.0
-    assert te.STARFORCE_EVENT_MAX_INTERVAL_MINUTES == 90.0
+def test_starforce_fever_frequent_intervals(db_session):
+    """Test that Star Force Fever event intervals are set to 15~30 mins and durations 5~10 mins."""
+    assert te.STARFORCE_EVENT_MIN_INTERVAL_MINUTES == 15.0
+    assert te.STARFORCE_EVENT_MAX_INTERVAL_MINUTES == 30.0
     assert te.STARFORCE_EVENT_DURATIONS == [5.0, 7.0, 10.0]
 
     # Check guide text
     guide = te.get_starforce_event_guide(db_session)
-    assert "0.5~1.5시간" in guide
+    assert "15~30분" in guide
 
     # Test open event
     now = time.time()
@@ -2300,16 +2300,16 @@ def test_starforce_fever_extended_intervals(db_session):
     assert details["event_type"] == "DISCOUNT_30"
 
     state = te.get_market_state(db_session)
-    assert state.sf_next_event_time >= state.sf_event_end_time + (30.0 * 60.0) - 1.0
-    assert state.sf_next_event_time <= state.sf_event_end_time + (90.0 * 60.0) + 1.0
+    assert state.sf_next_event_time >= state.sf_event_end_time + (15.0 * 60.0) - 1.0
+    assert state.sf_next_event_time <= state.sf_event_end_time + (30.0 * 60.0) + 1.0
 
     # Test close event
     ok_close, _, _ = te.close_starforce_event(db_session)
     assert ok_close is True
     db_session.refresh(state)
     assert state.sf_event_type is None
-    assert state.sf_next_event_time >= now + (30.0 * 60.0) - 1.0
-    assert state.sf_next_event_time <= now + (90.0 * 60.0) + 1.0
+    assert state.sf_next_event_time >= now + (15.0 * 60.0) - 1.0
+    assert state.sf_next_event_time <= now + (30.0 * 60.0) + 1.0
 
 
 
@@ -2936,7 +2936,7 @@ def test_starforce_safeguard_65_and_failure_reduction(db_session, monkeypatch):
     assert "+8.0%" in status_msg or "39.5%" in status_msg
 
     mstate = te.get_market_state(db_session)
-    mstate.sf_next_event_time = time.time() + 99999
+    mstate.sf_next_event_time = time.time() + 1000.0
     db_session.commit()
 
     # Base at 16성: success=31.5, maintain=0.0, drop=66.445, destroy=2.055
@@ -2968,6 +2968,28 @@ def test_starforce_safeguard_65_and_failure_reduction(db_session, monkeypatch):
     assert det_boost["previous_level"] == 16
     assert det_boost["new_level"] == 17
     assert "성공률 +8.0% / 실패율 -8.0%" in reply_boost
+
+def test_starforce_fever_sanity_clamp_and_frequent_cycle(db_session):
+    """Test that a distant-future (e.g. 27h+) sf_next_event_time is automatically clamped to 15~30m."""
+    state = te.get_market_state(db_session)
+    now = time.time()
+
+    # Corrupt or huge future value (e.g. 27 hours)
+    state.sf_next_event_time = now + 99000.0
+    state.sf_event_type = None
+    state.sf_event_end_time = 0.0
+    db_session.commit()
+
+    # Querying state must immediately clamp next_time to [15, 30] minutes
+    sf = te.get_starforce_event_state(db_session)
+    assert not sf["is_active"]
+    assert sf["next_remaining_sec"] <= (30.0 * 60.0) + 60.0
+    assert sf["next_remaining_sec"] >= (15.0 * 60.0) - 1.0
+
+    # Cooldown status formatting check: must not say '27시간'
+    cd_status = te.get_user_cooldown_status(db_session, "user_fever_test", "피버체커")
+    assert "27시간" not in cd_status
+    assert "분 후 예정" in cd_status or "곧 발생" in cd_status
 
 
 

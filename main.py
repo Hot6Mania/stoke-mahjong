@@ -772,6 +772,48 @@ async def auto_mining_loop():
         except Exception:
             pass
 
+async def starforce_fever_loop():
+    """Background worker that periodically checks and triggers spontaneous Star Force Fever events."""
+    last_known_active = False
+    while True:
+        try:
+            await asyncio.sleep(10)
+            db = SessionLocal()
+            try:
+                sf = te.get_starforce_event_state(db)
+                is_active = sf.get("is_active", False)
+                if is_active and not last_known_active:
+                    title = sf.get("title", "스타포스 피버")
+                    dur_m = max(1, sf.get("remaining_sec", 0) // 60)
+                    desc = sf.get("desc", "")
+                    notice = (
+                        f"🔥✨ [돌발 피버 OPEN] {title} ({dur_m}분간 진행)! "
+                        f"지금 채팅창에 '!강화 [장비번호]'로 곡괭이를 강화해보세요! ({desc})"
+                    )
+                    asyncio.create_task(dispatch_chat_notice(notice, fallback_bot=bot_instance))
+                    state = te.get_market_state(db)
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "starforce_fever_started",
+                        "market_state": serialize_market_state(state)
+                    })
+                elif not is_active and last_known_active:
+                    notice = "🔒 [스타포스 피버 종료] 피버 이벤트가 마감되었습니다. 다음 돌발 피버를 기대해주세요!"
+                    asyncio.create_task(dispatch_chat_notice(notice, fallback_bot=bot_instance))
+                    state = te.get_market_state(db)
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "starforce_fever_ended",
+                        "market_state": serialize_market_state(state)
+                    })
+                last_known_active = is_active
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            await asyncio.sleep(5)
+
 # ---------------------------------------------------------
 # FastAPI Lifespan & App Setup
 # ---------------------------------------------------------
@@ -786,6 +828,7 @@ async def lifespan(app: FastAPI):
     session_task = asyncio.create_task(session_worker.run())
     tracker_task = asyncio.create_task(sync_tracker_loop())
     auto_mining_task = asyncio.create_task(auto_mining_loop())
+    fever_task = asyncio.create_task(starforce_fever_loop())
 
     yield
 
@@ -793,6 +836,7 @@ async def lifespan(app: FastAPI):
     session_task.cancel()
     tracker_task.cancel()
     auto_mining_task.cancel()
+    fever_task.cancel()
 
 app = FastAPI(title="마작 주식 & 파생상품 거래 시스템", lifespan=lifespan)
 
