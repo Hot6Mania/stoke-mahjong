@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 전적 오버레이</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            color: #ffffff;
+            margin: 0;
+            padding: 15px;
+            background: transparent;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .container {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 7px; /* 모든 라인 간 균일 간격 */
+            padding: 10px 20px; /* 상하 10px 대칭 */
+            border-radius: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+            font-size: 22px;
+            transition: opacity 0.5s;
+            opacity: 1;
+            line-height: 1.3;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            min-width: 520px;
+            max-width: 900px;
+        }
+
+        .label {
+            color: #a9c2d1;
+            margin-right: 8px;
+            font-weight: 700;
+        }
+
+        .value {
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        .info-line {
+            display: block;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* 스탯 컨테이너: 내부 행 간격도 동일 gap, 비었을 땐 숨겨 여백 방지 */
+        #stats-container {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        #stats-container:empty {
+            display: none;
+        }
+
+        .score-diff {
+            margin-left: 6px;
+            font-weight: bold;
+        }
+
+        .score-diff.positive {
+            color: #4ade80;
+        }
+
+        .score-diff.negative {
+            color: #ef4444;
+        }
+
+        .score-diff.neutral {
+            color: #a9c2d1;
+        }
+    </style>
+</head>
+<body>
+    <!-- 독립 실시간 마작 전적 컨테이너 (http://localhost:7500/ 형식 반영) -->
+    <div id="rank-container" class="container" style="background-color: rgba(0, 0, 0, 0.6); opacity: 1;">
+        <div class="info-line" id="date-line" style="display: none;">
+            <span class="value" id="date-value" style="color: rgb(255, 255, 255);">2026년 09월 16일</span>
+        </div>
+        <div class="info-line" id="nickname-line" style="display: none;">
+            <span class="value" id="nickname-value" style="color: rgb(255, 255, 255);">ちぃず鍋</span>
+        </div>
+        <div class="info-line">
+            <span class="label" style="color: rgb(169, 194, 209);">랭크</span><span class="value" id="rank-value" style="color: rgb(255, 255, 255);">작성3</span>
+            <span class="label" style="color: rgb(169, 194, 209); margin-left: 12px;">점수</span><span class="value" id="score-value" style="color: rgb(255, 255, 255);">2340/9000 (3055)</span>
+            <span class="score-diff negative" id="score-diff">▼715</span>
+        </div>
+        <div class="info-line" id="record-line" style="display: block;">
+            <span class="label" style="color: rgb(169, 194, 209);">전적</span><span class="value" id="record-value" style="color: rgb(255, 255, 255);">32321 13212 21112 21111 11332 32222 31111 33123 23333 11333 22133 3221</span>
+        </div>
+        <div id="stats-container"><div class="info-line"><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">화료</span><span class="value" style="color:#ffffff">30.3%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">방총</span><span class="value" style="color:#ffffff">15.2%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">후로</span><span class="value" style="color:#ffffff">25.7%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">리치</span><span class="value" style="color:#ffffff">25.9%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">리치화료</span><span class="value" style="color:#ffffff">54.5%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">다마</span><span class="value" style="color:#ffffff">11.8%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">국수지</span><span class="value" style="color:#ffffff">+1311</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">평균순위</span><span class="value" style="color:#ffffff">1.98</span></span></div></div>
+    </div>
+
+    <script>
+        const rankContainer = document.getElementById('rank-container');
+        const dateLine = document.getElementById('date-line');
+        const dateEl = document.getElementById('date-value');
+        const nicknameLine = document.getElementById('nickname-line');
+        const nicknameEl = document.getElementById('nickname-value');
+        const rankValueEl = document.getElementById('rank-value');
+        const scoreValueEl = document.getElementById('score-value');
+        const recordLine = document.getElementById('record-line');
+        const recordValueEl = document.getElementById('record-value');
+        const statsContainer = document.getElementById('stats-container');
+        const scoreDiffEl = document.getElementById('score-diff');
+
+        async function updateTrackerData() {
+            let data = null;
+            try {
+                const res7500 = await fetch('http://localhost:7500/data.json', { cache: 'no-store' });
+                if (res7500.ok) data = await res7500.json();
+            } catch (e) {}
+
+            if (!data) {
+                try {
+                    const resProxy = await fetch('/api/tracker/data', { cache: 'no-store' });
+                    if (resProxy.ok) data = await resProxy.json();
+                } catch (e) {
+                    console.warn("Tracker fetch error:", e);
+                }
+            }
+
+            if (!data) return;
+
+            if (data.nickname && data.nickname !== '정보 없음') {
+                if (data.date) dateEl.textContent = data.date;
+                if (data.obs_show_date !== undefined) dateLine.style.display = data.obs_show_date ? 'block' : 'none';
+
+                nicknameEl.textContent = data.nickname;
+                if (data.obs_show_nickname !== undefined) nicknameLine.style.display = data.obs_show_nickname ? 'block' : 'none';
+                if (data.obs_show_record !== undefined) recordLine.style.display = data.obs_show_record ? 'block' : 'none';
+
+                if (data.rank) rankValueEl.textContent = data.rank;
+                if (data.score) scoreValueEl.textContent = data.score;
+                if (data.record) recordValueEl.textContent = data.record;
+
+                const statLabelColor = data.obs_label_color || '#a9c2d1';
+                const statValueColor = data.obs_value_color || '#ffffff';
+                const statMetrics = [
+                    ['화료', data.hule_rate, data.obs_show_hule],
+                    ['방총', data.houjuu_rate, data.obs_show_houjuu],
+                    ['후로', data.furo_rate, data.obs_show_furo],
+                    ['리치', data.riichi_rate, data.obs_show_riichi],
+                    ['리치화료', data.riichi_win_rate, data.obs_show_riichi_win],
+                    ['리치방총', data.riichi_houjuu_rate, data.obs_show_riichi_houjuu],
+                    ['다마', data.dama_rate, data.obs_show_dama],
+                    ['일발', data.ippatsu_rate, data.obs_show_ippatsu],
+                    ['뒷도라', data.ura_rate, data.obs_show_ura],
+                    ['유국텐파이', data.ryukyoku_tenpai_rate, data.obs_show_ryukyoku_tenpai],
+                    ['국수지', data.kyoku_avg, data.obs_show_kyoku_avg],
+                    ['평균순위', data.avg_rank, data.obs_show_avg_rank],
+                    ['연대율', data.rentai_rate, data.obs_show_rentai],
+                    ['아픈카부리', data.painful_kaburi_rate, data.obs_show_painful_kaburi],
+                    ['카부리평균', data.painful_kaburi_avg, data.obs_show_painful_kaburi_avg],
+                ];
+
+                const statsMasterOn = (data.obs_show_stats !== false);
+                const shown = statMetrics.filter(m => m[2] === true && m[1]);
+                const perRow = data.obs_stats_one_line ? Math.max(1, shown.length) : 3;
+                let statsHtml = '';
+
+                if (statsMasterOn && shown.length > 0) {
+                    for (let i = 0; i < shown.length; i += perRow) {
+                        const row = shown.slice(i, i + perRow).map(m =>
+                            '<span style="margin-right:12px">'
+                            + `<span class="label" style="color:${statLabelColor}">${m[0]}</span>`
+                            + `<span class="value" style="color:${statValueColor}">${m[1]}</span></span>`
+                        ).join('');
+                        statsHtml += `<div class="info-line">${row}</div>`;
+                    }
+                }
+                statsContainer.innerHTML = statsHtml;
+
+                const scoreDiff = data.score_diff || "0";
+                const isNeg = scoreDiff.includes('▼') || scoreDiff.startsWith('-');
+                const isPos = scoreDiff.includes('▲') || scoreDiff.startsWith('+');
+
+                if (isPos) {
+                    scoreDiffEl.textContent = `▲${scoreDiff.replace(/[▲+]/g, '')}`;
+                    scoreDiffEl.className = 'score-diff positive';
+                } else if (isNeg) {
+                    scoreDiffEl.textContent = `▼${scoreDiff.replace(/[▼-]/g, '')}`;
+                    scoreDiffEl.className = 'score-diff negative';
+                } else {
+                    scoreDiffEl.textContent = '0';
+                    scoreDiffEl.className = 'score-diff neutral';
+                }
+
+                if (data.obs_container_opacity !== undefined) {
+                    const opacity = parseFloat(data.obs_container_opacity) / 100;
+                    rankContainer.style.backgroundColor = `rgba(0, 0, 0, ${opacity})`;
+                }
+                rankContainer.style.opacity = 1;
+            }
+        }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            const ws = new WebSocket(wsUrl);
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'tracker_update' || data.type === 'init' || data.type === 'settlement') {
+                        if (data.tracker_data) {
+                            updateTrackerData();
+                        }
+                    }
+                } catch (e) {}
+            };
+
+            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+            ws.onerror = () => ws.close();
+        }
+
+        updateTrackerData();
+        setInterval(updateTrackerData, 2000);
+        connectWebSocket();
+    </script>
+</body>
+</html>

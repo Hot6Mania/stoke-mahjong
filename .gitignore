@@ -1,0 +1,34 @@
+# Environment and Secret keys
+.env
+.env.*
+!.env.example
+tokens.json
+
+# Databases & Backups
+*.db
+*.db.bak*
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

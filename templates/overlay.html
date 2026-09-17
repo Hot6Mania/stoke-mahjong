@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마작 실시간 전적 & 주식 오버레이</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            color: #ffffff;
+            margin: 0;
+            padding: 15px;
+            background: transparent;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .container {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 7px; /* 모든 라인 간 균일 간격 */
+            padding: 10px 20px; /* 상하 10px 대칭 */
+            border-radius: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+            font-size: 22px;
+            transition: opacity 0.5s;
+            opacity: 1;
+            line-height: 1.3;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            min-width: 520px;
+            max-width: 900px;
+        }
+
+        .label {
+            color: #a9c2d1;
+            margin-right: 8px;
+            font-weight: 700;
+        }
+
+        .value {
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        .info-line {
+            display: block;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* 스탯 컨테이너: 내부 행 간격도 동일 gap, 비었을 땐 숨겨 여백 방지 */
+        #stats-container {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        #stats-container:empty {
+            display: none;
+        }
+
+        .score-diff {
+            margin-left: 6px;
+            font-weight: bold;
+        }
+
+        .score-diff.positive {
+            color: #4ade80;
+        }
+
+        .score-diff.negative {
+            color: #ef4444;
+        }
+
+        .score-diff.neutral {
+            color: #a9c2d1;
+        }
+
+        /* --------------------------------------------- */
+        /* 주식 & 파생상품 거래 위젯 스타일 (일체화 디자인) */
+        /* --------------------------------------------- */
+        .stock-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .stock-main-stat {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .stock-price-val {
+            color: #38bdf8;
+            font-size: 26px;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+        }
+
+        /* 시장 상태 뱃지 */
+        .market-badge {
+            font-size: 14px;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .market-badge.open {
+            background: rgba(16, 185, 129, 0.25);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.5);
+        }
+
+        .market-badge.locked {
+            background: rgba(239, 68, 68, 0.25);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.6);
+            animation: pulse-red 2s infinite ease-in-out;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .open .status-dot {
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+
+        .locked .status-dot {
+            background: #ef4444;
+            box-shadow: 0 0 8px #ef4444;
+        }
+
+        .market-badge.countdown {
+            background: rgba(245, 158, 11, 0.25);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.6);
+            animation: pulse-amber 1.8s infinite ease-in-out;
+        }
+
+        .countdown .status-dot {
+            background: #fbbf24;
+            box-shadow: 0 0 8px #fbbf24;
+        }
+
+        @keyframes pulse-amber {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+            50% { box-shadow: 0 0 12px 2px rgba(245, 158, 11, 0.7); }
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 14px 2px rgba(239, 68, 68, 0.7); }
+        }
+
+        .leaderboard-line {
+            font-size: 17px;
+            line-height: 1.4;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .leaderboard-entries {
+            display: inline-flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .leader-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .leader-item.rank-1 { color: #fbbf24; }
+        .leader-item.rank-2 { color: #e2e8f0; }
+        .leader-item.rank-3 { color: #f97316; }
+
+        /* 실시간 체결 및 마진콜 알림 */
+        .ticker-line {
+            font-size: 15px;
+            font-weight: 700;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            padding-top: 6px;
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .ticker-line.liquidation {
+            color: #ff4d4f;
+            animation: flash-red 1.5s infinite;
+        }
+
+        .ticker-line.trade {
+            color: #67e8f9;
+        }
+
+        .ticker-line.settle {
+            color: #facc15;
+        }
+
+        @keyframes flash-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 1. 실시간 마작 전적 컨테이너 (http://localhost:7500/ 형식 반영) -->
+    <div id="rank-container" class="container" style="background-color: rgba(0, 0, 0, 0.6); opacity: 1;">
+        <div class="info-line" id="date-line" style="display: none;">
+            <span class="value" id="date-value" style="color: rgb(255, 255, 255);">2026년 09월 16일</span>
+        </div>
+        <div class="info-line" id="nickname-line" style="display: none;">
+            <span class="value" id="nickname-value" style="color: rgb(255, 255, 255);">ちぃず鍋</span>
+        </div>
+        <div class="info-line">
+            <span class="label" style="color: rgb(169, 194, 209);">랭크</span><span class="value" id="rank-value" style="color: rgb(255, 255, 255);">작성3</span>
+            <span class="label" style="color: rgb(169, 194, 209); margin-left: 12px;">점수</span><span class="value" id="score-value" style="color: rgb(255, 255, 255);">2340/9000 (3055)</span>
+            <span class="score-diff negative" id="score-diff">▼715</span>
+        </div>
+        <div class="info-line" id="record-line" style="display: block;">
+            <span class="label" style="color: rgb(169, 194, 209);">전적</span><span class="value" id="record-value" style="color: rgb(255, 255, 255);">32321 13212 21112 21111 11332 32222 31111 33123 23333 11333 22133 3221</span>
+        </div>
+        <div id="stats-container"><div class="info-line"><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">화료</span><span class="value" style="color:#ffffff">30.3%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">방총</span><span class="value" style="color:#ffffff">15.2%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">후로</span><span class="value" style="color:#ffffff">25.7%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">리치</span><span class="value" style="color:#ffffff">25.9%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">리치화료</span><span class="value" style="color:#ffffff">54.5%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">다마</span><span class="value" style="color:#ffffff">11.8%</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">국수지</span><span class="value" style="color:#ffffff">+1311</span></span><span style="margin-right:12px"><span class="label" style="color:#a9c2d1">평균순위</span><span class="value" style="color:#ffffff">1.98</span></span></div></div>
+    </div>
+
+    <!-- 2. 실시간 모의 주식 & 주주 랭킹 컨테이너 -->
+    <div id="stock-container" class="container" style="background-color: rgba(0, 0, 0, 0.6); opacity: 1;">
+        <div class="info-line stock-header-row">
+            <div class="stock-main-stat">
+                <span class="label" style="color: rgb(169, 194, 209);">나베주가</span>
+                <span class="stock-price-val" id="stock-price">2,340P</span>
+                <span id="rank-points-tag" style="font-size: 16px; color: #94a3b8; font-weight: 500;">(2,340pt)</span>
+                <span class="score-diff neutral" id="stock-diff">0P (0.00%)</span>
+                <span class="label" style="color: rgb(169, 194, 209); margin-left: 12px; font-size: 19px;">국고</span>
+                <span class="value" id="treasury-val" style="color: #facc15; font-size: 20px;">500,000P</span>
+            </div>
+            <div class="market-badge open" id="market-badge">
+                <span class="status-dot"></span>
+                <span id="market-status-text">[장 열림]</span>
+            </div>
+        </div>
+
+        <div class="info-line leaderboard-line">
+            <span class="label" style="color: rgb(169, 194, 209);">주주 랭킹 TOP 3</span>
+            <span class="leaderboard-entries" id="leaderboard-entries">
+                <span style="font-size: 15px; color: #94a3b8;">등록된 주주 없음 (시작 포인트: 50,000P)</span>
+            </span>
+        </div>
+
+        <div class="ticker-line" id="ticker-line">
+            <span>📢</span>
+            <span id="ticker-text">• !주식명령어 : 채팅창에서 매수/매도/지정가/청산 거래 가능</span>
+        </div>
+    </div>
+
+    <script>
+        // 전적 컨테이너 엘리먼트
+        const rankContainer = document.getElementById('rank-container');
+        const dateLine = document.getElementById('date-line');
+        const dateEl = document.getElementById('date-value');
+        const nicknameLine = document.getElementById('nickname-line');
+        const nicknameEl = document.getElementById('nickname-value');
+        const rankValueEl = document.getElementById('rank-value');
+        const scoreValueEl = document.getElementById('score-value');
+        const recordLine = document.getElementById('record-line');
+        const recordValueEl = document.getElementById('record-value');
+        const statsContainer = document.getElementById('stats-container');
+        const scoreDiffEl = document.getElementById('score-diff');
+
+        // 주식 컨테이너 엘리먼트
+        const stockContainer = document.getElementById('stock-container');
+        const stockPriceEl = document.getElementById('stock-price');
+        const rankPointsTag = document.getElementById('rank-points-tag');
+        const stockDiffEl = document.getElementById('stock-diff');
+        const marketBadge = document.getElementById('market-badge');
+        const marketStatusText = document.getElementById('market-status-text');
+        const leaderboardEntries = document.getElementById('leaderboard-entries');
+        const tickerLine = document.getElementById('ticker-line');
+        const tickerText = document.getElementById('ticker-text');
+
+        let currentRankPoints = 2340;
+        let previousPrice = 2340;
+        let currentStockPrice = 2340;
+        let dayOpenPrice = 2340;
+
+        // URL 파라미터(?mode=stock 또는 ?mode=mahjong)에 따른 선택적 표시 지원
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode') || urlParams.get('view') || urlParams.get('type');
+        if (mode === 'stock') {
+            rankContainer.style.display = 'none';
+        } else if (mode === 'mahjong' || mode === 'tracker') {
+            stockContainer.style.display = 'none';
+        }
+
+        // 점수 문자열에서 현재 랭크 점수 추출 함수 (예: "2340/9000 (3055)" -> 2340)
+        function extractRankPoints(scoreStr) {
+            if (!scoreStr) return null;
+            const m = scoreStr.match(/(\d+)\s*\//);
+            if (m) return parseInt(m[1], 10);
+            const m2 = scoreStr.match(/(\d+)\s*(?:pt|점)/i);
+            if (m2) return parseInt(m2[1], 10);
+            const nums = scoreStr.match(/\b\d{3,5}\b/);
+            if (nums) return parseInt(nums[0], 10);
+            return null;
+        }
+
+        // 점수 문자열에서 당일 시작 점수 추출 함수 (예: "2340/9000 (3055)" -> 3055)
+        function extractDayStartPoints(scoreStr) {
+            if (!scoreStr) return null;
+            const m = scoreStr.match(/\(\s*(\d+)\s*\)/);
+            if (m) return parseInt(m[1], 10);
+            return null;
+        }
+
+        // 1. 실시간 작혼 전적 데이터 동기화 (http://localhost:7500/data.json 또는 /api/tracker/data)
+        async function updateTrackerData() {
+            let data = null;
+
+            // 1순위: 로컬 7500 포트 직접 조회
+            try {
+                const res7500 = await fetch('http://localhost:7500/data.json', { cache: 'no-store' });
+                if (res7500.ok) {
+                    data = await res7500.json();
+                }
+            } catch (e) {
+                // 직접 조회 실패 시 프록시 엔드포인트(/api/tracker/data) 사용
+            }
+
+            if (!data) {
+                try {
+                    const resProxy = await fetch('/api/tracker/data', { cache: 'no-store' });
+                    if (resProxy.ok) {
+                        data = await resProxy.json();
+                    }
+                } catch (e) {
+                    console.warn("Tracker data fetch error:", e);
+                }
+            }
+
+            if (!data) return;
+
+            if (data.nickname && data.nickname !== '정보 없음') {
+                if (data.date) {
+                    dateEl.textContent = data.date;
+                }
+                
+                if (data.obs_show_date !== undefined) {
+                    dateLine.style.display = data.obs_show_date ? 'block' : 'none';
+                }
+                
+                nicknameEl.textContent = data.nickname;
+                
+                if (data.obs_show_nickname !== undefined) {
+                    nicknameLine.style.display = data.obs_show_nickname ? 'block' : 'none';
+                }
+                
+                if (data.obs_show_record !== undefined) {
+                    recordLine.style.display = data.obs_show_record ? 'block' : 'none';
+                }
+                
+                if (data.rank) rankValueEl.textContent = data.rank;
+                if (data.score) scoreValueEl.textContent = data.score;
+                if (data.record) recordValueEl.textContent = data.record;
+
+                // 스탯: 고정 순서 15개 중 켜지고 값 있는 것 표시
+                const statLabelColor = data.obs_label_color || '#a9c2d1';
+                const statValueColor = data.obs_value_color || '#ffffff';
+                const statMetrics = [
+                    ['화료', data.hule_rate, data.obs_show_hule],
+                    ['방총', data.houjuu_rate, data.obs_show_houjuu],
+                    ['후로', data.furo_rate, data.obs_show_furo],
+                    ['리치', data.riichi_rate, data.obs_show_riichi],
+                    ['리치화료', data.riichi_win_rate, data.obs_show_riichi_win],
+                    ['리치방총', data.riichi_houjuu_rate, data.obs_show_riichi_houjuu],
+                    ['다마', data.dama_rate, data.obs_show_dama],
+                    ['일발', data.ippatsu_rate, data.obs_show_ippatsu],
+                    ['뒷도라', data.ura_rate, data.obs_show_ura],
+                    ['유국텐파이', data.ryukyoku_tenpai_rate, data.obs_show_ryukyoku_tenpai],
+                    ['국수지', data.kyoku_avg, data.obs_show_kyoku_avg],
+                    ['평균순위', data.avg_rank, data.obs_show_avg_rank],
+                    ['연대율', data.rentai_rate, data.obs_show_rentai],
+                    ['아픈카부리', data.painful_kaburi_rate, data.obs_show_painful_kaburi],
+                    ['카부리평균', data.painful_kaburi_avg, data.obs_show_painful_kaburi_avg],
+                ];
+
+                const statsMasterOn = (data.obs_show_stats !== false);
+                const shown = statMetrics.filter(m => m[2] === true && m[1]);
+                const perRow = data.obs_stats_one_line ? Math.max(1, shown.length) : 3;
+                let statsHtml = '';
+
+                if (statsMasterOn && shown.length > 0) {
+                    for (let i = 0; i < shown.length; i += perRow) {
+                        const row = shown.slice(i, i + perRow).map(m =>
+                            '<span style="margin-right:12px">'
+                            + `<span class="label" style="color:${statLabelColor}">${m[0]}</span>`
+                            + `<span class="value" style="color:${statValueColor}">${m[1]}</span></span>`
+                        ).join('');
+                        statsHtml += `<div class="info-line">${row}</div>`;
+                    }
+                }
+                statsContainer.innerHTML = statsHtml;
+
+                // 점수 변동 파싱
+                const scoreDiff = data.score_diff || "0";
+                const diffNum = parseFloat(scoreDiff.replace(/[▲▼]/g, ''));
+                const isNeg = scoreDiff.includes('▼') || scoreDiff.startsWith('-');
+                const isPos = scoreDiff.includes('▲') || scoreDiff.startsWith('+');
+
+                if (isPos) {
+                    scoreDiffEl.textContent = `▲${scoreDiff.replace(/[▲+]/g, '')}`;
+                    scoreDiffEl.className = 'score-diff positive';
+                } else if (isNeg) {
+                    scoreDiffEl.textContent = `▼${scoreDiff.replace(/[▼-]/g, '')}`;
+                    scoreDiffEl.className = 'score-diff negative';
+                } else {
+                    scoreDiffEl.textContent = '0';
+                    scoreDiffEl.className = 'score-diff neutral';
+                }
+
+                // 컨테이너 투명도 동기화
+                if (data.obs_container_opacity !== undefined) {
+                    const opacity = parseFloat(data.obs_container_opacity) / 100;
+                    rankContainer.style.backgroundColor = `rgba(0, 0, 0, ${opacity})`;
+                    stockContainer.style.backgroundColor = `rgba(0, 0, 0, ${opacity})`;
+                }
+
+                rankContainer.style.opacity = 1;
+                stockContainer.style.opacity = 1;
+
+                // 랭크 점수 추출 및 기초 주가 동기화 (1:1 Peg)
+                const pts = extractRankPoints(data.score);
+                const dayStart = extractDayStartPoints(data.score);
+                if (dayStart) {
+                    dayOpenPrice = dayStart;
+                }
+                if (pts && (pts !== currentRankPoints || currentStockPrice === 2340)) {
+                    currentRankPoints = pts;
+                    const calculatedPrice = Math.max(100, pts);
+                    updateStockDisplay(calculatedPrice, previousPrice, pts, dayOpenPrice);
+                }
+            }
+        }
+
+        // 2. 주가 표시 갱신 함수 (1:1 랭크 점수 및 당일 시작점 기준 등락 표기)
+        function updateStockDisplay(currPrice, prevPrice, rankPts = null, dayStartPrice = null) {
+            currentStockPrice = currPrice;
+            stockPriceEl.textContent = `${currPrice.toLocaleString()}P`;
+
+            const rPts = rankPts !== null ? rankPts : currPrice;
+            if (rankPointsTag) {
+                rankPointsTag.textContent = `(${Number(rPts).toLocaleString()}pt)`;
+            }
+
+            const basePrice = (dayStartPrice && dayStartPrice > 0) ? dayStartPrice : (dayOpenPrice || prevPrice || currPrice);
+            const diff = currPrice - basePrice;
+            const pct = basePrice > 0 ? (diff / basePrice * 100) : 0;
+
+            if (diff > 0) {
+                stockDiffEl.textContent = `▲+${diff.toLocaleString()}P (+${pct.toFixed(2)}%)`;
+                stockDiffEl.className = 'score-diff positive';
+            } else if (diff < 0) {
+                stockDiffEl.textContent = `▼${Math.abs(diff).toLocaleString()}P (${pct.toFixed(2)}%)`;
+                stockDiffEl.className = 'score-diff negative';
+            } else {
+                stockDiffEl.textContent = `0P (0.00%)`;
+                stockDiffEl.className = 'score-diff neutral';
+            }
+            stockDiffEl.title = `당일 시작점: ${basePrice.toLocaleString()}P 기준 등락`;
+        }
+
+        let countdownTimerInterval = null;
+        let freeTradingSecondsRemaining = 0;
+
+        // 3. 시장 락 뱃지 갱신 (5분 자유 거래 카운트다운 타이머 지원)
+        function updateMarketLockBadge(isLocked, remainingSec = null) {
+            if (isLocked) {
+                if (countdownTimerInterval) {
+                    clearInterval(countdownTimerInterval);
+                    countdownTimerInterval = null;
+                }
+                freeTradingSecondsRemaining = 0;
+                marketBadge.className = "market-badge locked";
+                marketStatusText.textContent = "[경기 중 - 거래 마감]";
+                return;
+            }
+
+            if (remainingSec !== null && remainingSec !== undefined) {
+                const sec = Number(remainingSec);
+                if (sec > 0) {
+                    // 남은 시간 동기화 (기존 타이머와 2초 이상 오차가 있을 때만 보정)
+                    if (!countdownTimerInterval || Math.abs(freeTradingSecondsRemaining - sec) > 2) {
+                        freeTradingSecondsRemaining = sec;
+                    }
+                    marketBadge.className = "market-badge countdown";
+                    renderCountdownBadge();
+                    if (!countdownTimerInterval) {
+                        countdownTimerInterval = setInterval(() => {
+                            freeTradingSecondsRemaining--;
+                            if (freeTradingSecondsRemaining <= 0) {
+                                clearInterval(countdownTimerInterval);
+                                countdownTimerInterval = null;
+                                updateMarketLockBadge(true, 0);
+                            } else {
+                                renderCountdownBadge();
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    if (countdownTimerInterval) {
+                        clearInterval(countdownTimerInterval);
+                        countdownTimerInterval = null;
+                    }
+                    freeTradingSecondsRemaining = 0;
+                    marketBadge.className = "market-badge open";
+                    marketStatusText.textContent = "[장 열림]";
+                }
+            } else {
+                if (countdownTimerInterval && freeTradingSecondsRemaining > 0) {
+                    renderCountdownBadge();
+                } else {
+                    marketBadge.className = "market-badge open";
+                    marketStatusText.textContent = "[장 열림]";
+                }
+            }
+        }
+
+        function renderCountdownBadge() {
+            const m = Math.floor(freeTradingSecondsRemaining / 60);
+            const s = freeTradingSecondsRemaining % 60;
+            const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            marketStatusText.textContent = `⏳ 자유 거래 ${timeStr}`;
+        }
+
+        function updateMarketLock(isLocked, remainingSec = null) {
+            updateMarketLockBadge(isLocked, remainingSec);
+        }
+
+        // 4. 주주 TOP 3 리더보드 갱신
+        function updateLeaderboard(list) {
+            if (!list || list.length === 0) {
+                leaderboardEntries.innerHTML = '<span style="font-size: 15px; color: #94a3b8;">등록된 주주 없음 (시작 포인트: 50,000P)</span>';
+                return;
+            }
+
+            const medals = ["🥇", "🥈", "🥉"];
+            let html = "";
+
+            list.slice(0, 3).forEach((u, idx) => {
+                const medal = medals[idx] || `${idx + 1}위`;
+                const sign = u.total_pnl >= 0 ? "+" : "";
+                const rankClass = `rank-${idx + 1}`;
+                const debtBadge = (u.debt && u.debt > 0) ? `<span style="color:#f87171; font-size:12px; margin-left:3px;">(빚 ${u.debt.toLocaleString()}P)</span>` : "";
+                html += `
+                    <span class="leader-item ${rankClass}">
+                        <strong>${medal} ${u.username}</strong>${debtBadge}
+                        <span style="font-size: 15px; color: #cbd5e1;">(${u.total_assets.toLocaleString()}P / ${sign}${u.total_pnl_pct.toFixed(1)}%)</span>
+                    </span>
+                `;
+            });
+
+            leaderboardEntries.innerHTML = html;
+        }
+
+        // 5. 알림 텍스트 표시
+        let tickerTimer = null;
+        function showTickerMessage(type, text, duration = 6000) {
+            tickerLine.className = `ticker-line ${type}`;
+            tickerText.innerHTML = text;
+
+            if (tickerTimer) clearTimeout(tickerTimer);
+            tickerTimer = setTimeout(() => {
+                tickerLine.className = "ticker-line";
+                tickerText.innerHTML = "• !주식명령어 : 채팅창에서 매수/매도/지정가/청산 거래 가능";
+            }, duration);
+        }
+
+        const treasuryValEl = document.getElementById('treasury-val');
+        function updateTreasury(val) {
+            if (val !== undefined && treasuryValEl) {
+                treasuryValEl.textContent = `${Math.round(val).toLocaleString()}P`;
+            }
+        }
+
+        // 6. WebSocket 실시간 연동
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+        let ws = null;
+
+        function connectWebSocket() {
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function () {
+                console.log("✅ WebSocket Connected.");
+            };
+
+            ws.onmessage = function (event) {
+                try {
+                    const msg = JSON.parse(event.data);
+
+                    if (msg.type === "init" || msg.type === "market_update") {
+                        if (msg.market_state) {
+                            previousPrice = msg.market_state.previous_price;
+                            if (msg.market_state.day_open_price) dayOpenPrice = msg.market_state.day_open_price;
+                            updateStockDisplay(msg.market_state.current_price, msg.market_state.previous_price, msg.market_state.current_rank_point, dayOpenPrice);
+                            const rem = msg.free_trading_remaining !== undefined ? msg.free_trading_remaining : (msg.market_state ? msg.market_state.free_trading_remaining : undefined);
+                            updateMarketLockBadge(msg.market_state.is_trading_locked, rem);
+                            if (msg.market_state.treasury_pool !== undefined) {
+                                updateTreasury(msg.market_state.treasury_pool);
+                            }
+                        }
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                    }
+
+                    if (msg.type === "tracker_update" && msg.market_state) {
+                        if (msg.market_state.day_open_price) dayOpenPrice = msg.market_state.day_open_price;
+                        updateStockDisplay(msg.market_state.current_price, msg.market_state.previous_price, msg.market_state.current_rank_point, dayOpenPrice);
+                        updateMarketLockBadge(msg.market_state.is_trading_locked, msg.market_state.free_trading_remaining);
+                        if (msg.market_state.treasury_pool !== undefined) updateTreasury(msg.market_state.treasury_pool);
+                    }
+
+                    if (msg.type === "free_trading_opened") {
+                        updateMarketLockBadge(false, msg.remaining_seconds || 300);
+                        showTickerMessage("settle", "⏳ [자유 거래 5분 오픈] 경기 정산 완료! 5분간 주식 매수/매도 가능 (채굴은 상시 가능)", 8000);
+                    }
+
+                    if (msg.type === "free_trading_closed") {
+                        updateMarketLockBadge(true, 0);
+                        showTickerMessage("liquidation", "🔒 [거래 마감] 5분 자유 거래 시간이 종료되었습니다. (인게임 진행 중)", 8000);
+                    }
+
+                    if (msg.type === "market_lock") {
+                        updateMarketLockBadge(msg.is_trading_locked, msg.free_trading_remaining);
+                        showTickerMessage(
+                            msg.is_trading_locked ? "liquidation" : "trade",
+                            msg.is_trading_locked ? "🔒 [경기 시작] 거래가 마감되었습니다. (조회 명령만 가능)" : "🟢 [장 열림] 거래가 재개되었습니다! 매수/매도 가능"
+                        );
+                    }
+
+                    if (msg.type === "settlement") {
+                        previousPrice = msg.old_price;
+                        if (msg.market_state && msg.market_state.day_open_price) dayOpenPrice = msg.market_state.day_open_price;
+                        const settleRankPts = (msg.market_state && msg.market_state.current_rank_point) || msg.new_price;
+                        updateStockDisplay(msg.new_price, msg.old_price, settleRankPts, dayOpenPrice);
+                        updateMarketLockBadge(false, msg.free_trading_remaining || 300);
+                        if (msg.treasury_pool !== undefined) updateTreasury(msg.treasury_pool);
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+
+                        const sign = msg.point_delta >= 0 ? "+" : "";
+                        showTickerMessage("settle", `📢 [정산 완료] ${msg.rank}위 (${sign}${msg.point_delta}pt) | 주가: ${msg.new_price}P | 5분 자유 거래 시작!`);
+
+                        if (msg.dividends && msg.dividends.length > 0) {
+                            setTimeout(() => {
+                                showTickerMessage("trade", `🎉 [승리 배당] 1위 달성 기념! 1X 주주 전원에게 5% 승리 배당 지급 완료!`, 7000);
+                            }, 3000);
+                        }
+
+                        if (msg.liquidations && msg.liquidations.length > 0) {
+                            const liq = msg.liquidations[0];
+                            setTimeout(() => {
+                                showTickerMessage("liquidation", `🚨 [마진콜 청산] ${liq.username}님의 ${liq.product_type} 포지션 국고 환수! (-${Number(liq.lost_cash).toLocaleString()}P)`, 8000);
+                            }, 5000);
+                        }
+                    }
+
+                    if (msg.type === "mining" && msg.data) {
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        if (msg.data.is_forced_labor) {
+                            showTickerMessage("trade", `⛏️ [탄광 노역] <strong>${msg.data.username}</strong>님이 노역으로 채굴하여 빚 ${Number(msg.data.repaid_debt).toLocaleString()}P를 상환했습니다! (남은 빚: ${Number(msg.data.remaining_debt).toLocaleString()}P)`);
+                        } else {
+                            showTickerMessage("trade", `⛏️ [채굴] <strong>${msg.data.username}</strong>님이 국고에서 1X ${msg.data.shares_awarded}주를 무상 채굴했습니다!`);
+                        }
+                    }
+
+                    if (msg.type === "loan_borrow" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        showTickerMessage("trade", `💳 [영끌 빚투] <strong>${msg.data.username}</strong>님이 국고에서 ${Number(msg.data.amount).toLocaleString()}P 대출을 실행했습니다! (총 채무: ${Number(msg.data.total_debt).toLocaleString()}P)`);
+                    }
+
+                    if (msg.type === "loan_repay" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        const statusStr = msg.data.remaining_debt === 0 ? "빚 전액 청산! 자유의 몸!" : `남은 빚: ${Number(msg.data.remaining_debt).toLocaleString()}P`;
+                        showTickerMessage("settle", `💰 [빚 상환] <strong>${msg.data.username}</strong>님이 대출금 ${Number(msg.data.amount).toLocaleString()}P를 상환했습니다! (${statusStr})`);
+                    }
+
+                    if (msg.type === "bankruptcy_requested" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        showTickerMessage("liquidation", `🏛️ [회생 신청 접수] <strong>${msg.data.username}</strong>님이 나베 판사의 법정에 파산을 신청했습니다! (빚: ${Number(msg.data.debt).toLocaleString()}P | "${msg.data.reason}")`);
+                    }
+
+                    if (msg.type === "bankruptcy_verdict" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        const cPart = msg.data.comment ? ` [판사 한마디: "${msg.data.comment}"]` : "";
+                        let verdictText = "";
+                        if (msg.data.verdict === 'full') {
+                            verdictText = `⚖️ [회생 인가] 나베 판사님이 <strong>${msg.data.username}</strong>님의 빚 ${Number(msg.data.forgiven_debt).toLocaleString()}P 전액 탕감 & 10,000P 지급!${cPart}`;
+                        } else if (msg.data.verdict === 'half') {
+                            verdictText = `⚖️ [조건부 워크아웃] 나베 판사님이 <strong>${msg.data.username}</strong>님의 빚 ${Number(msg.data.forgiven_debt).toLocaleString()}P(50%) 감면! (남은 빚: ${Number(msg.data.remaining_debt).toLocaleString()}P)${cPart}`;
+                        } else {
+                            verdictText = `🔨 [파산 기각!] 나베 판사님이 <strong>${msg.data.username}</strong>님의 파산 신청을 기각했습니다! "탄광 노역형!"${cPart}`;
+                        }
+                        showTickerMessage(msg.data.verdict === 'full' ? 'settle' : 'liquidation', verdictText);
+                    }
+
+                    if (msg.type === "bankruptcy" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        showTickerMessage("liquidation", `🚨 [개인회생] <strong>${msg.data.username}</strong>님이 법원에 파산 신청을 하여 국고 채무 ${Number(msg.data.forgiven_debt).toLocaleString()}P가 전액 탕감되었습니다!`);
+                    }
+
+                    if (msg.type === "trade_buy" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        const feeStr = msg.data.fee ? ` (수수료 ${Number(msg.data.fee).toLocaleString()}P 국고 적립)` : "";
+                        showTickerMessage("trade", `🛒 [구매 완료] <strong>${msg.data.username}</strong>님이 ${msg.data.product_type} ${msg.data.quantity}주를 구매했습니다! (${Number(msg.data.cost).toLocaleString()}P${feeStr})`, 7000);
+                    }
+
+                    if (msg.type === "donation_charged" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        const commentPart = msg.data.donation_text ? ` - "${msg.data.donation_text}"` : "";
+                        showTickerMessage("settle", `🎉 [후원 1:100 충전] <strong>${msg.data.username}</strong>님이 ${Number(msg.data.pay_amount).toLocaleString()}원 후원! (+${Number(msg.data.points_credited).toLocaleString()}P 충전 완료!)${commentPart}`, 9000);
+                    }
+
+                    if (msg.type === "trade_sell" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        const feeStr = msg.data.fee ? ` (수수료 ${Number(msg.data.fee).toLocaleString()}P 국고 적립)` : "";
+                        showTickerMessage("trade", `💰 [판매 완료] <strong>${msg.data.username}</strong>님이 ${msg.data.product_type} ${msg.data.quantity}주를 판매했습니다! (+${Number(msg.data.payout).toLocaleString()}P${feeStr})`, 7000);
+                    }
+
+                    if (msg.type === "casino_open" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        const durStr = msg.data.duration_minutes > 0 ? `${msg.data.duration_minutes}분간` : "무제한";
+                        showTickerMessage("settle", `🎰 [국고 카지노 오픈!] 스트리머가 ${durStr} 도박장을 열었습니다! (최대 배팅: ${Number(msg.data.max_bet).toLocaleString()}P | !슬롯, !주사위)`, 10000);
+                    }
+
+                    if (msg.type === "casino_close") {
+                        showTickerMessage("liquidation", `🎰 [국고 카지노 마감] 도박장이 종료되었습니다. 상금은 다음 오픈 시 이어집니다!`, 7000);
+                    }
+
+                    if (msg.type === "casino_jackpot" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        if (msg.data.gamble_type === "slot_jackpot") {
+                            showTickerMessage("settle", `👑🚨 [MEGA JACKPOT!] <strong>${msg.data.username}</strong>님이 777 대박으로 국고 30% (+${Number(msg.data.payout).toLocaleString()}P) 독식 달성! 🎉`, 12000);
+                        } else {
+                            showTickerMessage("settle", `⚡🎲 [CRITICAL JACKPOT!] <strong>${msg.data.username}</strong>님이 주사위 더블 잭팟으로 5배 (+${Number(msg.data.payout).toLocaleString()}P) 대박! 🎉`, 10000);
+                        }
+                    }
+
+                    if (msg.type === "casino_spin" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        const reels = msg.data.reels ? `[${msg.data.reels.join('|')}]` : "";
+                        if (msg.data.win) {
+                            showTickerMessage("trade", `🎰 [슬롯 당첨] <strong>${msg.data.username}</strong>님 ${reels} 적중! (+${Number(msg.data.payout).toLocaleString()}P)`, 7000);
+                        } else {
+                            showTickerMessage("liquidation", `🎰 [슬롯 꽝] <strong>${msg.data.username}</strong>님 ${reels} 미적중 (-${Number(msg.data.bet_amount).toLocaleString()}P 국고 적립)`, 6000);
+                        }
+                    }
+
+                    if (msg.type === "casino_dice" && msg.data) {
+                        if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        const diceStr = `[🎲${msg.data.dice1}+🎲${msg.data.dice2}=${msg.data.dice_sum}]`;
+                        if (msg.data.win) {
+                            showTickerMessage("trade", `🎲 [주사위 적중] <strong>${msg.data.username}</strong>님 ${diceStr} ${msg.data.user_choice} 적중! (+${Number(msg.data.payout).toLocaleString()}P)`, 7000);
+                        } else {
+                            showTickerMessage("liquidation", `🎲 [주사위 실패] <strong>${msg.data.username}</strong>님 ${diceStr} (-${Number(msg.data.bet_amount).toLocaleString()}P 국고 적립)`, 6000);
+                        }
+                    }
+
+                    if (msg.type === "leaderboard_update" && msg.leaderboard) {
+                        updateLeaderboard(msg.leaderboard);
+                    }
+
+                } catch (e) {
+                    console.error("WS Parse error:", e);
+                }
+            };
+
+            ws.onclose = function () {
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = function () {
+                ws.close();
+            };
+        }
+
+        async function fetchInitialStockData() {
+            try {
+                const res = await fetch('/api/market/state');
+                if (res.ok) {
+                    const m = await res.json();
+                    if (m.day_open_price) dayOpenPrice = m.day_open_price;
+                    updateStockDisplay(m.current_price, m.previous_price, m.current_rank_point, dayOpenPrice);
+                    updateMarketLockBadge(m.is_trading_locked, m.free_trading_remaining);
+                    if (m.treasury_pool !== undefined && treasuryValEl) {
+                        treasuryValEl.textContent = `${Math.floor(m.treasury_pool).toLocaleString()}P`;
+                    }
+                }
+            } catch (e) {
+                console.warn("Initial market state fetch error:", e);
+            }
+        }
+
+        // 초기 구동
+        updateTrackerData();
+        fetchInitialStockData();
+        setInterval(updateTrackerData, 2000);
+        setInterval(fetchInitialStockData, 15000);
+        connectWebSocket();
+    </script>
+</body>
+</html>

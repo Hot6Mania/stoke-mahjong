@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마작 주식 관리 대시보드</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            padding: 24px;
+        }
+
+        .header {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 900;
+            color: #38bdf8;
+            letter-spacing: -0.5px;
+        }
+
+        .overlay-links-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            background: #1e293b;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            align-items: center;
+        }
+
+        .overlay-links-bar .title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #94a3b8;
+            margin-right: 6px;
+        }
+
+        .badge-link {
+            background: #0284c7;
+            color: white;
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .badge-link:hover {
+            background: #0369a1;
+        }
+
+        .badge-link.green {
+            background: #059669;
+        }
+        .badge-link.green:hover {
+            background: #047857;
+        }
+
+        .badge-link.purple {
+            background: #7c3aed;
+        }
+        .badge-link.purple:hover {
+            background: #6d28d9;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 960px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 800;
+            color: #94a3b8;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Status summary block */
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0f172a;
+            padding: 14px 18px;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+
+        .btn {
+            cursor: pointer;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            transition: all 0.2s;
+        }
+
+        .btn-primary { background: #0284c7; color: white; }
+        .btn-primary:hover { background: #0369a1; }
+
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+
+        .btn-success { background: #16a34a; color: white; }
+        .btn-success:hover { background: #15803d; }
+
+        .btn-secondary { background: #334155; color: #cbd5e1; }
+        .btn-secondary:hover { background: #475569; }
+
+        .btn-purple { background: #8b5cf6; color: white; }
+        .btn-purple:hover { background: #7c3aed; }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            font-weight: 700;
+            color: #94a3b8;
+        }
+
+        .input {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #f8fafc;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: #38bdf8;
+        }
+
+        /* Chat simulator */
+        .chat-log {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            height: 220px;
+            overflow-y: auto;
+            padding: 12px;
+            font-size: 13px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chat-entry {
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .chat-entry.user { color: #38bdf8; }
+        .chat-entry.bot { color: #4ade80; background: rgba(74, 222, 128, 0.08); padding: 6px 10px; border-radius: 6px; }
+        .chat-entry.system { color: #facc15; font-weight: 700; }
+
+        .quick-cmds {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .chip {
+            background: #334155;
+            color: #93c5fd;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 14px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .chip:hover { background: #475569; }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-pill.green { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .status-pill.yellow { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .status-pill.red { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-top">
+            <h1>🀄 마작 주식 & 파생상품 거래 관리 패널</h1>
+            <span class="status-pill green" id="header-bot-pill">● 봇 대기중</span>
+        </div>
+        
+        <!-- 개별 및 통합 오버레이 주소 안내 바 -->
+        <div class="overlay-links-bar">
+            <span class="title">📺 OBS & 설명서 URL:</span>
+            <a href="/overlay/stock" target="_blank" class="badge-link green">📈 주가 & 주주 랭킹 전용 (/overlay/stock)</a>
+            <a href="/overlay/mahjong" target="_blank" class="badge-link purple">🀄 실시간 전적 전용 (/overlay/mahjong)</a>
+            <a href="/overlay" target="_blank" class="badge-link">🔲 전체 통합 오버레이 (/overlay)</a>
+            <a href="/guide" target="_blank" class="badge-link" style="background: #eab308; color: #0f172a;">📖 시청자 웹 설명서 (/guide)</a>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <!-- 1. Market Status & Control -->
+        <div class="card">
+            <div class="card-title">
+                <span>📊 시장 현황 및 거래 락(Lock) 제어</span>
+                <span id="market-lock-badge" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: #16a34a; color: white;">장 열림</span>
+            </div>
+
+            <div class="status-row">
+                <span>현재 주가: <strong id="admin-price" style="font-size: 20px; color: #38bdf8;">2,340P</strong></span>
+                <span>작혼 3마: <strong id="admin-rank" style="color: #f1f5f9;">2,340pt</strong></span>
+                <span>국고 채굴풀: <strong id="admin-treasury" style="color: #facc15;">500,000P</strong></span>
+            </div>
+
+            <div class="status-row" style="font-size: 13px; color: #94a3b8; padding: 8px 14px;">
+                <span>당일 시작가: <strong id="admin-day-open" style="color: #cbd5e1;">2,340P</strong></span>
+                <span>당일 누적 등락: <strong id="admin-day-diff" style="color: #94a3b8;">0P (0.0%)</strong></span>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="refillTreasury(500000)">🏛️ 국고 50만P 충전</button>
+            </div>
+
+            <div class="status-row" style="background: rgba(30, 41, 59, 0.7); border: 1px solid #334155;">
+                <span>⏳ 자유 거래 잔여 시간: <strong id="admin-free-trading-time" style="font-size: 18px; color: #fbbf24;">--:--</strong></span>
+                <button class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;" onclick="startFreeTradingManual(300)">⚡ 5분 자유 거래 시작</button>
+            </div>
+
+            <div class="form-group">
+                <label>거래 마감(락) 토글: 경기 시작 시 거래 동결, 정산 후 자동 해제</label>
+                <button class="btn btn-danger" id="btn-toggle-lock" onclick="toggleMarketLock()">🔒 거래 마감 (Lock On)</button>
+            </div>
+
+            <div class="card-title" style="margin-top: 10px;">
+                <span>🎯 경기 결과 정산 (Settlement)</span>
+            </div>
+            <p style="font-size: 13px; color: #94a3b8;">
+                경기가 끝난 후 등수와 점수 변동을 입력하면 주가 계산, 2X/인버스 재조정, 1위 5% 승리 배당 및 마진콜 청산금이 국고로 자동 환수됩니다. 또한 모든 매수/매도 거래 시 1% 수수료가 국고 채굴풀로 실시간 자동 적립됩니다.
+            </p>
+
+            <div class="btn-group">
+                <button class="btn btn-success" onclick="settleQuick(1, 270)">🥇 1위 (+270pt, 배당 5%)</button>
+                <button class="btn btn-secondary" onclick="settleQuick(2, 0)">🥈 2위 (0pt, 배당 1%)</button>
+                <button class="btn btn-danger" onclick="settleQuick(3, -330)">🥉 3위 (-330pt, 무배당)</button>
+            </div>
+
+            <div style="display: flex; gap: 10px; align-items: flex-end;">
+                <div class="form-group" style="flex: 1;">
+                    <label>순위 (1~3)</label>
+                    <input class="input" type="number" id="settle-rank" value="1" min="1" max="3">
+                </div>
+                <div class="form-group" style="flex: 2;">
+                    <label>변동 점수 (예: +270, -330)</label>
+                    <input class="input" type="number" id="settle-delta" value="270">
+                </div>
+                <button class="btn btn-primary" onclick="settleCustom()">정산 실행</button>
+            </div>
+        </div>
+
+        <!-- 2. Chat Command Simulator & Points Grant -->
+        <div class="card">
+            <div class="card-title">
+                <span>💬 실시간 채팅 명령어 시뮬레이터</span>
+                <span style="font-size: 12px; color: #64748b;">명령어 실행 시 치지직 채팅으로 자동 안내</span>
+            </div>
+
+            <div class="quick-cmds">
+                <button class="chip" onclick="setChatCmd('!주식명령어')">!주식명령어</button>
+                <button class="chip" onclick="setChatCmd('!주식')">!주식</button>
+                <button class="chip" onclick="setChatCmd('!내정보')">!내정보</button>
+                <button class="chip" onclick="setChatCmd('!채굴')">⛏️ !채굴</button>
+                <button class="chip" onclick="setChatCmd('!대출 최대')">💳 !대출 최대</button>
+                <button class="chip" onclick="setChatCmd('!상환 전액')">💰 !상환 전액</button>
+                <button class="chip" onclick="setChatCmd('!회생신청 10X 레버리지 타다가 망했습니다 판사님 살려주세요')">🏛️ !회생신청 [반성문]</button>
+                <button class="chip" onclick="setChatCmd('!국고')">🏛️ !국고</button>
+                <button class="chip" onclick="setChatCmd('!매수 10X 빚올인')">🔥💳 !매수 10X 빚올인</button>
+                <button class="chip" onclick="setChatCmd('!빚올인 10X')">💳 !빚올인 10X</button>
+                <button class="chip" onclick="setChatCmd('!매수 10X 올인')">🔥 !매수 10X 올인</button>
+                <button class="chip" onclick="setChatCmd('!매수 5X 올인')">!매수 5X 올인</button>
+                <button class="chip" onclick="setChatCmd('!매수 3X 올인')">!매수 3X 올인</button>
+                <button class="chip" onclick="setChatCmd('!매수 1X 10')">!매수 1X 10</button>
+                <button class="chip" onclick="setChatCmd('!구매 10X 10')">🛒 !구매 10X 10</button>
+                <button class="chip" onclick="setChatCmd('!구매 10X 올인')">🛒 !구매 10X 올인</button>
+                <button class="chip" onclick="setChatCmd('!판매 10X 전량')">💰 !판매 10X 전량</button>
+                <button class="chip" onclick="setChatCmd('!청산 전량')">!청산 전량</button>
+                <button class="chip" onclick="setChatCmd('!지정가 매수 1X 300 10')">!지정가 매수</button>
+                <button class="chip" style="background: #854d0e; color: #fef08a;" onclick="setChatCmd('!카지노')">🎰 !카지노</button>
+                <button class="chip" style="background: #854d0e; color: #fef08a;" onclick="setChatCmd('!슬롯확률')">📊 !슬롯확률</button>
+                <button class="chip" style="background: #854d0e; color: #fef08a;" onclick="setChatCmd('!슬롯 1000')">🎰 !슬롯 1000</button>
+                <button class="chip" style="background: #854d0e; color: #fef08a;" onclick="setChatCmd('!슬롯 올인')">🎰 !슬롯 올인</button>
+                <button class="chip" style="background: #1e3a8a; color: #bfdbfe;" onclick="setChatCmd('!주사위 홀 2000')">🎲 !주사위 홀 2000</button>
+                <button class="chip" style="background: #1e3a8a; color: #bfdbfe;" onclick="setChatCmd('!주사위 대 올인')">🎲 !주사위 대 올인</button>
+            </div>
+
+            <div class="chat-log" id="chat-log"></div>
+
+            <div style="display: flex; gap: 10px;">
+                <input class="input" style="flex: 1;" type="text" id="chat-input" placeholder="채팅 명령어 입력 (예: !주식명령어, !매수 2X 10)" onkeydown="if(event.key==='Enter') sendChatCommand()">
+                <button class="btn btn-primary" onclick="sendChatCommand()">전송</button>
+            </div>
+
+            <div class="card-title" style="margin-top: 10px;">
+                <span>🎁 시청자 포인트 지급 / 초기화</span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: flex-end;">
+                <div class="form-group" style="flex: 2;">
+                    <label>유저 닉네임 / ID</label>
+                    <input class="input" type="text" id="grant-username" list="user-datalist" placeholder="시청자 닉네임 선택 또는 입력">
+                    <datalist id="user-datalist"></datalist>
+                </div>
+                <div class="form-group" style="flex: 2;">
+                    <label>포인트 (P)</label>
+                    <input class="input" type="number" id="grant-points" value="100000">
+                </div>
+                <button class="btn btn-secondary" onclick="grantPoints()">지급</button>
+            </div>
+
+            <!-- Viewers Quick Grant Table -->
+            <div style="margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 13px; font-weight: 700; color: #94a3b8;">👥 등록 시청자 목록 (원클릭 도네 / 포인트 지급)</span>
+                    <button class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;" onclick="fetchAdminUsers()">🔄 새로고침</button>
+                </div>
+                <div id="admin-users-table" style="max-height: 180px; overflow-y: auto; background: #0f172a; border-radius: 6px; border: 1px solid #334155; font-size: 12px; padding: 6px;">
+                    <div style="text-align: center; color: #64748b; padding: 10px;">시청자 목록 로딩 중...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2.5 Na-bae Community Treasury Casino (도파민 카지노 제어) -->
+        <div class="card" style="grid-column: 1 / -1; border: 2px solid #eab308; background: linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(20, 24, 45, 0.98) 100%);">
+            <div class="card-title" style="color: #facc15;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">🎰 나베 국고 도파민 카지노 (비정기 개장 제어)</span>
+                    <span id="casino-status-badge" class="status-pill red" style="font-size: 13px;">영업 마감</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="fetchCasinoStatus()">🔄 카지노 상태 갱신</button>
+                </div>
+            </div>
+
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
+                스트리머가 기습적으로 개장하여 시청자들의 도파민을 폭발시키는 이벤트 도박장입니다. 
+                <strong style="color: #facc15;">777 대박 시 국고 잔고의 30%를 즉시 독식</strong>하며, 패배 시 배팅금은 전액 국고로 환수되어 채굴 및 다음 대박 상금으로 누적됩니다!
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px;">
+                <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
+                    <span>카지노 상태:</span>
+                    <strong id="admin-casino-state-text" style="color: #ef4444; font-size: 15px;">영업 마감</strong>
+                </div>
+                <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
+                    <span>🎰 국고 상금풀:</span>
+                    <strong id="admin-casino-pool" style="color: #facc15; font-size: 16px;">500,000P</strong>
+                </div>
+                <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
+                    <span>🔥 777 대박 상금 (30%):</span>
+                    <strong id="admin-casino-jackpot-pot" style="color: #fb923c; font-size: 16px;">150,000P</strong>
+                </div>
+                <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
+                    <span>⏳ 개장 잔여 시간:</span>
+                    <strong id="admin-casino-timer" style="color: #38bdf8; font-size: 18px;">--:--</strong>
+                </div>
+                <div class="status-row" style="background: rgba(15, 23, 42, 0.8);">
+                    <span>배팅 한도:</span>
+                    <strong id="admin-casino-maxbet" style="color: #4ade80; font-size: 15px;">10,000P</strong>
+                </div>
+            </div>
+
+            <!-- Quick Open Buttons -->
+            <div style="margin-top: 14px; background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 8px; border: 1px solid #334155;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 700; color: #cbd5e1;">⚡ 원클릭 카지노 개장 (치지직 공지 자동 발송)</span>
+                    <span style="font-size: 12px; color: #94a3b8;">채팅 명령어: <code>!카지노오픈 [분]</code> / <code>!카지노마감</code></span>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                    <button class="btn btn-primary" style="background: #eab308; color: #0f172a; font-weight: 900;" onclick="openCasinoQuick(1)">⚡ 1분 반짝 오픈</button>
+                    <button class="btn btn-primary" style="background: #f97316; font-weight: 900;" onclick="openCasinoQuick(3)">🔥 3분 도파민 오픈</button>
+                    <button class="btn btn-primary" style="background: #a855f7; font-weight: 900;" onclick="openCasinoQuick(5)">🚀 5분 대축제 오픈</button>
+                    <button class="btn btn-secondary" style="background: #0284c7; color: white;" onclick="openCasinoQuick(0)">♾️ 무제한 오픈</button>
+                    <button class="btn btn-danger" style="margin-left: auto; font-weight: 900;" onclick="closeCasinoNow()">🚨 즉시 긴급 마감 (Close)</button>
+                </div>
+
+                <!-- Custom Open Options -->
+                <div style="display: flex; gap: 10px; margin-top: 12px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="form-group" style="flex: 1; min-width: 140px;">
+                        <label style="font-size: 12px;">개장 시간 (분, 0=무제한)</label>
+                        <input class="input" type="number" id="input-casino-duration" value="3" min="0" step="0.5">
+                    </div>
+                    <div class="form-group" style="flex: 1; min-width: 160px;">
+                        <label style="font-size: 12px;">1회 최대 배팅 한도 (P)</label>
+                        <input class="input" type="number" id="input-casino-maxbet" value="10000" min="1000" step="5000">
+                    </div>
+                    <button class="btn btn-primary" style="background: #f59e0b; font-weight: 800;" onclick="openCasinoCustom()">🎰 커스텀 개장 실행</button>
+                </div>
+            </div>
+
+            <!-- Dopamine Rules Guide -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; margin-top: 12px; font-size: 12px; color: #94a3b8;">
+                <div style="background: rgba(15, 23, 42, 0.7); padding: 10px; border-radius: 6px; border-left: 3px solid #facc15;">
+                    <strong style="color: #facc15; font-size: 13px;">🎰 3릴 슬롯머신 배당표 (!슬롯 [금액/올인])</strong><br>
+                    • [7️⃣|7️⃣|7️⃣] : 👑 <strong>국고 30% 독식 MEGA JACKPOT</strong> + 사이렌 경보<br>
+                    • [🀄|🀄|🀄] : 🀄 <strong>10배 대박 (역만 Yakuman)</strong><br>
+                    • [💎|💎|💎] : 5배 / [🔔|🔔|🔔] : 3배 / [🍇|🍇|🍇],[🍒|🍒|🍒] : 2배<br>
+                    • 아무 심볼 2개 일치 : 1.5배 본전+ / 💣 또는 꽝 : <strong>배팅금 국고 흡수</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.7); padding: 10px; border-radius: 6px; border-left: 3px solid #38bdf8;">
+                    <strong style="color: #38bdf8; font-size: 13px;">🎲 2-다이스 배틀 배당표 (!주사위 [홀/짝/대/소] [금액])</strong><br>
+                    • 🎲 주사위 2개 굴림 (2~12)<br>
+                    • 홀(3,5,7,9,11) / 짝(2,4,6,8,10,12) 적중 시 : <strong>2배 당첨</strong><br>
+                    • 소(2~6) / 대(8~12) 적중 시 : <strong>2배 당첨</strong> (합 7은 딜러 국고 흡수)<br>
+                    • [1-1] 또는 [6-6] 조커 더블 발생 시 : ⚡ <strong>5배 크리티컬 잭팟!</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Na-bae Judge's Bankruptcy Court -->
+        <div class="card" style="grid-column: 1 / -1; border: 2px solid #3b82f6;">
+            <div class="card-title" style="color: #60a5fa;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">🏛️ 나베 판사의 회생 법정 (개인회생 심사)</span>
+                    <span id="bankruptcy-pending-badge" class="status-pill green" style="font-size: 13px;">심사 대기: 0건</span>
+                </div>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="fetchPendingBankruptcies()">🔄 목록 새로고침</button>
+            </div>
+
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
+                채무 불이행에 빠진 시청자가 채팅창에 <code>!파산신청 [반성문]</code> 을 제출하면 법정에 즉시 계류됩니다.
+                스트리머(나베 판사)가 반성문과 자산 상태를 검토하여 <strong>[전액 탕감 (인가)]</strong>, <strong>[조건부 50% 탕감]</strong>, <strong>[파산 기각 (탄광 노역)]</strong> 중 즉결 처분을 내립니다.
+            </p>
+
+            <div id="bankruptcy-list-container">
+                <div style="text-align: center; padding: 24px; color: #64748b; font-size: 14px; background: #0f172a; border-radius: 8px; border: 1px dashed #334155;">
+                    🕊️ 현재 심사 대기 중인 파산 / 개인회생 신청 사건이 없습니다. 평화로운 시장입니다.
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Chzzk OpenAPI & Bot Integration -->
+        <div class="card" style="grid-column: 1 / -1;">
+            <div class="card-title">
+                <span>🤖 치지직(Chzzk) 공식 Open API & 챗봇 안내 연동</span>
+                <span id="chzzk-status-pill" class="status-pill green">확인 중...</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+                <div class="status-row">
+                    <span>클라이언트 ID / Secret:</span>
+                    <strong id="chzzk-client-status" style="color: #38bdf8;">.env 등록 완료</strong>
+                </div>
+                <div class="status-row">
+                    <span>OpenAPI 토큰 (tokens.json):</span>
+                    <strong id="chzzk-token-status" style="color: #4ade80;">확인 중...</strong>
+                </div>
+                <div class="status-row">
+                    <span>채팅 봇 웹소켓:</span>
+                    <strong id="chzzk-ws-status" style="color: #facc15;">확인 중...</strong>
+                </div>
+                <div class="status-row">
+                    <span>공식 세션 (후원 구독):</span>
+                    <strong id="chzzk-session-status" style="color: #38bdf8;">확인 중...</strong>
+                </div>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                <a href="/api/chzzk/login" class="btn btn-purple" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                    🔗 치지직 공식 계정 연동 / 재인증 (1초 연동)
+                </a>
+                <button class="btn btn-primary" style="background: #2563eb;" onclick="retryDonationSubscription()">
+                    🔔 후원 이벤트 구독 재시도
+                </button>
+                <button class="btn btn-secondary" onclick="sendTestChat()">
+                    💬 테스트 안내 채팅 전송
+                </button>
+                <button class="btn btn-secondary" onclick="toggleTokenModal()">
+                    ⚙️ 토큰 & 인증코드 수동 설정
+                </button>
+            </div>
+
+            <div id="token-modal" style="display: none; background: #0f172a; padding: 18px; border-radius: 8px; border: 1px solid #334155; flex-direction: column; gap: 16px;">
+                <!-- Method 1: Code Exchange -->
+                <div style="background: #1e293b; padding: 14px; border-radius: 6px; border-left: 4px solid #8b5cf6;">
+                    <div style="font-weight: bold; color: #c4b5fd; margin-bottom: 6px; font-size: 14px;">
+                        📌 방법 1. 인증 코드(code 또는 주소창 전체 URL)로 토큰 즉시 자동 발급
+                    </div>
+                    <p style="font-size: 12px; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">
+                        위 [치지직 공식 계정 연동] 승인 후 브라우저 주소창에 나타난 URL(예: <code>http://localhost:7700/callback?code=XXXXX...</code>) 또는 <code>code=</code> 뒤의 인증 코드만 붙여넣으시면 시스템이 즉시 Access Token을 발급받아 등록합니다.
+                    </p>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <input class="input" type="text" id="input-auth-code" placeholder="콜백 URL 전체 또는 인증 코드(code) 붙여넣기" style="flex: 1; min-width: 250px;">
+                        <button class="btn btn-purple" onclick="exchangeCodeManual()">🚀 코드로 토큰 즉시 발급</button>
+                    </div>
+                </div>
+
+                <!-- Method 2: Direct Token Input -->
+                <div style="background: #1e293b; padding: 14px; border-radius: 6px; border-left: 4px solid #38bdf8;">
+                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 6px; font-size: 14px;">
+                        📌 방법 2. Access Token & Refresh Token 직접 입력
+                    </div>
+                    <p style="font-size: 12px; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">
+                        개발자 센터 또는 외부 도구(Postman 등)를 통해 발급받은 토큰이 있는 경우 직접 등록합니다.
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+                        <div class="form-group">
+                            <label style="font-size: 12px;">Access Token</label>
+                            <input class="input" type="text" id="input-access-token" placeholder="새로운 Access Token 붙여넣기">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size: 12px;">Refresh Token (선택)</label>
+                            <input class="input" type="text" id="input-refresh-token" placeholder="새로운 Refresh Token 붙여넣기">
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="saveTokensManual()">💾 토큰 직접 저장</button>
+                    </div>
+                </div>
+            </div>
+
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
+                💡 <strong>안내:</strong> 시청자가 방송 채팅창에 명령어를 입력하거나 위 시뮬레이터에서 명령어를 실행할 때마다, 치지직 공식 Open API(우선) 및 웹소켓 세션을 통해 안내 채팅이 실시간으로 발송됩니다. (글자 수 제한 100자 이내 자동 분할 및 쿨타임 준수)
+            </p>
+        </div>
+
+        <!-- 5. Chzzk Donation 1:100 Point Charging -->
+        <div class="card" style="grid-column: 1 / -1; border: 2px solid #ec4899;">
+            <div class="card-title" style="color: #f472b6;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">🎁 치지직 후원(DONATION) 1:100 포인트 자동 충전</span>
+                    <span class="status-pill green" style="font-size: 13px;">1원 = 100P 충전</span>
+                </div>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="fetchDonationHistory()">🔄 후원 기록 갱신</button>
+            </div>
+
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
+                치지직 Session 소켓 또는 Webhook에서 <code>DONATION</code> 이벤트가 감지되면, 후원 금액(<code>payAmount</code>)에 대해 <strong>1:100 비율</strong>(예: 1,000원 후원 시 100,000P)로 시청자 지갑에 즉시 자동 충전됩니다.
+                <br>🛡️ 중복 후원 방지(Idempotency 검증), 데이터 이상값 차단, 충전 직전 <strong>DB 자동 핫 백업</strong>이 수행되어 데이터가 안전하게 보호됩니다.
+            </p>
+
+            <!-- Donation Test Form -->
+            <div style="background: #0f172a; padding: 16px; border-radius: 8px; border: 1px solid #334155; margin-top: 10px;">
+                <div style="font-weight: 700; color: #f472b6; margin-bottom: 12px; font-size: 14px;">⚡ 후원 충전 테스트 시뮬레이터</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                    <div class="form-group">
+                        <label>후원자 닉네임 (기존 시청자 자동 감지)</label>
+                        <input class="input" type="text" id="donor-nickname" list="user-datalist" value="화끈한 엘프 1134" oninput="onDonorNicknameInput()">
+                    </div>
+                    <div class="form-group">
+                        <label>채널 ID (유저 고유 식별자)</label>
+                        <input class="input" type="text" id="donor-channel-id" value="b8d706bc1bca740877a864a8ba27b6b2">
+                    </div>
+                    <div class="form-group">
+                        <label>후원 금액 (원, KRW)</label>
+                        <input class="input" type="number" id="donor-amount" value="1000" min="100" step="100" oninput="updateExpectedPoints()">
+                    </div>
+                </div>
+
+                <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                    <span style="font-size: 12px; color: #94a3b8;">빠른 금액 선택:</span>
+                    <button class="chip" onclick="setDonationPreset(1000)">1,000원 (+10만P)</button>
+                    <button class="chip" onclick="setDonationPreset(5000)">5,000원 (+50만P)</button>
+                    <button class="chip" onclick="setDonationPreset(10000)">10,000원 (+100만P)</button>
+                    <button class="chip" onclick="setDonationPreset(50000)">50,000원 (+500만P)</button>
+                </div>
+
+                <div class="form-group" style="margin-top: 10px;">
+                    <label>후원 메시지</label>
+                    <input class="input" type="text" id="donor-text" value="나베 주식 올인합니다 대박나세요!">
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 10px;">
+                    <div style="font-size: 14px; color: #38bdf8; font-weight: 700;">
+                        예상 충전 포인트: <span id="expected-points-display" style="color: #4ade80; font-size: 16px;">100,000P</span>
+                    </div>
+                    <button class="btn btn-primary" style="background: #db2777;" onclick="submitTestDonation()">
+                        🎁 1:100 후원 포인트 충전 실행
+                    </button>
+                </div>
+            </div>
+
+            <!-- Recent Donations Table -->
+            <div style="margin-top: 16px;">
+                <div style="font-weight: 700; color: #cbd5e1; font-size: 14px; margin-bottom: 8px;">📜 최근 후원 충전 내역</div>
+                <div id="donation-history-container" style="max-height: 200px; overflow-y: auto;">
+                    <div style="text-align: center; padding: 14px; color: #64748b; font-size: 13px;">후원 기록을 불러오는 중...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. Database Safety & Integrity & Backup -->
+        <div class="card" style="grid-column: 1 / -1; border: 2px solid #10b981;">
+            <div class="card-title" style="color: #34d399;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">💾 데이터베이스 안전 관리 & 무결성 검증 & 백업</span>
+                    <span id="db-health-badge" class="status-pill green" style="font-size: 13px;">무결성 확인 중</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="fetchDbIntegrity()">🔍 무결성 검증</button>
+                    <button class="btn btn-primary" style="padding: 4px 10px; font-size: 12px; background: #059669;" onclick="triggerManualBackup()">💾 즉시 DB 백업</button>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px;">
+                <div class="status-row">
+                    <span>DB 파일 크기:</span>
+                    <strong id="db-size-val" style="color: #38bdf8;">-</strong>
+                </div>
+                <div class="status-row">
+                    <span>저장 모드:</span>
+                    <strong style="color: #4ade80;">SQLite WAL (동시성 & 크래시 방지)</strong>
+                </div>
+                <div class="status-row">
+                    <span>등록 통계:</span>
+                    <strong id="db-counts-val" style="color: #facc15;">-</strong>
+                </div>
+                <div class="status-row">
+                    <span>보유 백업 수:</span>
+                    <strong id="db-backups-count" style="color: #a78bfa;">-</strong>
+                </div>
+            </div>
+
+            <div style="margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 700; color: #cbd5e1; font-size: 14px;">🗂️ 백업 스냅샷 파일 목록</span>
+                    <span style="font-size: 12px; color: #94a3b8;">최근 30개 자동 보존 / 원클릭 무손실 복원 지원</span>
+                </div>
+                <div id="db-backups-container" style="max-height: 200px; overflow-y: auto;">
+                    <div style="text-align: center; padding: 14px; color: #64748b; font-size: 13px;">백업 목록 불러오는 중...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isMarketLocked = false;
+        let freeTradingRemaining = 0;
+
+        function updateCountdownDisplay() {
+            const timeEl = document.getElementById("admin-free-trading-time");
+            if (!timeEl) return;
+            if (isMarketLocked || freeTradingRemaining <= 0) {
+                timeEl.textContent = "종료 (거래 마감)";
+                timeEl.style.color = "#94a3b8";
+            } else {
+                const m = Math.floor(freeTradingRemaining / 60);
+                const s = freeTradingRemaining % 60;
+                timeEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                timeEl.style.color = "#fbbf24";
+            }
+        }
+
+        async function startFreeTradingManual(seconds = 300) {
+            try {
+                const res = await fetch("/api/admin/start-free-trading", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ seconds })
+                });
+                const data = await res.json();
+                appendLog("system", `⚡ [자유 거래 시작] ${Math.floor(seconds / 60)}분간 자유 거래가 오픈되었습니다.`);
+                fetchMarketState();
+            } catch (e) {
+                alert("자유 거래 시작 실패: " + e);
+            }
+        }
+
+        async function fetchMarketState() {
+            try {
+                const res = await fetch("/api/market/state");
+                const data = await res.json();
+                document.getElementById("admin-price").textContent = `${data.current_price.toLocaleString()}P`;
+                document.getElementById("admin-rank").textContent = `${data.current_rank_point.toLocaleString()}pt`;
+                if (data.treasury_pool !== undefined) {
+                    document.getElementById("admin-treasury").textContent = `${Math.round(data.treasury_pool).toLocaleString()}P`;
+                }
+
+                if (data.day_open_price !== undefined) {
+                    const dayOpenEl = document.getElementById("admin-day-open");
+                    if (dayOpenEl) dayOpenEl.textContent = `${data.day_open_price.toLocaleString()}P`;
+                }
+                if (data.day_diff !== undefined) {
+                    const diffEl = document.getElementById("admin-day-diff");
+                    if (diffEl) {
+                        const sign = data.day_diff >= 0 ? "+" : "";
+                        const symbol = data.day_diff > 0 ? "▲" : (data.day_diff < 0 ? "▼" : "");
+                        diffEl.textContent = `${symbol}${sign}${data.day_diff.toLocaleString()}P (${sign}${data.day_diff_pct}%)`;
+                        diffEl.style.color = data.day_diff > 0 ? "#4ade80" : (data.day_diff < 0 ? "#ef4444" : "#94a3b8");
+                    }
+                }
+                
+                isMarketLocked = data.is_trading_locked;
+                freeTradingRemaining = data.free_trading_remaining || 0;
+                updateCountdownDisplay();
+
+                if (data.casino_is_open !== undefined) {
+                    casinoIsOpen = data.casino_is_open;
+                    casinoRemaining = data.casino_remaining || 0;
+                    if (data.casino_max_bet) casinoMaxBet = data.casino_max_bet;
+                    const pool = data.treasury_pool || 0;
+                    const poolEl = document.getElementById("admin-casino-pool");
+                    const potEl = document.getElementById("admin-casino-jackpot-pot");
+                    if (poolEl) poolEl.textContent = `${Math.round(pool).toLocaleString()}P`;
+                    if (potEl) potEl.textContent = `${Math.round(pool * 0.3).toLocaleString()}P`;
+                    updateCasinoDisplay();
+                }
+
+                const badge = document.getElementById("market-lock-badge");
+                const btn = document.getElementById("btn-toggle-lock");
+
+                if (isMarketLocked) {
+                    badge.style.background = "#dc2626";
+                    badge.textContent = "경기 중 - 거래 마감";
+                    btn.className = "btn btn-success";
+                    btn.textContent = "🔓 거래 재개 (Unlock Market)";
+                } else {
+                    badge.style.background = "#16a34a";
+                    badge.textContent = "장 열림";
+                    btn.className = "btn btn-danger";
+                    btn.textContent = "🔒 거래 마감 (Lock Market)";
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function refillTreasury(amount = 500000) {
+            try {
+                const res = await fetch("/api/admin/refill-treasury", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ amount })
+                });
+                const data = await res.json();
+                appendLog("system", `🏛️ [국고 충전] 국고 채굴풀이 ${Number(data.treasury_pool).toLocaleString()}P로 보충되었습니다.`);
+                fetchMarketState();
+            } catch (e) {
+                alert("국고 충전 실패: " + e);
+            }
+        }
+
+        async function fetchChzzkStatus() {
+            try {
+                const res = await fetch("/api/chzzk/status");
+                const data = await res.json();
+                
+                const clientEl = document.getElementById("chzzk-client-status");
+                const tokenEl = document.getElementById("chzzk-token-status");
+                const wsEl = document.getElementById("chzzk-ws-status");
+                const sessionEl = document.getElementById("chzzk-session-status");
+                const pillEl = document.getElementById("chzzk-status-pill");
+                const headerPill = document.getElementById("header-bot-pill");
+
+                clientEl.textContent = data.has_client_id && data.has_client_secret ? "✅ .env 연동 완료" : "❌ .env 미등록";
+                
+                if (data.has_access_token) {
+                    tokenEl.textContent = "✅ 토큰 보유 (자동 갱신)";
+                    tokenEl.style.color = "#4ade80";
+                } else {
+                    tokenEl.textContent = "⚠️ 토큰 재발급 필요 (OAuth 로그인)";
+                    tokenEl.style.color = "#fbbf24";
+                }
+
+                if (data.bot_websocket_connected) {
+                    wsEl.textContent = "✅ 연결 활성화 (채팅 송출/명령어)";
+                    wsEl.style.color = "#4ade80";
+                } else {
+                    wsEl.textContent = "⚠️ 대기 중 (채널/쿠키 확인)";
+                    wsEl.style.color = "#fbbf24";
+                }
+
+                const sess = data.session_worker || {};
+                if (sess.subscribed_donation) {
+                    sessionEl.textContent = "✅ 후원 구독 활성화 (1:100 지급)";
+                    sessionEl.style.color = "#4ade80";
+                } else if (sess.is_connected) {
+                    sessionEl.textContent = `🔗 소켓 연결됨 (${sess.session_mode || '연결'})`;
+                    sessionEl.style.color = "#38bdf8";
+                } else if (sess.last_error) {
+                    sessionEl.textContent = `⚠️ 세션 대기: ${sess.last_error.substring(0, 25)}...`;
+                    sessionEl.style.color = "#fbbf24";
+                } else {
+                    sessionEl.textContent = "⚠️ 세션 연결 대기 중";
+                    sessionEl.style.color = "#94a3b8";
+                }
+
+                if (data.bot_websocket_connected || sess.is_connected) {
+                    pillEl.className = "status-pill green";
+                    pillEl.textContent = sess.subscribed_donation ? "● 후원 & 봇 연동 정상" : "● 소켓 연동 활성";
+                    headerPill.className = "status-pill green";
+                    headerPill.textContent = "● 치지직 연동 정상 작동";
+                } else {
+                    pillEl.className = "status-pill yellow";
+                    pillEl.textContent = "● 봇 대기중";
+                    headerPill.className = "status-pill yellow";
+                    headerPill.textContent = "● 봇 연결 대기";
+                }
+            } catch (e) {
+                console.warn("Chzzk status check failed:", e);
+            }
+        }
+
+        async function toggleMarketLock() {
+            try {
+                const res = await fetch("/api/admin/lock-market", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ locked: !isMarketLocked })
+                });
+                const data = await res.json();
+                appendLog("system", `⚙️ 거래 락 변경: ${data.is_trading_locked ? "마감" : "열림"}`);
+                fetchMarketState();
+            } catch (e) {
+                alert("실패: " + e);
+            }
+        }
+
+        async function settleQuick(rank, delta) {
+            settle(rank, delta);
+        }
+
+        async function settleCustom() {
+            const rank = parseInt(document.getElementById("settle-rank").value);
+            const delta = parseInt(document.getElementById("settle-delta").value);
+            settle(rank, delta);
+        }
+
+        async function settle(rank, point_delta) {
+            try {
+                const res = await fetch("/api/admin/settle-match", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ rank, point_delta })
+                });
+                const data = await res.json();
+                const signStr = point_delta >= 0 ? "+" + point_delta : point_delta;
+                appendLog("system", `📢 정산 완료: ${rank}위 (${signStr}pt) | 새 주가: ${data.new_price}P | 청산: ${data.liquidations.length}건`);
+                fetchMarketState();
+            } catch (e) {
+                alert("정산 오류: " + e);
+            }
+        }
+
+        let adminUsersList = [];
+
+        async function fetchAdminUsers() {
+            try {
+                const res = await fetch("/api/admin/users");
+                const data = await res.json();
+                if (data.success && Array.isArray(data.users)) {
+                    adminUsersList = data.users;
+                    renderAdminUsersTable(data.users);
+                    populateUserDatalist(data.users);
+                }
+            } catch (e) {
+                console.error("fetchAdminUsers failed:", e);
+            }
+        }
+
+        function populateUserDatalist(users) {
+            const dl = document.getElementById("user-datalist");
+            if (!dl) return;
+            dl.innerHTML = "";
+            for (const u of users) {
+                const opt = document.createElement("option");
+                opt.value = u.username;
+                opt.label = `${u.username} (${u.points.toLocaleString()}P)`;
+                dl.appendChild(opt);
+            }
+        }
+
+        function onDonorNicknameInput() {
+            const inputVal = (document.getElementById("donor-nickname").value || "").trim();
+            const matched = adminUsersList.find(u => u.username.toLowerCase() === inputVal.toLowerCase());
+            const chInput = document.getElementById("donor-channel-id");
+            if (matched && chInput) {
+                chInput.value = matched.id;
+            }
+        }
+
+        function renderAdminUsersTable(users) {
+            const container = document.getElementById("admin-users-table");
+            if (!container) return;
+            if (!users || users.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 10px;">등록된 시청자가 없습니다.</div>';
+                return;
+            }
+            let html = '<table style="width: 100%; border-collapse: collapse; text-align: left;">';
+            html += '<tr style="border-bottom: 1px solid #334155; color: #94a3b8;"><th style="padding: 4px;">닉네임</th><th style="padding: 4px;">보유 포인트</th><th style="padding: 4px;">채무(빚)</th><th style="padding: 4px; text-align: right;">원클릭 지급 조작</th></tr>';
+            for (const u of users) {
+                const debtStr = u.debt > 0 ? `<span style="color: #f87171; font-weight: 700;">-${u.debt.toLocaleString()}P</span>` : '<span style="color: #64748b;">0P</span>';
+                html += `<tr style="border-bottom: 1px solid #1e293b;">
+                    <td style="padding: 6px; font-weight: 700; color: #38bdf8;">${escapeHtml(u.username)}</td>
+                    <td style="padding: 6px; font-weight: 800; color: #4ade80;">${u.points.toLocaleString()}P</td>
+                    <td style="padding: 6px;">${debtStr}</td>
+                    <td style="padding: 6px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
+                        <button class="chip" style="background: #0284c7; color: #fff; font-weight: 700;" onclick="quickGrant('${escapeHtml(u.username)}', 100000)">+10만P (지급)</button>
+                        <button class="chip" style="background: #db2777; color: #fff; font-weight: 700;" onclick="quickDonation('${escapeHtml(u.username)}', '${u.id}', 1000)">🎁 후원 1천원(+10만P)</button>
+                    </td>
+                </tr>`;
+            }
+            html += '</table>';
+            container.innerHTML = html;
+        }
+
+        async function quickGrant(username, points) {
+            document.getElementById("grant-username").value = username;
+            document.getElementById("grant-points").value = points;
+            await grantPoints();
+        }
+
+        async function quickDonation(username, userId, amount) {
+            document.getElementById("donor-nickname").value = username;
+            document.getElementById("donor-channel-id").value = userId;
+            document.getElementById("donor-amount").value = amount;
+            updateExpectedPoints();
+            await submitTestDonation();
+        }
+
+        async function grantPoints() {
+            const username = document.getElementById("grant-username").value.trim();
+            const points = parseInt(document.getElementById("grant-points").value);
+            if (!username) return alert("닉네임을 입력하세요");
+
+            try {
+                const res = await fetch("/api/admin/grant-points", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id: username, username, points, mode: "add" })
+                });
+                const data = await res.json();
+                appendLog("system", `🎁 [포인트 지급] ${username}님에게 ${points.toLocaleString()}P 지급 완료 (현재 잔고: ${data.points.toLocaleString()}P)`);
+                fetchAdminUsers();
+                fetchMarketState();
+            } catch (e) {
+                alert("포인트 지급 실패: " + e);
+            }
+        }
+
+        function setChatCmd(cmd) {
+            document.getElementById("chat-input").value = cmd;
+        }
+
+        async function sendChatCommand() {
+            const input = document.getElementById("chat-input");
+            const cmd = input.value.trim();
+            if (!cmd) return;
+
+            appendLog("user", `[시청자1] ${cmd}`);
+            input.value = "";
+
+            try {
+                const res = await fetch("/api/chat/command", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_id: "viewer_1",
+                        username: "시청자1",
+                        message: cmd
+                    })
+                });
+                const data = await res.json();
+                if (data.reply) {
+                    appendLog("bot", data.reply);
+                }
+                fetchMarketState();
+                fetchPendingBankruptcies();
+            } catch (e) {
+                appendLog("system", "에러 발생: " + e);
+            }
+        }
+
+        async function sendTestChat() {
+            try {
+                const res = await fetch("/api/chzzk/send-test", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: "🔔 [마작 주식] 치지직 안내 봇 테스트 메시지입니다." })
+                });
+                const data = await res.json();
+                appendLog("system", `🤖 테스트 채팅 전송 완료: ${data.message}`);
+            } catch (e) {
+                alert("테스트 전송 실패: " + e);
+            }
+        }
+
+        function toggleTokenModal() {
+            const m = document.getElementById("token-modal");
+            m.style.display = m.style.display === "none" ? "flex" : "none";
+        }
+
+        async function exchangeCodeManual() {
+            const codeInput = document.getElementById("input-auth-code").value.trim();
+            if (!codeInput) return alert("인증 코드(code) 또는 콜백 URL을 입력해주세요.");
+
+            try {
+                const res = await fetch("/api/chzzk/exchange-code", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code: codeInput, state: "chzzk_auth" })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert("🎉 " + data.message);
+                    document.getElementById("input-auth-code").value = "";
+                    toggleTokenModal();
+                    fetchChzzkStatus();
+                } else {
+                    alert("토큰 발급 실패:\n" + data.message);
+                }
+            } catch (e) {
+                alert("토큰 발급 요청 통신 에러: " + e);
+            }
+        }
+
+        async function retryDonationSubscription() {
+            try {
+                const res = await fetch("/api/chzzk/subscribe-donation", { method: "POST" });
+                const data = await res.json();
+                if (data.success) {
+                    alert("✅ 치지직 후원(DONATION) 이벤트 구독 성공!\n시청자 후원 시 1:100 포인트가 실시간 자동 충전됩니다.");
+                } else {
+                    const err = data.session_worker?.last_error || "토큰 또는 세션 상태를 확인해주세요.";
+                    alert("⚠️ 후원 이벤트 구독 재시도 결과:\n" + err);
+                }
+                fetchChzzkStatus();
+            } catch (e) {
+                alert("구독 재시도 통신 에러: " + e);
+            }
+        }
+
+        async function saveTokensManual() {
+            const acc = document.getElementById("input-access-token").value.trim();
+            const ref = document.getElementById("input-refresh-token").value.trim();
+            if (!acc) return alert("Access Token을 입력하세요");
+
+            try {
+                const res = await fetch("/api/chzzk/set-tokens", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ accessToken: acc, refreshToken: ref, tokenType: "Bearer" })
+                });
+                if (res.ok) {
+                    alert("✅ 토큰이 저장되었습니다! 세션 워커가 자동으로 재연결됩니다.");
+                    document.getElementById("input-access-token").value = "";
+                    document.getElementById("input-refresh-token").value = "";
+                    toggleTokenModal();
+                    fetchChzzkStatus();
+                }
+            } catch (e) {
+                alert("토큰 저장 실패: " + e);
+            }
+        }
+
+        function appendLog(type, text) {
+            const logBox = document.getElementById("chat-log");
+            const div = document.createElement("div");
+            div.className = `chat-entry ${type}`;
+            div.textContent = text;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        async function fetchPendingBankruptcies() {
+            try {
+                const res = await fetch("/api/admin/bankruptcy/pending");
+                const data = await res.json();
+                const container = document.getElementById("bankruptcy-list-container");
+                const badge = document.getElementById("bankruptcy-pending-badge");
+                if (!container || !badge) return;
+
+                const apps = data.applications || [];
+                badge.textContent = `심사 대기: ${apps.length}건`;
+                badge.className = apps.length > 0 ? "status-pill red" : "status-pill green";
+
+                if (apps.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 24px; color: #64748b; font-size: 14px; background: #0f172a; border-radius: 8px; border: 1px dashed #334155;">
+                            🕊️ 현재 심사 대기 중인 파산 / 개인회생 신청 사건이 없습니다. 평화로운 시장입니다.
+                        </div>`;
+                    return;
+                }
+
+                let html = "";
+                for (const a of apps) {
+                    const safeName = escapeHtml(a.username);
+                    const safeReason = escapeHtml(a.reason);
+                    html += `
+                    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 800;">사건 #${a.id}</span>
+                                <strong style="font-size: 16px; color: #f8fafc;">${safeName}</strong>
+                                <span style="color: #ef4444; font-weight: 800; background: rgba(239, 68, 68, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 13px;">채무(빚): ${Number(a.debt).toLocaleString()}P</span>
+                                <span style="color: #94a3b8; font-size: 13px;">(현금 ${Number(a.cash).toLocaleString()}P / 주식 ${Number(a.portfolio_value).toLocaleString()}P)</span>
+                            </div>
+                            <span style="color: #64748b; font-size: 12px;">접수 시각: ${a.created_at || ''}</span>
+                        </div>
+
+                        <div style="background: rgba(15, 23, 42, 0.8); border-left: 4px solid #38bdf8; padding: 10px 14px; border-radius: 4px; font-size: 14px; color: #e2e8f0; word-break: break-all;">
+                            <strong style="color: #38bdf8;">반성문 / 사유:</strong> "${safeReason}"
+                        </div>
+
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
+                            <input class="input" type="text" id="verdict-comment-${a.id}" placeholder="판사의 한마디 (선택, 예: 살려준다, 탄광 가라)" style="font-size: 13px; flex: 1; min-width: 220px;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="btn btn-success" style="padding: 8px 14px; font-size: 13px;" onclick="judgeBankruptcy(${a.id}, 'full')">
+                                    ⚖️ 전액 탕감 (인가)
+                                </button>
+                                <button class="btn" style="background: #ca8a04; color: white; padding: 8px 14px; font-size: 13px;" onclick="judgeBankruptcy(${a.id}, 'half')">
+                                    ⚖️ 50% 탕감 (워크아웃)
+                                </button>
+                                <button class="btn btn-danger" style="padding: 8px 14px; font-size: 13px;" onclick="judgeBankruptcy(${a.id}, 'reject')">
+                                    🔨 파산 기각 (탄광 노역)
+                                </button>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+                container.innerHTML = html;
+            } catch (e) {
+                console.error("fetchPendingBankruptcies failed:", e);
+            }
+        }
+
+        async function judgeBankruptcy(appId, verdict) {
+            const commentInput = document.getElementById(`verdict-comment-${appId}`);
+            const comment = commentInput ? commentInput.value.trim() : "";
+            
+            let confirmMsg = "";
+            if (verdict === 'full') confirmMsg = `사건 #${appId}의 채무를 전액 탕감하고 생계자금 10,000P를 지급하시겠습니까?`;
+            else if (verdict === 'half') confirmMsg = `사건 #${appId}의 채무 50%를 감면(워크아웃)하시겠습니까?`;
+            else if (verdict === 'reject') confirmMsg = `사건 #${appId}의 파산 신청을 기각하고 탄광 노역을 명하시겠습니까?`;
+
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                const res = await fetch("/api/admin/bankruptcy/judge", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ app_id: appId, verdict: verdict, comment: comment })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    appendLog("system", `⚖️ [법정 판결] ${data.reply}`);
+                    fetchPendingBankruptcies();
+                    fetchMarketState();
+                } else {
+                    alert("판결 처리 실패: " + (data.detail || "알 수 없는 오류"));
+                }
+            } catch (e) {
+                alert("판결 통신 오류: " + e);
+            }
+        }
+
+        // --- Donation & DB Backup Functions ---
+        function updateExpectedPoints() {
+            const amt = parseInt(document.getElementById("donor-amount").value) || 0;
+            const pts = amt * 100;
+            const el = document.getElementById("expected-points-display");
+            if (el) el.textContent = `${pts.toLocaleString()}P`;
+        }
+
+        function setDonationPreset(amount) {
+            const input = document.getElementById("donor-amount");
+            if (input) {
+                input.value = amount;
+                updateExpectedPoints();
+            }
+        }
+
+        async function submitTestDonation() {
+            const nickname = document.getElementById("donor-nickname").value.trim() || "치지직후원자";
+            const channelId = document.getElementById("donor-channel-id").value.trim() || "chzzk_donor_1";
+            const amount = parseInt(document.getElementById("donor-amount").value);
+            const text = document.getElementById("donor-text").value.trim();
+
+            if (!amount || amount <= 0) return alert("후원 금액을 0원보다 크게 입력하세요.");
+
+            try {
+                const res = await fetch("/api/chzzk/donation", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        donationType: "CHAT",
+                        channelId: "4495f96624a2c60bd1ed5a6139014d20",
+                        donatorChannelId: channelId,
+                        donatorNickname: nickname,
+                        payAmount: amount,
+                        donationText: text,
+                        messageTime: Date.now()
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    appendLog("system", `🎁 [후원 충전] ${data.message}`);
+                    fetchDonationHistory();
+                    fetchMarketState();
+                    fetchDbIntegrity();
+                    fetchDbBackups();
+                } else {
+                    alert("후원 충전 실패: " + data.message);
+                }
+            } catch (e) {
+                alert("후원 통신 오류: " + e);
+            }
+        }
+
+        async function fetchDonationHistory() {
+            try {
+                const res = await fetch("/api/donations/history?limit=15");
+                const data = await res.json();
+                const container = document.getElementById("donation-history-container");
+                if (!container) return;
+                if (!data.donations || data.donations.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; padding: 12px; color: #64748b; font-size: 13px;">아직 기록된 후원 내역이 없습니다.</div>';
+                    return;
+                }
+                let html = '<table style="width: 100%; font-size: 12px; border-collapse: collapse; text-align: left;">';
+                html += '<tr style="border-bottom: 1px solid #334155; color: #94a3b8;"><th style="padding: 6px;">일시</th><th style="padding: 6px;">후원자</th><th style="padding: 6px;">후원금액</th><th style="padding: 6px;">충전포인트 (1:100)</th><th style="padding: 6px;">메시지</th></tr>';
+                for (const d of data.donations) {
+                    html += `<tr style="border-bottom: 1px solid #1e293b;">
+                        <td style="padding: 6px; color: #64748b;">${escapeHtml(d.created_at)}</td>
+                        <td style="padding: 6px; font-weight: 700; color: #f472b6;">${escapeHtml(d.donator_nickname)}</td>
+                        <td style="padding: 6px; color: #38bdf8;">${Number(d.pay_amount).toLocaleString()}원</td>
+                        <td style="padding: 6px; font-weight: 800; color: #4ade80;">+${Number(d.points_credited).toLocaleString()}P</td>
+                        <td style="padding: 6px; color: #cbd5e1;">${escapeHtml(d.donation_text || '-')}</td>
+                    </tr>`;
+                }
+                html += '</table>';
+                container.innerHTML = html;
+            } catch (e) {
+                console.error("fetchDonationHistory failed:", e);
+            }
+        }
+
+        async function fetchDbIntegrity() {
+            try {
+                const res = await fetch("/api/admin/db/verify");
+                const data = await res.json();
+                const badge = document.getElementById("db-health-badge");
+                const sizeEl = document.getElementById("db-size-val");
+                const countsEl = document.getElementById("db-counts-val");
+
+                if (badge) {
+                    if (data.is_healthy) {
+                        badge.className = "status-pill green";
+                        badge.textContent = "✅ 무결성 정상 (Healthy)";
+                    } else {
+                        badge.className = "status-pill red";
+                        badge.textContent = "⚠️ 무결성 경고";
+                    }
+                }
+                if (sizeEl) sizeEl.textContent = data.file_size_formatted || "-";
+                if (countsEl && data.table_counts) {
+                    countsEl.textContent = `유저 ${data.table_counts.users || 0}명 / 포지션 ${data.table_counts.positions || 0}개 / 후원 ${data.table_counts.donation_records || 0}건`;
+                }
+            } catch (e) {
+                console.error("fetchDbIntegrity failed:", e);
+            }
+        }
+
+        async function fetchDbBackups() {
+            try {
+                const res = await fetch("/api/admin/db/backups");
+                const data = await res.json();
+                const container = document.getElementById("db-backups-container");
+                const countEl = document.getElementById("db-backups-count");
+                if (countEl) countEl.textContent = `${data.backups ? data.backups.length : 0}개 파일 보존`;
+                if (!container) return;
+
+                if (!data.backups || data.backups.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; padding: 12px; color: #64748b; font-size: 13px;">생성된 백업 스냅샷이 없습니다.</div>';
+                    return;
+                }
+
+                let html = '<table style="width: 100%; font-size: 12px; border-collapse: collapse; text-align: left;">';
+                html += '<tr style="border-bottom: 1px solid #334155; color: #94a3b8;"><th style="padding: 6px;">백업 파일명</th><th style="padding: 6px;">생성 일시</th><th style="padding: 6px;">크기</th><th style="padding: 6px; text-align: right;">관리</th></tr>';
+                for (const b of data.backups) {
+                    html += `<tr style="border-bottom: 1px solid #1e293b;">
+                        <td style="padding: 6px; font-family: monospace; color: #38bdf8;">${escapeHtml(b.filename)}</td>
+                        <td style="padding: 6px; color: #94a3b8;">${escapeHtml(b.created_at)}</td>
+                        <td style="padding: 6px; color: #a78bfa;">${escapeHtml(b.size_formatted)}</td>
+                        <td style="padding: 6px; text-align: right;">
+                            <button class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;" onclick="restoreDbBackup('${escapeHtml(b.filename)}')">복원(Restore)</button>
+                        </td>
+                    </tr>`;
+                }
+                html += '</table>';
+                container.innerHTML = html;
+            } catch (e) {
+                console.error("fetchDbBackups failed:", e);
+            }
+        }
+
+        async function triggerManualBackup() {
+            try {
+                const res = await fetch("/api/admin/db/backup", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ reason: "manual" })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    appendLog("system", `💾 [DB 백업 성공] ${data.message}`);
+                    fetchDbBackups();
+                    fetchDbIntegrity();
+                } else {
+                    alert("백업 실패: " + data.message);
+                }
+            } catch (e) {
+                alert("백업 통신 오류: " + e);
+            }
+        }
+
+        async function restoreDbBackup(filename) {
+            if (!confirm(`⚠️ 경고: '${filename}' 백업으로 데이터베이스를 복원하시겠습니까?\n현재 활성 DB는 사전 안전 백업본으로 보관된 후 복원됩니다.`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch("/api/admin/db/restore", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ filename: filename })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert("복원 완료: " + data.message);
+                    appendLog("system", `🔄 [DB 복원 완료] ${data.message}`);
+                    fetchMarketState();
+                    fetchDbIntegrity();
+                    fetchDbBackups();
+                    fetchPendingBankruptcies();
+                    fetchDonationHistory();
+                } else {
+                    alert("복원 실패: " + data.message);
+                }
+            } catch (e) {
+                alert("복원 통신 오류: " + e);
+            }
+        }
+
+        let casinoIsOpen = false;
+        let casinoRemaining = 0;
+        let casinoMaxBet = 10000;
+
+        function updateCasinoDisplay() {
+            const badge = document.getElementById("casino-status-badge");
+            const textEl = document.getElementById("admin-casino-state-text");
+            const timerEl = document.getElementById("admin-casino-timer");
+            const maxbetEl = document.getElementById("admin-casino-maxbet");
+
+            if (maxbetEl) maxbetEl.textContent = `${casinoMaxBet.toLocaleString()}P`;
+
+            if (!casinoIsOpen) {
+                if (badge) {
+                    badge.className = "status-pill red";
+                    badge.textContent = "영업 마감";
+                }
+                if (textEl) {
+                    textEl.textContent = "영업 마감";
+                    textEl.style.color = "#ef4444";
+                }
+                if (timerEl) {
+                    timerEl.textContent = "마감됨";
+                    timerEl.style.color = "#94a3b8";
+                }
+            } else {
+                if (badge) {
+                    badge.className = "status-pill green";
+                    badge.textContent = "🔥 카지노 영업중";
+                }
+                if (textEl) {
+                    textEl.textContent = "🔥 영업중 (도파민 ON)";
+                    textEl.style.color = "#4ade80";
+                }
+                if (timerEl) {
+                    if (casinoRemaining < 0) {
+                        timerEl.textContent = "무제한 개장";
+                        timerEl.style.color = "#a78bfa";
+                    } else {
+                        const m = Math.floor(casinoRemaining / 60);
+                        const s = casinoRemaining % 60;
+                        timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                        timerEl.style.color = casinoRemaining <= 30 ? "#ef4444" : "#fbbf24";
+                    }
+                }
+            }
+        }
+
+        async function fetchCasinoStatus() {
+            try {
+                const res = await fetch("/api/casino/status");
+                const data = await res.json();
+                if (data.success) {
+                    casinoIsOpen = data.casino.is_open;
+                    casinoRemaining = data.casino.remaining_sec;
+                    casinoMaxBet = data.casino.max_bet || 10000;
+                    const pool = data.treasury.treasury_pool || 0;
+                    const poolEl = document.getElementById("admin-casino-pool");
+                    const potEl = document.getElementById("admin-casino-jackpot-pot");
+                    if (poolEl) poolEl.textContent = `${Math.round(pool).toLocaleString()}P`;
+                    if (potEl) potEl.textContent = `${Math.round(pool * 0.3).toLocaleString()}P`;
+                    updateCasinoDisplay();
+                }
+            } catch (e) {
+                console.error("fetchCasinoStatus failed:", e);
+            }
+        }
+
+        async function openCasinoQuick(minutes) {
+            const maxBet = parseInt(document.getElementById("input-casino-maxbet").value) || 10000;
+            openCasino(minutes, maxBet);
+        }
+
+        async function openCasinoCustom() {
+            const dur = parseFloat(document.getElementById("input-casino-duration").value) || 3.0;
+            const maxBet = parseInt(document.getElementById("input-casino-maxbet").value) || 10000;
+            openCasino(dur, maxBet);
+        }
+
+        async function openCasino(durationMinutes, maxBet) {
+            try {
+                const res = await fetch("/api/casino/open", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ duration_minutes: durationMinutes, max_bet: maxBet })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    appendLog("system", `🎰 [카지노 개장] ${durationMinutes > 0 ? durationMinutes + '분간' : '무제한'} 도박장이 열렸습니다! (최대 배팅: ${maxBet.toLocaleString()}P)`);
+                    fetchCasinoStatus();
+                    fetchMarketState();
+                } else {
+                    alert("카지노 개장 실패: " + data.reply);
+                }
+            } catch (e) {
+                alert("통신 오류: " + e);
+            }
+        }
+
+        async function closeCasinoNow() {
+            try {
+                const res = await fetch("/api/casino/close", { method: "POST" });
+                const data = await res.json();
+                if (data.success) {
+                    appendLog("system", `🎰 [카지노 마감] 도박장이 종료되었습니다.`);
+                    fetchCasinoStatus();
+                    fetchMarketState();
+                } else {
+                    alert("마감 실패: " + data.reply);
+                }
+            } catch (e) {
+                alert("통신 오류: " + e);
+            }
+        }
+
+        // Check if redirected from Chzzk OAuth callback
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get("chzzk_auth") === "success") {
+            alert("🎉 치지직 공식 계정 연동 및 토큰 발급 완료!\n공식 세션 소켓이 재연결되어 후원 이벤트가 실시간 자동 수신됩니다.");
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        fetchMarketState();
+        fetchCasinoStatus();
+        fetchChzzkStatus();
+        fetchAdminUsers();
+        fetchPendingBankruptcies();
+        fetchDonationHistory();
+        fetchDbIntegrity();
+        fetchDbBackups();
+        setInterval(fetchMarketState, 4000);
+        setInterval(fetchCasinoStatus, 4000);
+        setInterval(fetchChzzkStatus, 6000);
+        setInterval(fetchAdminUsers, 5000);
+        setInterval(fetchPendingBankruptcies, 3000);
+        setInterval(fetchDonationHistory, 8000);
+        setInterval(() => {
+            if (!isMarketLocked && freeTradingRemaining > 0) {
+                freeTradingRemaining--;
+                updateCountdownDisplay();
+            }
+            if (casinoIsOpen && casinoRemaining > 0) {
+                casinoRemaining--;
+                if (casinoRemaining <= 0) {
+                    casinoIsOpen = false;
+                }
+                updateCasinoDisplay();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

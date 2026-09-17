@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>치즈나베 마작 주식 & 국고 카지노 가이드</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0b1120;
+            --bg-card: #1e293b;
+            --bg-card-hover: #26354a;
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #38bdf8;
+            --primary-glow: rgba(56, 189, 248, 0.2);
+            --accent-gold: #facc15;
+            --accent-green: #4ade80;
+            --accent-red: #ef4444;
+            --accent-purple: #a855f7;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding-bottom: 60px;
+        }
+
+        /* Container */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+
+        /* Header & Hero */
+        .hero {
+            text-align: center;
+            padding: 30px 16px 24px;
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.8) 0%, rgba(11, 17, 32, 0) 100%);
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 24px;
+        }
+
+        .badge-live {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #f87171;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .badge-live span {
+            width: 8px;
+            height: 8px;
+            background: #ef4444;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px #ef4444;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+
+        .hero h1 {
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #38bdf8 0%, #facc15 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 16px;
+        }
+
+        .channel-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #00ffa3;
+            color: #04100c;
+            font-weight: 800;
+            padding: 8px 18px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 13px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .channel-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 163, 0.3);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .stat-val {
+            font-size: 16px;
+            font-weight: 900;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Tabs Navigation */
+        .tabs-nav {
+            display: flex;
+            overflow-x: auto;
+            gap: 6px;
+            padding-bottom: 8px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            scrollbar-width: none;
+        }
+
+        .tabs-nav::-webkit-scrollbar {
+            display: none;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 700;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            color: #0b1120;
+            background: var(--primary);
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        /* Tab Contents */
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Cards & Section Boxes */
+        .content-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .card-title {
+            font-size: 17px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Step List */
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .step-item {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+        }
+
+        .step-num {
+            background: var(--primary);
+            color: #0b1120;
+            font-weight: 900;
+            font-size: 13px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .step-body h4 {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .step-body p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* Tables */
+        .styled-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+
+        .styled-table th {
+            text-align: left;
+            padding: 8px 10px;
+            background: rgba(15, 23, 42, 0.6);
+            color: var(--text-secondary);
+            font-weight: 700;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .styled-table td {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .styled-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Command Chips (Click to copy) */
+        .cmd-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .cmd-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .cmd-box:hover {
+            border-color: var(--primary);
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+        }
+
+        .cmd-code {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .cmd-code .copy-icon {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: normal;
+        }
+
+        .cmd-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+
+        /* Callout Box */
+        .callout {
+            background: rgba(56, 189, 248, 0.08);
+            border-left: 3px solid var(--primary);
+            padding: 12px 14px;
+            border-radius: 0 8px 8px 0;
+            margin: 14px 0;
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+
+        .callout.gold {
+            background: rgba(250, 204, 21, 0.08);
+            border-color: var(--accent-gold);
+        }
+
+        /* Toast notification */
+        #toast {
+            visibility: hidden;
+            min-width: 220px;
+            background-color: #0284c7;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 12px 16px;
+            position: fixed;
+            z-index: 1000;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            opacity: 0;
+            transition: opacity 0.3s, bottom 0.3s;
+        }
+
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+            bottom: 40px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 40px;
+        }
+
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Hero Header -->
+    <header class="hero">
+        <div class="badge-live">
+            <span></span> CHZZK 치지직 생방송 실시간 연동
+        </div>
+        <h1>치즈나베 마작 주식 & 국고 카지노</h1>
+        <p>치즈나베의 작혼 3마 전적과 실시간으로 연동되는 시청자 주식 시장 & 국고 잭팟 도박 시스템</p>
+        <a href="https://chzzk.naver.com/live/4495f96624a2c60bd1ed5a6139014d20" target="_blank" class="channel-btn">
+            📺 치즈나베 방송 보러가기
+        </a>
+    </header>
+
+    <div class="container">
+        <!-- Quick Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">초기 지급 포인트</div>
+                <div class="stat-val" style="color: var(--accent-green);">50,000P</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">기준 시작가 (작성3)</div>
+                <div class="stat-val" style="color: var(--primary);">2,340P</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">최대 레버리지</div>
+                <div class="stat-val" style="color: var(--accent-red);">10X</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">카지노 잭팟 독식</div>
+                <div class="stat-val" style="color: var(--accent-gold);">국고 30%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">무담보 대출 한도</div>
+                <div class="stat-val" style="color: var(--accent-purple);">50,000P</div>
+            </div>
+        </div>
+
+        <!-- Tab Nav -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" onclick="switchTab('quick')">⚡ 퀵스타트</button>
+            <button class="tab-btn" onclick="switchTab('stock')">📈 주식 & 배당</button>
+            <button class="tab-btn" onclick="switchTab('casino')">🎰 국고 카지노</button>
+            <button class="tab-btn" onclick="switchTab('loan')">💳 대출 & 회생</button>
+            <button class="tab-btn" onclick="switchTab('cheatsheet')">📜 명령어 사전</button>
+        </nav>
+
+        <!-- TAB 1: Quick Start -->
+        <section id="tab-quick" class="tab-content active">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">🚀 처음 오신 분들을 위한 4단계 초고속 가이드</div>
+                </div>
+                <div class="step-list">
+                    <div class="step-item">
+                        <div class="step-num">1</div>
+                        <div class="step-body">
+                            <h4>지갑 생성 및 시작금 확인</h4>
+                            <p>방송 채팅창에 <code>!내정보</code> 를 입력하면 <strong>50,000P</strong>가 자동으로 지급되고 내 자산 현황이 출력됩니다.</p>
+                        </div>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-num">2</div>
+                        <div class="step-body">
+                            <h4>자유 거래 시간(장 열림)에 주식 매수</h4>
+                            <p>경기가 시작하기 전 또는 경기가 끝난 후 <strong>5분간</strong> 장이 열립니다. <code>!매수 1X 올인</code> 또는 <code>!매수 10X 5</code> 로 매수하세요.</p>
+                        </div>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-num">3</div>
+                        <div class="step-body">
+                            <h4>스트리머의 승리를 응원하고 승리 배당 획득</h4>
+                            <p>치즈나베가 1등(+270pt)을 하면 주가가 폭등하며, 1X 주주들에게 <strong>보유액의 5% 현금 배당</strong>이 즉시 지급됩니다!</p>
+                        </div>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-num">4</div>
+                        <div class="step-body">
+                            <h4>경기 중에는 채굴과 카지노로 도파민 충전</h4>
+                            <p>경기가 진행 중(장 마감)일 때는 <code>!채굴</code> 로 공짜 주식을 캐거나, 스트리머가 카지노를 열면 <code>!슬롯 1000</code> 으로 국고 30% 잭팟을 노려보세요!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: Stock & Settlement -->
+        <section id="tab-stock" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">📊 주식 및 파생상품(레버리지/인버스) 시스템</div>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    치즈나베의 작혼 작성3 랭크 포인트와 주가가 1:1로 실시간 연동됩니다.
+                </p>
+
+                <div class="callout">
+                    <strong>💡 기준 주가 변동 규칙</strong><br>
+                    • 🥇 1위 달성 (+270pt) : 주가 +270P 폭등 & <strong>1X 주주 전원에게 5% 승리 배당</strong><br>
+                    • 🥈 2위 달성 (0pt) : 주가 유지 & <strong>1X 주주 전원에게 1% 승리 배당</strong><br>
+                    • 🥉 3위 달성 (-330pt) : 주가 -330P 폭락 (무배당)
+                </div>
+
+                <h4 style="margin: 16px 0 8px; font-size: 15px;">지원 종목 안내</h4>
+                <table class="styled-table">
+                    <thead>
+                        <tr>
+                            <th>종목명</th>
+                            <th>특징 및 배수</th>
+                            <th>청산 위험도</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong style="color: var(--primary);">1X</strong> (기본주)</td>
+                            <td>주가 변동 1배 추종, <strong>1위 달성 시 5% 현금 배당</strong> 지급</td>
+                            <td>청산 없음 (안전)</td>
+                        </tr>
+                        <tr>
+                            <td><strong style="color: #38bdf8;">2X, 3X, 5X, 10X</strong></td>
+                            <td>주가 상승 시 <strong>N배 레버리지 폭등</strong>, 하락 시 N배 폭락</td>
+                            <td>원금 손실 초과 시 마진콜 강제 청산</td>
+                        </tr>
+                        <tr>
+                            <td><strong style="color: #f472b6;">INV (인버스)</strong></td>
+                            <td>주가 하락 시 수익 (스트리머가 3위 할 때 이득)</td>
+                            <td>주가 급등 시 마진콜 청산</td>
+                        </tr>
+                        <tr>
+                            <td><strong style="color: #ec4899;">2X_INV ~ 10X_INV</strong></td>
+                            <td>스트리머 연패 및 하락장에 베팅하는 극한의 역배 레버리지</td>
+                            <td>초고위험</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="callout gold">
+                    <strong>🏛️ 1% 국고 수수료 적립제</strong><br>
+                    모든 매수/매도 시 거래 대금의 1%가 국고 채굴풀로 자동 적립되어, 시청자들의 <strong>채굴 지원금</strong> 및 <strong>슬롯머신 잭팟 상금</strong>으로 재분배됩니다.
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: Community Casino -->
+        <section id="tab-casino" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">🎰 나베 국고 도파민 카지노</div>
+                    <span style="font-size: 12px; color: var(--accent-gold); font-weight: 700;">스트리머 비정기 개장</span>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary);">
+                    스트리머가 기습적으로 개장하는 실시간 도박장입니다. 대박 시 국고를 독식하고, 꽝 시 국고로 환수됩니다.
+                </p>
+
+                <h4 style="margin: 16px 0 6px; font-size: 15px; color: var(--accent-gold);">1. 🎰 3-릴 국고 잭팟 슬롯머신 (<code>!슬롯 [금액/올인]</code>)</h4>
+                <table class="styled-table">
+                    <thead>
+                        <tr>
+                            <th>조합</th>
+                            <th>명칭 및 당첨금</th>
+                            <th>확률</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>[ 7️⃣ | 7️⃣ | 7️⃣ ]</strong></td>
+                            <td>👑 <strong>국고 30% 독식 MEGA JACKPOT</strong> (최소 20배 보장)</td>
+                            <td>0.0001% (100만분의 1)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>[ 🀄 | 🀄 | 🀄 ]</strong></td>
+                            <td>🀄 <strong>역만 잭팟 (Yakuman) 10배</strong></td>
+                            <td>0.0027% (약 1/3.7만)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>[ 💎 | 💎 | 💎 ]</strong></td>
+                            <td>💎 다이아몬드 트리플 <strong>5배</strong></td>
+                            <td>0.0216%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>[ 🔔 | 🔔 | 🔔 ]</strong></td>
+                            <td>🔔 골든벨 트리플 <strong>3배</strong></td>
+                            <td>0.1728%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>[ 🍇 | 🍇 | 🍇 ] , [ 🍒 | 🍒 | 🍒 ]</strong></td>
+                            <td>🍇 과일 트리플 <strong>2배</strong></td>
+                            <td>약 2.15%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>아무 심볼 2개 일치</strong></td>
+                            <td>🥈 <strong>1.5배 본전+</strong> (원금 회수 및 50% 추가 수익)</td>
+                            <td><strong>19.17% (5판 중 1판)</strong></td>
+                        </tr>
+                        <tr>
+                            <td><strong>[ 💣 | 💣 | 💣 ] / 불일치</strong></td>
+                            <td>💀 <strong>꽝!</strong> 베팅금 전액 국고 흡수 (다음 상금 누적)</td>
+                            <td>78.49%</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4 style="margin: 20px 0 6px; font-size: 15px; color: #38bdf8;">2. 🎲 2-다이스 더블 배틀 (<code>!주사위 [홀/짝/대/소] [금액]</code>)</h4>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">
+                    주사위 2개를 굴려 합(2~12)을 예측합니다.
+                </p>
+                <div class="callout">
+                    • <strong>홀(3,5,7,9,11) / 짝(2,4,6,8,10,12)</strong> : 적중 시 <strong>2배 당첨</strong><br>
+                    • <strong>대(8~12) / 소(2~6)</strong> : 적중 시 <strong>2배 당첨</strong> (합 7은 딜러 승리)<br>
+                    • <strong>[ 1-1 ] 또는 [ 6-6 ] 조커 더블 발생 시</strong> : ⚡ <strong>5배 크리티컬 잭팟!</strong>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: Loan & Bankruptcy -->
+        <section id="tab-loan" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">💳 국고 마진론 대출 & 나베 판사의 회생 법정</div>
+                </div>
+                
+                <h4 style="margin: 8px 0 6px; font-size: 15px;">1. 24시간 무담보 신용 대출 (<code>!대출 [금액/최대]</code>)</h4>
+                <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    포인트가 부족할 때 국고 채굴풀에서 <strong>최대 50,000P</strong>까지 무담보로 대출받을 수 있습니다.<br>
+                    <strong>💡 경기 중(거래 마감 중)에도 24시간 상시 대출이 가능</strong>하므로, 경기 중 카지노를 즐기거나 장 열림 직후 빠른 매수를 위해 미리 현금을 확보할 수 있습니다.
+                </p>
+                <div class="callout">
+                    • <strong>이자율</strong> : 경기 정산 시마다 남은 채무의 2%가 국고 이자로 납부됩니다.<br>
+                    • <strong>상환</strong> : <code>!상환 전액</code> 또는 <code>!상환 20000</code> 으로 원금을 언제든 갚을 수 있습니다.
+                </div>
+
+                <h4 style="margin: 18px 0 6px; font-size: 15px; color: var(--accent-purple);">2. 🏛️ 나베 판사의 즉결 회생 법정 (<code>!파산신청 [반성문]</code>)</h4>
+                <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    10X 레버리지나 카지노 올인으로 빚더미에 앉아 회생이 불가능할 때 채팅창에 파산 신청을 제출하세요.
+                    스트리머(나베 판사)가 생방송에서 반성문과 자산을 심사하여 즉결 처분을 내립니다.
+                </p>
+                <div class="callout gold">
+                    • <strong>[파산 인가]</strong> : 빚 전액 탕감 + 재기 지원금 10,000P 지급<br>
+                    • <strong>[워크아웃]</strong> : 빚 50% 감면 처분<br>
+                    • <strong>[파산 기각]</strong> : 기각! 탄광 노역형 유지
+                </div>
+
+                <h4 style="margin: 18px 0 6px; font-size: 15px; color: var(--accent-green);">3. ⛏️ 무상 주식 채굴 (<code>!채굴</code>)</h4>
+                <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    15분마다 국고에서 1X 주식을 공짜로 채굴할 수 있습니다. 빚이 있는 시청자는 <strong>탄광 노역</strong>으로 채굴되어 자동으로 빚이 차감 상환됩니다!
+                </p>
+            </div>
+        </section>
+
+        <!-- TAB 5: Cheatsheet (Click to copy) -->
+        <section id="tab-cheatsheet" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">📜 전체 채팅 명령어 치트시트</div>
+                    <span style="font-size: 12px; color: var(--text-secondary);">카드를 클릭하면 복사됩니다</span>
+                </div>
+
+                <div class="cmd-grid">
+                    <div class="cmd-box" onclick="copyCommand('!주식')">
+                        <div class="cmd-code">!주식 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">현재 주가, 등락폭, 시장 락 상태 확인</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!내정보')">
+                        <div class="cmd-code">!내정보 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">보유 현금, 순자산, 보유 포지션, 빚(대출) 확인</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!매수 1X 올인')">
+                        <div class="cmd-code">!매수 1X 올인 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">기본주(1X) 전액 풀매수 (배당 5% 대상)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!매수 10X 올인')">
+                        <div class="cmd-code">!매수 10X 올인 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">10배 레버리지 초고위험 풀매수</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!매수 1X 10')">
+                        <div class="cmd-code">!매수 [종목] [수량] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">원하는 수량만큼 시장가 구매 (예: !매수 1X 10)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!매도 1X 전량')">
+                        <div class="cmd-code">!매도 [종목] 전량 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">보유 주식 전량 시장가 매도 및 현금화</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!청산 전량')">
+                        <div class="cmd-code">!청산 전량 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">모든 보유 포지션 즉시 일괄 정리</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!슬롯 1000')">
+                        <div class="cmd-code">!슬롯 [금액/올인] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">3릴 국고 잭팟 슬롯머신 돌리기 (777 독식)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!슬롯확률')">
+                        <div class="cmd-code">!슬롯확률 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">슬롯머신 공식 확률 및 배당표 간략 조회</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!주사위 홀 2000')">
+                        <div class="cmd-code">!주사위 [홀/짝/대/소] [금액] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">더블 크리티컬(5배) 주사위 배틀 참여</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!카지노')">
+                        <div class="cmd-code">!카지노 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">카지노 개장 여부, 잔여 시간, 국고 상금 확인</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!대출 최대')">
+                        <div class="cmd-code">!대출 [금액/최대] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">국고에서 신용 대출 실행 (경기 중 상시 가능)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!상환 전액')">
+                        <div class="cmd-code">!상환 [금액/전액] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">대출금(빚) 상환하여 이자 절감</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!채굴')">
+                        <div class="cmd-code">!채굴 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">15분마다 1X 공짜 채굴 (빚 보유 시 노역 상환)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!파산신청 10X 레버리지 타다가 망했습니다 판사님 살려주세요')">
+                        <div class="cmd-code">!파산신청 [반성문] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">나베 판사의 라이브 법정에 개인회생 신청</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!국고')">
+                        <div class="cmd-code">!국고 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">국고 채굴풀 잔고 및 수수료 적립 현황 조회</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>🀄 치즈나베의 마작 주식 & 국고 카지노 시스템</p>
+            <p style="margin-top: 4px;">Created with ❤️ for Chzzk Stream Community</p>
+        </footer>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast">✅ 명령어가 복사되었습니다!</div>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const activeContent = document.getElementById(`tab-${tabId}`);
+            if (activeContent) activeContent.classList.add('active');
+        }
+
+        function copyCommand(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast(`✅ "${text}" 복사 완료!`);
+            }).catch(() => {
+                showToast(`📋 ${text}`);
+            });
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById("toast");
+            toast.textContent = msg;
+            toast.className = "show";
+            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 2200);
+        }
+    </script>
+</body>
+</html>
