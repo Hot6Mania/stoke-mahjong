@@ -1,4 +1,6 @@
 import os
+import time
+from datetime import datetime, timezone
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -1129,4 +1131,44 @@ def test_borrow_allowed_during_game_market_lock(db_session):
     db_session.refresh(user)
     assert user.debt == 40000
     assert user.points == 50000
+
+def test_remaining_time_command(db_session):
+    """Verify !남은시간 and !시간 command displaying free trading time, casino time, and mining cooldown."""
+    uid = "time_checker_user"
+    uname = "시간확인러"
+    user = te.get_or_create_user(db_session, uid, uname)
+    state = te.get_market_state(db_session)
+
+    # 1. When market is locked and casino closed
+    state.is_trading_locked = True
+    state.free_trading_end_time = 0.0
+    state.casino_is_open = False
+    db_session.commit()
+
+    r1, _ = ch.handle_chat_command(db_session, uid, uname, "!남은시간")
+    assert r1 is not None
+    assert "⏱️ [현재 남은 시간]" in r1
+    assert "거래 마감" in r1
+    assert "카지노 마감" in r1
+    assert "즉시 가능" in r1
+
+    # 2. When market is open with 180s countdown and casino open with 300s
+    state.is_trading_locked = False
+    state.free_trading_end_time = time.time() + 180.0
+    state.casino_is_open = True
+    state.casino_end_time = time.time() + 300.0
+    db_session.commit()
+
+    r2, _ = ch.handle_chat_command(db_session, uid, uname, "!시간")
+    assert r2 is not None
+    assert "장 열림" in r2
+    assert "카지노 오픈" in r2
+
+    # 3. When user recently mined (cooldown active)
+    user.last_mined_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    r3, _ = ch.handle_chat_command(db_session, uid, uname, "!time")
+    assert r3 is not None
+    assert "쿨타임" in r3
 

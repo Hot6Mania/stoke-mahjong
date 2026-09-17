@@ -1,5 +1,7 @@
 import os
 import re
+import time
+from datetime import datetime, timezone
 from typing import Tuple, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from models import Position
@@ -33,7 +35,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !대출 [금액/최대], !상환, !채굴, !국고
+• 금융: !내정보, !대출 [금액/최대], !상환, !채굴, !국고, !남은시간
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -85,7 +87,16 @@ def handle_chat_command(
         else:
             change_str = "0P (0.00%)"
 
-        status_badge = "[경기 중 - 거래 마감]" if state.is_trading_locked else "[장 열림]"
+        end_t = float(getattr(state, "free_trading_end_time", 0.0) or 0.0)
+        rem_trade = max(0, int(end_t - time.time())) if (not state.is_trading_locked and end_t > 0) else 0
+        if state.is_trading_locked:
+            status_badge = "[경기 중 - 거래 마감]"
+        elif rem_trade > 0:
+            m_t, s_t = divmod(rem_trade, 60)
+            status_badge = f"[장 열림 ({m_t}분 {s_t}초 남음)]"
+        else:
+            status_badge = "[장 열림]"
+
         delta_str = f"{state.last_settlement_delta:+d}pt" if state.last_settlement_delta != 0 else "0pt"
 
         reply = (
@@ -93,6 +104,54 @@ def handle_chat_command(
             f"당일시가: {day_open:,}P (직전: {delta_str}) | 상태: {status_badge} | "
             f"국고: {int(round(getattr(state, 'treasury_pool', 500000.0))):,}P"
         )
+        return reply, None
+
+    # 2-1. Remaining Time Query (!남은시간, !시간, !장시간, !남은장시간, !마감시간, !time, !타이머)
+    if cmd in ["!남은시간", "!시간", "!장시간", "!남은장시간", "!마감시간", "!장마감", "!time", "!타이머"]:
+        state = get_market_state(db)
+        c_state = get_casino_state(db)
+        user = get_or_create_user(db, user_id, username)
+
+        now = time.time()
+
+        # 1. Free Trading Remaining
+        end_t = float(getattr(state, "free_trading_end_time", 0.0) or 0.0)
+        is_locked = bool(getattr(state, "is_trading_locked", True))
+        rem_trade = max(0, int(end_t - now)) if (not is_locked and end_t > 0) else 0
+
+        if not is_locked and rem_trade > 0:
+            m_t, s_t = divmod(rem_trade, 60)
+            trade_str = f"🟢 장 열림 ({m_t}분 {s_t}초 후 마감)"
+        elif not is_locked:
+            trade_str = "🟢 장 열림 (자유 거래 중)"
+        else:
+            trade_str = "🔒 경기 진행 중 (거래 마감)"
+
+        # 2. Casino Remaining
+        if c_state["is_open"]:
+            rem_c = c_state["remaining_sec"]
+            if 0 < rem_c < 99999:
+                m_c, s_c = divmod(rem_c, 60)
+                casino_str = f"🎰 카지노 오픈 ({m_c}분 {s_c}초 남음)"
+            else:
+                casino_str = "🎰 카지노 오픈 (무제한)"
+        else:
+            casino_str = "💤 카지노 마감"
+
+        # 3. User Mining Cooldown
+        mine_str = "⛏️ 즉시 가능"
+        if user.last_mined_at:
+            now_utc = datetime.now(timezone.utc)
+            last_t = user.last_mined_at
+            if last_t.tzinfo is None:
+                last_t = last_t.replace(tzinfo=timezone.utc)
+            elapsed = (now_utc - last_t).total_seconds()
+            if elapsed < 900:
+                rem_m = int(900 - elapsed)
+                mm, ss = divmod(rem_m, 60)
+                mine_str = f"⛏️ 쿨타임 {mm}분 {ss}초"
+
+        reply = f"⏱️ [현재 남은 시간] 거래: {trade_str} | 도박: {casino_str} | 내 채굴: {mine_str}"
         return reply, None
 
     # 3. Account / Wallet Query (보유와 채굴을 '보유'로 완전 통합)

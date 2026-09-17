@@ -3,15 +3,15 @@
   "current_price": 2034,
   "previous_price": 2361,
   "day_open_price": 3055,
-  "is_trading_locked": false,
+  "is_trading_locked": true,
   "last_settlement_delta": -327,
-  "treasury_pool": 1015776.0,
-  "free_trading_remaining": 25,
-  "free_trading_end_time": 1789645233.3842382,
+  "treasury_pool": 1012725.0,
+  "free_trading_remaining": 0,
+  "free_trading_end_time": 0.0,
   "casino_is_open": false,
   "casino_remaining": 0,
   "casino_max_bet": 10000,
   "day_diff": -1021,
   "day_diff_pct": -33.42,
-  "updated_at": "2026-09-17 20:40:07"
+  "updated_at": "2026-09-17 20:44:29"
 }
