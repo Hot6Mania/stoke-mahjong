@@ -801,6 +801,8 @@
                         const diceStr = `[🎲${msg.data.dice1}+🎲${msg.data.dice2}=${msg.data.dice_sum}]`;
                         if (msg.data.win) {
                             showTickerMessage("trade", `🎲 [주사위 적중] <strong>${msg.data.username}</strong>님 ${diceStr} ${msg.data.user_choice} 적중! (+${Number(msg.data.payout).toLocaleString()}P)`, 7000);
+                        } else if (msg.data.is_push) {
+                            showTickerMessage("trade", `🎲 [주사위 무승부] <strong>${msg.data.username}</strong>님 ${diceStr} 럭키 7 무승부! (${Number(msg.data.bet_amount).toLocaleString()}P 전액 환급)`, 6000);
                         } else {
                             showTickerMessage("liquidation", `🎲 [주사위 실패] <strong>${msg.data.username}</strong>님 ${diceStr} (-${Number(msg.data.bet_amount).toLocaleString()}P 국고 적립)`, 6000);
                         }

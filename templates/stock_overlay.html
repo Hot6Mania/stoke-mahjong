@@ -679,6 +679,8 @@
                     const diceStr = `[🎲${d.dice1}+🎲${d.dice2}=${d.dice_sum}]`;
                     if (d.win) {
                         showTickerToast(`🎲 [주사위 적중] ${d.username}님 ${diceStr} ${d.user_choice} 적중! (+${Number(d.payout).toLocaleString()}P)`, 'trade', 7000);
+                    } else if (d.is_push) {
+                        showTickerToast(`🎲 [주사위 무승부] ${d.username}님 ${diceStr} 럭키 7 무승부! (${Number(d.bet_amount).toLocaleString()}P 전액 환급)`, 'trade', 6000);
                     } else {
                         showTickerToast(`🎲 [주사위 실패] ${d.username}님 ${diceStr} (-${Number(d.bet_amount).toLocaleString()}P 국고 적립)`, 'liquidation', 6000);
                     }

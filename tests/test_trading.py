@@ -1097,28 +1097,29 @@ def test_casino_dice_gamble(db_session, monkeypatch):
     ok, reply, details = te.execute_dice_gamble(db_session, uid, uname, "짝", "1000")
     assert ok is True
     assert details["won"] is True
-    assert details["net_payout"] == 900 # 1.9x payout (net +0.9x)
+    assert details["net_payout"] == 1000 # 2.0x payout (net +1.0x)
     db_session.refresh(user)
-    assert user.points == 50900
+    assert user.points == 51000
 
-    # 2. Critical Double 2.5x jackpot: roll (6, 6) -> sum = 12
+    # 2. Critical Double 3.0x jackpot: roll (6, 6) -> sum = 12
     dice_double = iter([6, 6])
     monkeypatch.setattr("random.randint", lambda a, b: next(dice_double))
     ok_d, reply_d, details_d = te.execute_dice_gamble(db_session, uid, uname, "대", "2000")
     assert ok_d is True
     assert details_d["won"] is True
     assert details_d["is_critical"] is True
-    assert details_d["net_payout"] == 3000 # 2.5x payout (net +1.5x)
+    assert details_d["net_payout"] == 4000 # 3.0x payout (net +2.0x)
     assert "크리티컬 잭팟" in reply_d
 
-    # 3. High/Low loss on 7: roll (3, 4) -> sum = 7
+    # 3. High/Low push refund on 7: roll (3, 4) -> sum = 7
     dice_seven = iter([3, 4])
     monkeypatch.setattr("random.randint", lambda a, b: next(dice_seven))
     ok_7, reply_7, details_7 = te.execute_dice_gamble(db_session, uid, uname, "소", "1000")
     assert ok_7 is True
     assert details_7["won"] is False
-    assert details_7["net_payout"] == -1000
-    assert "국고로 귀속" in reply_7
+    assert details_7["is_push"] is True
+    assert details_7["net_payout"] == 0
+    assert "무승부" in reply_7 or "환급" in reply_7
 
     # 4. Bet up to 100,000P on dice succeeds and critical double is NOT capped at 100k (uncapped!)
     user.points = 200000
@@ -1128,9 +1129,9 @@ def test_casino_dice_gamble(db_session, monkeypatch):
     ok_100k, _, det_100k = te.execute_dice_gamble(db_session, uid, uname, "짝", "100000")
     assert ok_100k is True
     assert det_100k["is_critical"] is True
-    assert det_100k["net_payout"] == 150000  # 2.5x payout -> net +150,000P uncapped!
+    assert det_100k["net_payout"] == 200000  # 3.0x payout -> net +200,000P uncapped!
     db_session.refresh(user)
-    assert user.points == 200000 + 150000
+    assert user.points == 200000 + 200000
 
     # 5. Bet over 100,000P on dice is rejected
     ok_over, reply_over, _ = te.execute_dice_gamble(db_session, uid, uname, "짝", "100001")
@@ -1178,7 +1179,7 @@ def test_casino_chat_commands(db_session):
     r_odds, ev_odds = ch.handle_chat_command(db_session, viewer_id, viewer_name, "!슬롯확률")
     assert r_odds is not None
     assert "국고 슬롯 공식 확률" in r_odds
-    assert "37.1%" in r_odds
+    assert "50.5%" in r_odds
     assert "777" in r_odds
     assert ev_odds is None
 

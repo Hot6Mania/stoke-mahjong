@@ -44,7 +44,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
 • 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴 (곡괭이: !곡괭이, !강화, 확률: !채굴확률), !국고, !남은시간
-• 도박: !슬롯 [금액/올인], !주사위 [홀/짝] [금액], !카지노, !슬롯확률
+• 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
 GUIDE_STOCK = HELP_MESSAGE
@@ -704,11 +704,11 @@ def handle_chat_command(
     if cmd in ["!슬롯확률", "!도박확률", "!확률", "!배당표", "!카지노확률", "!배당율"]:
         reply = (
             "🎰 [국고 슬롯 공식 확률 & 배당표]\n"
-            "• 총 당첨률 37.1% (슬롯 당첨 상한 캡 완전 해제! 🔥)\n"
+            "• 총 당첨률 50.5% (반반 승률 & 당첨금 캡 완전 해제! 🔥)\n"
             "• 👑777: 국고 20% MEGA JACKPOT 즉시 독식! (최소 15배 보장, 무제한)\n"
             "• 🀄역만: 10배 | 💎: 6배 | 🔔: 4배 | 🍇: 3배 | 🍒: 2배 (캡 없음)\n"
-            "• 🥈2개 일치: 일반(🍒🍇🔔) 1.5배 적중(31.6%) | 고급(💎🀄7️⃣) 2.0배 적중(2.2%)\n"
-            "• 💣/불일치: 꽝 (62.9% 국고 적립 | 슬롯 당첨금 캡 제한 없음)"
+            "• 🥈2개 일치: 일반(🍒🍇🔔) 1.5배 적중(42.6%) | 고급(💎🀄7️⃣) 2.0배 적중(2.8%)\n"
+            "• 💣/불일치: 꽝 (49.5% 국고 적립 | 폭탄 비중 10%로 대폭 축소)"
         )
         return reply, None
 
@@ -730,7 +730,7 @@ def handle_chat_command(
     # 17. Dice Roll Gamble
     if cmd in ["!주사위", "!다이스", "!dice"]:
         if len(tokens) < 3:
-            return "🎲 [주사위 배틀] 사용법: !주사위 [홀/짝/대/소] [금액/올인] (예: !주사위 홀 2000, !주사위 대 올인) | 홀/짝 1.9배, 대/소 2배, 더블(1-1/6-6) 시 2.5배 대박 (당첨금 캡 없음!)", None
+            return "🎲 [주사위 배틀] 사용법: !주사위 [홀/짝/대/소] [금액/올인] (예: !주사위 홀 2000, !주사위 대 올인) | 홀/짝/대/소 2배(50% 반반 승률, 합 7은 대/소 무승부 전액 환급), 더블(1-1/6-6) 시 3배 크리티컬 대박 (캡 없음!)", None
         if tokens[1] in ["홀", "짝", "대", "소", "even", "odd", "high", "low"]:
             choice_str = tokens[1]
             bet_str = tokens[2]
@@ -749,7 +749,7 @@ def handle_chat_command(
             if is_crit:
                 event = {"type": "casino_jackpot", "data": {**details, "gamble_type": "dice_critical", "dice1": d1, "dice2": d2, "dice_sum": dice_sum, "payout": details["net_payout"], "win": True}}
             else:
-                event = {"type": "casino_dice", "data": {**details, "dice1": d1, "dice2": d2, "dice_sum": dice_sum, "user_choice": choice_str, "win": details["won"], "payout": details["net_payout"], "bet_amount": details["bet"]}}
+                event = {"type": "casino_dice", "data": {**details, "dice1": d1, "dice2": d2, "dice_sum": dice_sum, "user_choice": choice_str, "win": details["won"], "is_push": details.get("is_push", False), "payout": details["net_payout"], "bet_amount": details["bet"]}}
         return reply, event
 
     # 18. Streamer Match Settlement Command (!정산 [등수] [변동점수])

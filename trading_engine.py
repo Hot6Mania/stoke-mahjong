@@ -2783,7 +2783,7 @@ MIN_CASINO_BET: int = 100
 MAX_CASINO_PAYOUT: int = 100000  # 1회 주사위 도박 등 국고 최대 순지급액 상한선 (국고 보호)
 
 SLOT_SYMBOLS = ["💣", "🍒", "🍇", "🔔", "💎", "🀄", "7️⃣"]
-SLOT_WEIGHTS = [25, 28, 20, 14, 8, 3, 2]
+SLOT_WEIGHTS = [10, 30, 25, 20, 9, 4, 2]
 
 def get_casino_state(db: Session) -> Dict[str, Any]:
     """Retrieve current casino state with automatic time expiry handling."""
@@ -3023,8 +3023,9 @@ def execute_dice_gamble(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute 2-Dice High-Roller Gamble (Uncapped Payouts!):
-    Choices: '홀' (Odd - 1.9x), '짝' (Even - 1.9x), '대' (8~12 High - 2x), '소' (2~6 Low - 2x).
-    Special: Double 1-1 or 6-6 gives 2.5x CRITICAL JACKPOT! (Uncapped)
+    Choices: '홀' (Odd - 2.0x), '짝' (Even - 2.0x), '대' (8~12 High - 2.0x), '소' (2~6 Low - 2.0x).
+    Sum 7 on High/Low: PUSH (무승부 - 베팅금 100% 전액 환급, 원금 보존).
+    Special: Double 1-1 or 6-6 gives 3.0x CRITICAL JACKPOT! (Uncapped)
     """
     c_state = get_casino_state(db)
     if not c_state["is_open"]:
@@ -3073,42 +3074,53 @@ def execute_dice_gamble(
     total = d1 + d2
     is_odd = (total % 2 == 1)
     is_high = (total >= 8)
-    is_low = (total <= 6) # 7 is house draw/loss for high-low
+    is_low = (total <= 6)
+    is_seven = (total == 7)
 
+    is_push = False
     is_correct = False
     if target_choice == "ODD" and is_odd:
         is_correct = True
     elif target_choice == "EVEN" and not is_odd:
         is_correct = True
-    elif target_choice == "HIGH" and is_high:
-        is_correct = True
-    elif target_choice == "LOW" and is_low:
-        is_correct = True
+    elif target_choice == "HIGH":
+        if is_high:
+            is_correct = True
+        elif is_seven:
+            is_push = True
+    elif target_choice == "LOW":
+        if is_low:
+            is_correct = True
+        elif is_seven:
+            is_push = True
 
     is_critical = is_correct and ((d1 == 1 and d2 == 1) or (d1 == 6 and d2 == 6))
 
     if is_critical:
-        # 2.5x Critical Payout (Net profit 1.5x, uncapped)
-        net_payout = int(round(bet * 1.5))
+        # 3.0x Critical Payout (Net profit 2.0x, uncapped)
+        net_payout = int(round(bet * 2.0))
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
         msg = (
-            f"🎲🔥 [주사위 2.5배 크리티컬 잭팟!] {user.username}님이 더블 잭팟 적중! "
-            f"[ 🎲{d1} + 🎲{d2} = {total} ] 2.5배 크리티컬 당첨으로 +{net_payout:,}P 국고 획득! (잔여: {user.points:,}P)"
+            f"🎲🔥 [주사위 3배 크리티컬 잭팟!] {user.username}님이 더블 잭팟 적중! "
+            f"[ 🎲{d1} + 🎲{d2} = {total} ] 3배 크리티컬 당첨으로 +{net_payout:,}P 국고 획득! (잔여: {user.points:,}P)"
         )
     elif is_correct:
-        if target_choice in ["ODD", "EVEN"]:
-            net_payout = max(10, int(round(bet * 0.9)))
-            gain_label = "1.9배"
-        else: # HIGH, LOW
-            net_payout = bet
-            gain_label = "2배"
+        # 2.0x Payout (Net profit 1.0x, uncapped)
+        net_payout = bet
+        gain_label = "2배"
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
         odd_label = "홀" if is_odd else "짝"
         msg = (
             f"🎲✨ [주사위 적중!] {user.username}님이 '{choice}' 선택 적중! "
             f"[ 🎲{d1} + 🎲{d2} = {total} ({odd_label}) ] {gain_label} 당첨으로 +{net_payout:,}P 획득! (잔여: {user.points:,}P)"
+        )
+    elif is_push:
+        net_payout = 0
+        msg = (
+            f"🎲⚖️ [주사위 무승부!] {user.username}님의 대/소 예측 중 럭키 7 발생! "
+            f"[ 🎲{d1} + 🎲{d2} = 7 ] 베팅금 {bet:,}P는 전액 환급됩니다! (잔여: {user.points:,}P)"
         )
     else:
         net_payout = -bet
@@ -3133,6 +3145,7 @@ def execute_dice_gamble(
         "dice": [d1, d2],
         "total": total,
         "won": is_correct,
+        "is_push": is_push,
         "is_critical": is_critical,
         "net_payout": net_payout,
         "remaining_points": user.points,
