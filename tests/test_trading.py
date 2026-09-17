@@ -1590,6 +1590,24 @@ def test_random_mining_tiers_structure():
         assert t["code"] in ["EX", "UR+", "UR", "SSR", "SR", "R", "N", "C"]
         assert t["multiplier"] > 0
 
+def test_mining_tier_coal_immunity_and_jackpot_rate():
+    # 1. Test 15+ pickaxe level never rolls Coal (C)
+    for _ in range(200):
+        t = te.roll_mining_tier(crit_bonus=45.0, pickaxe_level=15)
+        assert t["code"] != "C", "15성 이상 곡괭이는 석탄(C) 광맥이 나오지 않아야 합니다."
+
+    # 2. Test pickaxe info contains coal immunity description for 15+
+    info_14 = te.get_pickaxe_info(14)
+    info_15 = te.get_pickaxe_info(15)
+    assert "석탄 면제" not in info_14["desc"]
+    assert "석탄 면제" in info_15["desc"]
+
+    # 3. Test 17-star + unique potential (crit_bonus=74.0, pickaxe_level=17)
+    # Never rolls Coal (C)
+    for _ in range(200):
+        t = te.roll_mining_tier(crit_bonus=74.0, pickaxe_level=17)
+        assert t["code"] != "C"
+
 def test_random_mining_and_critical_hits(db_session, monkeypatch):
     u = "lucky_miner"
     user = te.get_or_create_user(db_session, u, "럭키광부")

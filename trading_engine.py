@@ -1979,6 +1979,8 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
         desc_parts.append(f"확정 +{bonus_points:,}P")
     desc_parts.append(f"크리 +{crit}%")
     desc_parts.append(f"쿨 {cd_min}분")
+    if lvl >= 15:
+        desc_parts.append("석탄 면제(꽝 0%)")
     desc = ", ".join(desc_parts)
 
     return {
@@ -2084,12 +2086,15 @@ MINING_TIERS = [
     }
 ]
 
-def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
+def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[str, Any]:
     """
     Roll random mining tier based on weighted probabilities.
     Higher-level pickaxes grant a crit_bonus which boosts EX/UR+/UR/SSR/SR/R rates.
+    ★15성(황금 곡괭이) 이상 장착 시 석탄(C) 광맥 출현율 0% 영구 면제.
     """
     cb = max(0.0, float(crit_bonus or 0.0))
+    lvl = max(0, int(pickaxe_level or 0))
+    is_golden_or_above = (lvl >= 15) or (cb >= 45.0)
 
     # Calculate dynamic weights
     weights = []
@@ -2097,21 +2102,24 @@ def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
         code = tier["code"]
         base_prob = tier["prob"]
         if code == "EX":
-            w = base_prob + cb * 0.015      # toned down from 0.08 (천화 신화 잭팟 희소성 유지)
+            w = base_prob + cb * 0.028      # 천화 신화 잭팟
         elif code == "UR+":
-            w = base_prob + cb * 0.035     # toned down from 0.14 (구련보등 더블역만)
+            w = base_prob + cb * 0.070      # 구련보등 더블역만
         elif code == "UR":
-            w = base_prob + cb * 0.070     # toned down from 0.20 (국사무쌍 역만)
+            w = base_prob + cb * 0.120      # 국사무쌍 역만
         elif code == "SSR":
-            w = base_prob + cb * 0.150     # toned down from 0.28 (다이아몬드 광맥)
+            w = base_prob + cb * 0.180      # 다이아몬드 광맥
         elif code == "SR":
-            w = base_prob + cb * 0.180     # toned down from 0.20 (황금 광맥)
+            w = base_prob + cb * 0.180      # 황금 광맥
         elif code == "R":
-            w = base_prob + cb * 0.100     # 은 광맥
+            w = base_prob + cb * 0.100      # 은 광맥
         elif code == "N":
-            w = max(0.0, base_prob - cb * 0.250)  # 완화된 일반 구리 광맥 감소율
+            w = max(0.0, base_prob - cb * 0.250)  # 일반 구리 광맥 감소율
         elif code == "C":
-            w = max(0.0, base_prob - cb * 0.200)  # 완화된 석탄 꽝 감소율 (고성에서도 가끔 출현)
+            if is_golden_or_above:
+                w = 0.0  # ★15성(황금 곡괭이) 이상은 석탄 광맥 0% 완전 면제!
+            else:
+                w = max(0.0, base_prob - cb * 0.200)  # 15성 미만 석탄 꽝 감소율
         else:
             w = base_prob
         weights.append(max(0.0, w))
@@ -2785,7 +2793,7 @@ def execute_mining(
     # 4. Roll Random Mining Tier & Critical Hits (boosted by pickaxe crit_bonus + potential crit)
     total_crit = pickaxe.get("crit_bonus", 0.0) + pot_crit_bonus
     try:
-        tier = roll_mining_tier(crit_bonus=total_crit)
+        tier = roll_mining_tier(crit_bonus=total_crit, pickaxe_level=curr_level)
     except TypeError:
         try:
             tier = roll_mining_tier(total_crit)
