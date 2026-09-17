@@ -1364,39 +1364,61 @@ def get_pickaxe_info(level: int) -> Dict[str, Any]:
 # Backwards compatibility dictionary mapping
 PICKAXE_TIERS: Dict[int, Dict[str, Any]] = {i: get_pickaxe_info(i) for i in range(26)}
 
-# 채굴 등급 및 크리티컬 확률/보상 테이블
+# 채굴 등급 및 크리티컬 확률/보상 테이블 (일확천금 신화급 잭팟 추가)
 MINING_TIERS = [
     {
+        "code": "EX",
+        "name": "🀄🌟 [천화(天和) 신화급 국고 잭팟!! (0.2%)]",
+        "prob": 0.2,
+        "multiplier": 20.0,
+        "bonus_cash_pct": 0.10,  # 국고 10% 일시불 (최소 5만P ~ 최대 30만P)
+        "min_cash": 50000,
+        "max_cash": 300000,
+        "bonus_10x": 5.0,        # 10X 레버리지 5주!
+        "cooldown_reduction": 15, # 쿨타임 즉시 초기화
+    },
+    {
+        "code": "UR+",
+        "name": "🀄 [순정 구련보등 더블역만 광맥!! (0.8%)]",
+        "prob": 0.8,
+        "multiplier": 10.0,
+        "bonus_cash_pct": 0.05,  # 국고 5% (최소 2만P ~ 최대 10만P)
+        "min_cash": 20000,
+        "max_cash": 100000,
+        "bonus_10x": 2.0,        # 10X 레버리지 2주!
+        "cooldown_reduction": 10, # 쿨타임 10분 단축
+    },
+    {
         "code": "UR",
-        "name": "🀄 [역만급 초대박 광맥!! (1.5%)]",
-        "prob": 1.5,
+        "name": "🀄 [국사무쌍 13면대기 역만급 초대박 광맥!! (2.0%)]",
+        "prob": 2.0,
         "multiplier": 5.0,
-        "bonus_cash": 10000,
+        "bonus_cash": 15000,
         "bonus_10x": 1.0,
-        "cooldown_reduction": 10,  # 쿨타임 10분 단축
+        "cooldown_reduction": 7,  # 쿨타임 7분 단축
     },
     {
         "code": "SSR",
-        "name": "💎 [다이아몬드 광맥 슈퍼 크리티컬! (4.5%)]",
-        "prob": 4.5,
+        "name": "💎 [다이아몬드 광맥 슈퍼 크리티컬! (5.0%)]",
+        "prob": 5.0,
         "multiplier": 3.0,
-        "bonus_cash": 5000,
+        "bonus_cash": 7000,
         "bonus_10x": 0.0,
         "cooldown_reduction": 5,   # 쿨타임 5분 단축
     },
     {
         "code": "SR",
-        "name": "⚡ [황금 광맥 더블 크리티컬! (14%)]",
+        "name": "⚡ [황금 광맥 더블 크리티컬! (14.0%)]",
         "prob": 14.0,
         "multiplier": 2.0,
-        "bonus_cash": 0,
+        "bonus_cash": 2000,
         "bonus_10x": 0.0,
         "cooldown_reduction": 0,
     },
     {
         "code": "R",
-        "name": "✨ [풍부한 은 광맥 보너스 채굴 (25%)]",
-        "prob": 25.0,
+        "name": "✨ [풍부한 은 광맥 보너스 채굴 (23.0%)]",
+        "prob": 23.0,
         "multiplier_range": (1.3, 1.5),
         "bonus_cash": 0,
         "bonus_10x": 0.0,
@@ -1404,8 +1426,8 @@ MINING_TIERS = [
     },
     {
         "code": "N",
-        "name": "⛏️ [평범한 구리 광맥 일반 채굴 (40%)]",
-        "prob": 40.0,
+        "name": "⛏️ [평범한 구리 광맥 일반 채굴 (37.0%)]",
+        "prob": 37.0,
         "multiplier": 1.0,
         "bonus_cash": 0,
         "bonus_10x": 0.0,
@@ -1413,8 +1435,8 @@ MINING_TIERS = [
     },
     {
         "code": "C",
-        "name": "🪨 [석탄·자갈 광맥 소박 채굴 (15%)]",
-        "prob": 15.0,
+        "name": "🪨 [석탄·자갈 광맥 소박 채굴 (18.0%)]",
+        "prob": 18.0,
         "multiplier_range": (0.6, 0.8),
         "bonus_cash": 0,
         "bonus_10x": 0.0,
@@ -1425,22 +1447,25 @@ MINING_TIERS = [
 def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
     """
     Roll random mining tier based on weighted probabilities.
-    Higher-level pickaxes grant a crit_bonus which boosts UR/SSR/SR/R rates.
+    Higher-level pickaxes grant a crit_bonus which boosts EX/UR+/UR/SSR/SR/R rates.
     """
+    cb = max(0.0, float(crit_bonus or 0.0))
     roll = random.random() * 100.0
-    cum = 0.0
 
     shifts = {
-        "UR": crit_bonus * 0.1,
-        "SSR": crit_bonus * 0.2,
-        "SR": crit_bonus * 0.3,
-        "R": crit_bonus * 0.4,
-        "N": -crit_bonus * 0.5,
-        "C": -crit_bonus * 0.5,
+        "EX": cb * 0.10,
+        "UR+": cb * 0.20,
+        "UR": cb * 0.30,
+        "SSR": cb * 0.40,
+        "SR": cb * 0.20,
+        "R": cb * 0.10,
+        "N": -cb * 0.60,
+        "C": -cb * 0.70,
     }
 
+    cum = 0.0
     for tier in MINING_TIERS:
-        prob = max(0.5, tier["prob"] + shifts.get(tier["code"], 0.0))
+        prob = max(0.1, tier["prob"] + shifts.get(tier["code"], 0.0))
         cum += prob
         if roll < cum:
             t = dict(tier)
@@ -1448,7 +1473,7 @@ def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
                 low, high = t["multiplier_range"]
                 t["multiplier"] = round(random.uniform(low, high), 2)
             return t
-    t = dict(MINING_TIERS[4])
+    t = dict(MINING_TIERS[6])  # Fallback to N
     t["multiplier"] = 1.0
     return t
 
@@ -1503,7 +1528,15 @@ def execute_mining(
         except TypeError:
             tier = roll_mining_tier()
     multiplier = tier["multiplier"]
-    bonus_cash = tier.get("bonus_cash", 0)
+    if "bonus_cash_pct" in tier:
+        treasury = float(state.treasury_pool or DEFAULT_TREASURY_POOL)
+        pct = tier["bonus_cash_pct"]
+        min_c = tier.get("min_cash", 10000)
+        max_c = tier.get("max_cash", 300000)
+        bonus_cash = int(max(min_c, min(max_c, round(treasury * pct))))
+    else:
+        bonus_cash = tier.get("bonus_cash", 0)
+
     bonus_10x = tier.get("bonus_10x", 0.0)
     cd_reduction = tier.get("cooldown_reduction", 0)
     tier_name = tier["name"]
@@ -1521,9 +1554,13 @@ def execute_mining(
 
     # Cooldown setup (boosted on critical hit)
     if cd_reduction > 0:
-        boosted_cd = max(3, cooldown_min - cd_reduction)
-        user.last_mined_at = now_utc - timedelta(minutes=cd_reduction)
-        next_cd_msg = f"{boosted_cd}분 (부스터 발동!)"
+        boosted_cd = max(0, cooldown_min - cd_reduction)
+        if boosted_cd == 0:
+            user.last_mined_at = None
+            next_cd_msg = "⚡ 쿨타임 즉시 초기화!! (지금 바로 재채굴 가능)"
+        else:
+            user.last_mined_at = now_utc - timedelta(minutes=cd_reduction)
+            next_cd_msg = f"{boosted_cd}분 (부스터 발동!)"
     else:
         user.last_mined_at = now_utc
         next_cd_msg = f"{cooldown_min}분"
@@ -1570,8 +1607,9 @@ def execute_mining(
 
         bonus_10x_str = f" + 10X {format_quantity(bonus_10x)}주 획득!" if bonus_10x > 0 else ""
         excess_str = f" (빚 완제 후 잔여 {excess:,}P 현금 입금)" if excess > 0 else ""
+        jackpot_tag = "🌟🎰 [탄광 노역 일확천금 대탈출!!] " if tier_code in ["EX", "UR+"] else ""
         msg = (
-            f"⛏️ [채굴 완료] [{pickaxe['name']}] [탄광 노역 채굴] {tier_name} {user.username}님 탄광 노역으로 총 {total_payout:,}P 상당 채굴! "
+            f"{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}] [탄광 노역 채굴] {tier_name} {user.username}님 탄광 노역으로 총 {total_payout:,}P 상당 채굴! "
             f"수익 {repay_amt:,}P가 국고 빚 상환에 즉시 충당되었습니다!{bonus_10x_str}{excess_str} "
             f"(남은 빚: {user.debt:,}P | 다음 채굴: {next_cd_msg})"
         )
@@ -1655,8 +1693,9 @@ def execute_mining(
     extras_str = f" + {' / '.join(extras)}" if extras else ""
 
     qty_str = format_quantity(shares_awarded)
+    jackpot_tag = "🌟🎰 [일확천금 신화 탄생!!] " if tier_code in ["EX", "UR+"] else ""
     msg = (
-        f"⛏️ [채굴 완료] [{pickaxe['name']}] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
+        f"{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
         f"(+{actual_cost:,}P 상당{extras_str} | 보유 현금: {user.points:,}P | 국고 잔여: {int(state.treasury_pool):,}P | 다음 채굴: {next_cd_msg})"
     )
     return True, msg, {

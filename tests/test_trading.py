@@ -1577,14 +1577,14 @@ def test_transfer_chat_commands(db_session):
     assert ev is None
 
 def test_random_mining_tiers_structure():
-    assert len(te.MINING_TIERS) == 6
+    assert len(te.MINING_TIERS) == 8
     total_prob = sum(t["prob"] for t in te.MINING_TIERS)
     assert abs(total_prob - 100.0) < 1e-6
 
     # Test rolling multiple times returns valid tiers
     for _ in range(50):
         t = te.roll_mining_tier()
-        assert t["code"] in ["UR", "SSR", "SR", "R", "N", "C"]
+        assert t["code"] in ["EX", "UR+", "UR", "SSR", "SR", "R", "N", "C"]
         assert t["multiplier"] > 0
 
 def test_random_mining_and_critical_hits(db_session, monkeypatch):
@@ -1653,6 +1653,31 @@ def test_random_mining_and_critical_hits(db_session, monkeypatch):
     assert det_d["is_forced_labor"] is True
     assert det_d["repaid_debt"] > 5000 # At least bonus cash + shares value
     assert user_d.debt < 50000
+
+def test_mythical_ex_jackpot(db_session, monkeypatch):
+    u = "jackpot_winner"
+    user = te.get_or_create_user(db_session, u, "천화당첨자")
+    user.points = 10000
+    user.pickaxe_level = 25 # MAX pickaxe (6.0x multiplier)
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 1000000 # 100만P treasury
+    db_session.commit()
+
+    # Force roll EX tier
+    ex_tier = dict(te.MINING_TIERS[0])
+    monkeypatch.setattr(te, "roll_mining_tier", lambda *a, **kw: dict(ex_tier))
+
+    ok, msg, details = te.execute_mining(db_session, u, "천화당첨자")
+    assert ok is True
+    assert "일확천금" in msg
+    assert "천화" in msg
+    assert details["tier"] == "EX"
+    assert details["bonus_cash"] == 100000 # 10% of 1,000,000P!
+    assert details["bonus_10x_shares"] == 5.0
+    # Cooldown immediately reset (last_mined_at is None)
+    user_db = db_session.query(User).filter_by(id=u).first()
+    assert user_db.last_mined_at is None
+    assert user_db.points >= 110000 # 10,000 + 100,000 bonus cash
 
 def test_mining_commands_and_probability_guide(db_session):
     u = "cmd_miner"
