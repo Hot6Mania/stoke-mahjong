@@ -818,9 +818,11 @@ def test_product_quote_stripping_and_10x_5x_trading(db_session):
     assert te.parse_product_type("10배") == ProductType.TEN_X
     assert te.parse_product_type("10레") == ProductType.TEN_X
     assert te.parse_product_type("10버") == ProductType.TEN_X
+    assert te.parse_product_type("10롱") == ProductType.TEN_X
     assert te.parse_product_type("10레버") == ProductType.TEN_X
     assert te.parse_product_type("5레") == ProductType.FIVE_X
     assert te.parse_product_type("5버") == ProductType.FIVE_X
+    assert te.parse_product_type("5롱") == ProductType.FIVE_X
     assert te.parse_product_type("10X_INV") == ProductType.TEN_X_INV
     assert te.parse_product_type("5X_INV") == ProductType.FIVE_X_INV
 
@@ -862,6 +864,13 @@ def test_product_quote_stripping_and_10x_5x_trading(db_session):
     assert r_beo is not None
     assert "✅ [매수 체결] [구매 완료]" in r_beo
     assert "10X" in r_beo
+
+    # Buy with 10롱 shorthand
+    r_long, ev_long = ch.handle_chat_command(db_session, uid, uname, "!매수 10롱 1")
+    assert r_long is not None
+    assert "✅ [매수 체결] [구매 완료]" in r_long
+    assert "10X" in r_long
+
 
     # Sell 10X
     r4, ev4 = ch.handle_chat_command(db_session, uid, uname, "!매도 10X 1")
