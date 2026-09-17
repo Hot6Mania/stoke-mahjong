@@ -20,14 +20,16 @@ PRODUCT_MULTIPLIERS: Dict[ProductType, float] = {
     ProductType.THREE_X: 3.0,
     ProductType.FIVE_X: 5.0,
     ProductType.TEN_X: 10.0,
+    ProductType.TWENTY_X: 20.0,
     ProductType.INV: -1.0,
     ProductType.TWO_X_INV: -2.0,
     ProductType.THREE_X_INV: -3.0,
     ProductType.FIVE_X_INV: -5.0,
     ProductType.TEN_X_INV: -10.0,
+    ProductType.TWENTY_X_INV: -20.0,
 }
 
-SUPPORTED_PRODUCTS_GUIDE: str = "1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV, 3X_INV, 5X_INV, 10X_INV (인버스)"
+SUPPORTED_PRODUCTS_GUIDE: str = "1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV, 3X_INV, 5X_INV, 10X_INV (인버스) [레전더리 해금: 20X, 20X_INV]"
 
 PRODUCT_SYNONYMS = {
     "1X": ProductType.ONE_X,
@@ -94,6 +96,21 @@ PRODUCT_SYNONYMS = {
     "10배레버": ProductType.TEN_X,
     "10배레버리지": ProductType.TEN_X,
     "10X레버": ProductType.TEN_X,
+
+    "20X": ProductType.TWENTY_X,
+    "20x": ProductType.TWENTY_X,
+    "20배": ProductType.TWENTY_X,
+    "20배주": ProductType.TWENTY_X,
+    "20배주식": ProductType.TWENTY_X,
+    "20레": ProductType.TWENTY_X,
+    "20버": ProductType.TWENTY_X,
+    "20롱": ProductType.TWENTY_X,
+    "20배롱": ProductType.TWENTY_X,
+    "20X롱": ProductType.TWENTY_X,
+    "20레버": ProductType.TWENTY_X,
+    "20배레버": ProductType.TWENTY_X,
+    "20배레버리지": ProductType.TWENTY_X,
+    "20X레버": ProductType.TWENTY_X,
 
     "INV": ProductType.INV,
     "inv": ProductType.INV,
@@ -168,6 +185,21 @@ PRODUCT_SYNONYMS = {
     "10숏": ProductType.TEN_X_INV,
     "인버스10X": ProductType.TEN_X_INV,
     "인버스10배": ProductType.TEN_X_INV,
+
+    "20X_INV": ProductType.TWENTY_X_INV,
+    "20x_inv": ProductType.TWENTY_X_INV,
+    "20XINV": ProductType.TWENTY_X_INV,
+    "20xinv": ProductType.TWENTY_X_INV,
+    "20배인버스": ProductType.TWENTY_X_INV,
+    "20배곱버스": ProductType.TWENTY_X_INV,
+    "20인": ProductType.TWENTY_X_INV,
+    "20곱": ProductType.TWENTY_X_INV,
+    "20X인버스": ProductType.TWENTY_X_INV,
+    "20X숏": ProductType.TWENTY_X_INV,
+    "20배숏": ProductType.TWENTY_X_INV,
+    "20숏": ProductType.TWENTY_X_INV,
+    "인버스20X": ProductType.TWENTY_X_INV,
+    "인버스20배": ProductType.TWENTY_X_INV,
 }
 
 def parse_product_type(text: str) -> Optional[ProductType]:
@@ -401,6 +433,14 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
             "UNIQUE": (2.0, "채굴 시 2% 확률로 황금 고블린 토벌 (+150,000P 잭팟)"),
             "LEGENDARY": (3.0, "채굴 시 3% 확률로 황금 고블린 토벌 (+300,000P 잭팟)"),
         }
+    },
+    "LEVERAGE_20X_UNLOCK": {
+        "name": "야수의 심장",
+        "unit": "배",
+        "icon": "🦁",
+        "tiers": {
+            "LEGENDARY": (20.0, "20X 레버리지 & 20X 인버스(20배 롱/숏) 매매 자격 개방!"),
+        }
     }
 }
 
@@ -433,7 +473,7 @@ def roll_single_potential_line(tier: str) -> Dict[str, Any]:
         "tier": tier,
         "val": val,
         "unit": opt["unit"],
-        "text": f"{opt['icon']} {desc}"
+        "text": f"{opt['icon']} {opt['name']} {desc}"
     }
 
 def roll_cube_potential(tier: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
@@ -443,6 +483,7 @@ def roll_cube_potential(tier: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict
     - Line 2: Current tier (50%) / 1 tier lower (50%)
     - Line 3: Current tier (20%) / 1 tier lower (80%)
     """
+    tier = (tier or "RARE").upper()
     lower_tier = get_lower_potential_tier(tier)
 
     # Line 1: 100% Current tier
@@ -464,6 +505,8 @@ def roll_cube_potential(tier: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict
 
     return line1, line2, line3
 
+roll_equipment_potential = roll_cube_potential
+
 def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, Any]:
     """Aggregates all 3 potential lines from an equipment into numeric bonuses."""
     effects = {
@@ -483,6 +526,7 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
         "dividend_boost_pct": 0.0,
         "goblin_chance": 0.0,
         "goblin_reward": 0,
+        "leverage_20x_unlocked": False,
     }
     if not item:
         return effects
@@ -528,6 +572,8 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
                 line_tier = data.get("tier", "EPIC")
                 reward = 50000 if line_tier == "EPIC" else (150000 if line_tier == "UNIQUE" else 300000)
                 effects["goblin_reward"] += reward
+            elif code == "LEVERAGE_20X_UNLOCK":
+                effects["leverage_20x_unlocked"] = True
         except Exception:
             continue
 
@@ -557,6 +603,17 @@ def get_user_fee_discount_pct(db: Session, user: User) -> float:
         return min(90.0, float(effects.get("fee_discount_pct", 0.0)))
     except Exception:
         return 0.0
+
+def user_has_20x_unlock(db: Session, user: User) -> bool:
+    """Checks if the user has the legendary LEVERAGE_20X_UNLOCK potential option equipped."""
+    try:
+        item = db.query(UserEquipment).filter_by(user_id=user.id, is_equipped=True).first()
+        if not item:
+            item = db.query(UserEquipment).filter_by(user_id=user.id).first()
+        effects = get_equipment_potential_effects(item)
+        return bool(effects.get("leverage_20x_unlocked", False))
+    except Exception:
+        return False
 
 def format_potential_summary(item: Optional[UserEquipment]) -> str:
     """Returns concise potential tier badge and options summary."""
@@ -809,6 +866,9 @@ def execute_buy(
     product_str = product_type.value
 
     user = get_or_create_user(db, user_id, username)
+    if product_type in (ProductType.TWENTY_X, ProductType.TWENTY_X_INV):
+        if not user_has_20x_unlock(db, user):
+            return False, "🦁 [야수의 심장 전용] 20X 레버리지 및 20X 인버스는 잠재능력 레전더리 옵션 [야수의 심장(20배 매매 개방)] 장착자만 거래할 수 있습니다!", None
     current_price = state.current_price
 
     # Determine quantity
@@ -940,6 +1000,9 @@ def execute_margin_buy(
     product_str = product_type.value
 
     user = get_or_create_user(db, user_id, username)
+    if product_type in (ProductType.TWENTY_X, ProductType.TWENTY_X_INV):
+        if not user_has_20x_unlock(db, user):
+            return False, "🦁 [야수의 심장 전용] 20X 레버리지 및 20X 인버스는 잠재능력 레전더리 옵션 [야수의 심장(20배 매매 개방)] 장착자만 거래할 수 있습니다!", None
     current_price = state.current_price
     current_debt = getattr(user, "debt", 0) or 0
 
@@ -1252,6 +1315,9 @@ def register_limit_order(
         return False, f"⚠️ 주문 수량이 올바른 숫자가 아닙니다: '{quantity_str}'", None
 
     user = get_or_create_user(db, user_id, username)
+    if order_type == OrderType.BUY and product_type in (ProductType.TWENTY_X, ProductType.TWENTY_X_INV):
+        if not user_has_20x_unlock(db, user):
+            return False, "🦁 [야수의 심장 전용] 20X 레버리지 및 20X 인버스는 잠재능력 레전더리 옵션 [야수의 심장(20배 매매 개방)] 장착자만 거래할 수 있습니다!", None
     current_price = state.current_price
 
     if order_type == OrderType.BUY:

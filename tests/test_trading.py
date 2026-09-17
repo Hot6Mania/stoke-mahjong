@@ -2840,6 +2840,74 @@ def test_new_potential_options_hooks(db_session, monkeypatch):
     assert div_entry["payout"] == 1000
     assert div_entry["dividend_boost_pct"] == 100.0
 
+def test_leverage_20x_unlock_and_mechanics(db_session):
+    """Test 20X & 20X_INV product parsing, legendary unlock exclusivity, and settlement multiplier."""
+    # 1. Parsing tests
+    assert te.parse_product_type("20X") == ProductType.TWENTY_X
+    assert te.parse_product_type("20x") == ProductType.TWENTY_X
+    assert te.parse_product_type("20배") == ProductType.TWENTY_X
+    assert te.parse_product_type("20레버") == ProductType.TWENTY_X
+    assert te.parse_product_type("20롱") == ProductType.TWENTY_X
+    assert te.parse_product_type("20X_INV") == ProductType.TWENTY_X_INV
+    assert te.parse_product_type("20숏") == ProductType.TWENTY_X_INV
+    assert te.parse_product_type("20곱") == ProductType.TWENTY_X_INV
+    assert te.parse_product_type("20인") == ProductType.TWENTY_X_INV
+    assert te.parse_product_type("인버스20X") == ProductType.TWENTY_X_INV
+
+    # 2. Legendary-only roll test: RARE, EPIC, UNIQUE never roll LEVERAGE_20X_UNLOCK
+    for _ in range(100):
+        assert te.roll_single_potential_line("RARE")["code"] != "LEVERAGE_20X_UNLOCK"
+        assert te.roll_single_potential_line("EPIC")["code"] != "LEVERAGE_20X_UNLOCK"
+        assert te.roll_single_potential_line("UNIQUE")["code"] != "LEVERAGE_20X_UNLOCK"
+
+    # 3. User without unlock cannot buy 20X or 20X_INV
+    uid = "beast_tester"
+    uname = "야수테스터"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 1000000
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+    eq.potential_tier = "EPIC"
+    eq.potential_line_1 = None
+    db_session.commit()
+
+    ok_buy, msg_buy, _ = te.execute_buy(db_session, uid, uname, "20X", "1")
+    assert ok_buy is False
+    assert "야수의 심장" in msg_buy
+
+    ok_margin, msg_margin, _ = te.execute_margin_buy(db_session, uid, uname, "20X_INV", "1")
+    assert ok_margin is False
+    assert "야수의 심장" in msg_margin
+
+    ok_limit, msg_limit, _ = te.register_limit_order(db_session, uid, uname, "매수", "20X", "1000", "1")
+    assert ok_limit is False
+    assert "야수의 심장" in msg_limit
+
+    # 4. User equips LEVERAGE_20X_UNLOCK (Legendary potential)
+    eq.potential_tier = "LEGENDARY"
+    eq.potential_line_1 = json.dumps({"code": "LEVERAGE_20X_UNLOCK", "val": 20.0, "text": "🦁 20X 매매 개방"})
+    db_session.commit()
+
+    ok_buy2, msg_buy2, det_buy2 = te.execute_buy(db_session, uid, uname, "20X", "2")
+    assert ok_buy2 is True
+    assert det_buy2["product_type"] == "20X"
+    assert det_buy2["quantity"] == 2.0
+
+    # 5. Test 20X settlement liquidation: 5% drop (-5% * 20 = -100%) triggers liquidation
+    mstate = te.get_market_state(db_session)
+    mstate.current_rank_point = 1000
+    mstate.current_price = 1000
+    pos = db_session.query(Position).filter_by(user_id=uid, product_type=ProductType.TWENTY_X).first()
+    pos.entry_price = 1000.0
+    pos.invested_cash = 2000.0
+    pos.quantity = 2.0
+    db_session.commit()
+
+    # Drop rank points by 50 (5% drop from 1000 to 950)
+    det_settle = te.settle_match(db_session, rank=4, point_delta=-50)
+    assert any(liq["user_id"] == uid and liq["product_type"] == "20X" for liq in det_settle["liquidations"])
+
+
 
 
 

@@ -336,7 +336,7 @@ def handle_chat_command(
             break
         elif cmd.startswith(ac):
             rem = cmd[len(ac):].strip()
-            p_cand = parse_product_type(f"{rem}X" if rem in ["1", "2", "3", "5", "10"] else rem)
+            p_cand = parse_product_type(f"{rem}X" if rem in ["1", "2", "3", "5", "10", "20"] else rem)
             if p_cand:
                 matched_allin_cmd = ac
                 allin_rem_product = p_cand.value
@@ -357,7 +357,7 @@ def handle_chat_command(
                 is_margin = True
             elif parsed_prod:
                 product_str = parsed_prod.value
-            elif clean_t in ["1", "2", "3", "5", "10"]:
+            elif clean_t in ["1", "2", "3", "5", "10", "20"]:
                 product_str = f"{clean_t}X"
 
         if not product_str:
@@ -376,7 +376,7 @@ def handle_chat_command(
 
     if cmd.startswith("!"):
         cmd_sub = cmd[1:]
-        cand_sub = f"{cmd_sub}X" if cmd_sub in ["1", "2", "3", "5", "10"] else cmd_sub
+        cand_sub = f"{cmd_sub}X" if cmd_sub in ["1", "2", "3", "5", "10", "20"] else cmd_sub
         direct_prod = parse_product_type(cand_sub)
 
         if direct_prod:
@@ -459,7 +459,7 @@ def handle_chat_command(
         for aiw in ["올인", "풀매수", "전액", "전액매수", "올인매수", "빚올인", "빚투", "전부", "다", "최대"]:
             if t1.endswith(aiw) and len(t1) > len(aiw):
                 prod_part = t1[:-len(aiw)].strip()
-                p_cand = parse_product_type(f"{prod_part}X" if prod_part in ["1", "2", "3", "5", "10"] else prod_part)
+                p_cand = parse_product_type(f"{prod_part}X" if prod_part in ["1", "2", "3", "5", "10", "20"] else prod_part)
                 if p_cand:
                     t1 = p_cand.value
                     if not t2:
@@ -484,7 +484,7 @@ def handle_chat_command(
         elif t1 in margin_words:
             product_str = "1X"
             qty_str = "빚올인"
-        elif t1 in ["1", "2", "3", "5", "10"]:
+        elif t1 in ["1", "2", "3", "5", "10", "20"]:
             product_str = f"{t1}X"
             qty_str = t2 if t2 else "1"
         else:
@@ -510,7 +510,7 @@ def handle_chat_command(
             parsed_prod = parse_product_type(clean_t)
             if parsed_prod:
                 product_str = parsed_prod.value
-            elif clean_t in ["1", "2", "3", "5", "10"]:
+            elif clean_t in ["1", "2", "3", "5", "10", "20"]:
                 product_str = f"{clean_t}X"
             elif clean_t not in ["올인", "all", "전액", "빚올인", "신용"]:
                 qty_str = clean_t
@@ -529,7 +529,7 @@ def handle_chat_command(
             if p:
                 product_str = p.value
                 break
-            elif clean_t in ["1", "2", "3", "5", "10"]:
+            elif clean_t in ["1", "2", "3", "5", "10", "20"]:
                 product_str = f"{clean_t}X"
                 break
         if not product_str:
@@ -546,7 +546,7 @@ def handle_chat_command(
             parsed_p = parse_product_type(raw_p)
             if parsed_p:
                 product_str = parsed_p.value
-            elif raw_p in ["1", "2", "3", "5", "10"]:
+            elif raw_p in ["1", "2", "3", "5", "10", "20"]:
                 product_str = f"{raw_p}X"
             else:
                 product_str = raw_p

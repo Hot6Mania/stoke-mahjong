@@ -10,11 +10,13 @@ class ProductType(str, enum.Enum):
     THREE_X = "3X"
     FIVE_X = "5X"
     TEN_X = "10X"
+    TWENTY_X = "20X"
     INV = "INV"
     TWO_X_INV = "2X_INV"
     THREE_X_INV = "3X_INV"
     FIVE_X_INV = "5X_INV"
     TEN_X_INV = "10X_INV"
+    TWENTY_X_INV = "20X_INV"
 
 class OrderType(str, enum.Enum):
     BUY = "BUY"

@@ -390,9 +390,11 @@
             flex-shrink: 0;
         }
 
+        .prod-20x { background: rgba(239, 68, 68, 0.45); color: #fca5a5; border: 1px solid #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
         .prod-10x { background: rgba(239, 68, 68, 0.3); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.55); }
         .prod-5x { background: rgba(249, 115, 22, 0.3); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.55); }
         .prod-1x { background: rgba(16, 185, 129, 0.3); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.55); }
+        .prod-inv20 { background: rgba(37, 99, 235, 0.45); color: #93c5fd; border: 1px solid #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.4); }
         .prod-inv10 { background: rgba(59, 130, 246, 0.3); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.55); }
         .prod-inv5 { background: rgba(14, 165, 233, 0.3); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.55); }
         .prod-inv2 { background: rgba(139, 92, 246, 0.3); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.55); }
@@ -600,9 +602,11 @@
         // Get Product Tag Class
         function getProductTagClass(prod) {
             const p = String(prod || "").toUpperCase();
+            if (p === "20X" || p === "TWENTY_X") return "prod-20x";
             if (p === "10X" || p === "TEN_X") return "prod-10x";
             if (p === "5X" || p === "FIVE_X") return "prod-5x";
             if (p === "1X" || p === "ONE_X") return "prod-1x";
+            if (p.includes("20X_INV") || p.includes("20숏")) return "prod-inv20";
             if (p.includes("10X_INV") || p.includes("10숏")) return "prod-inv10";
             if (p.includes("5X_INV") || p.includes("5숏")) return "prod-inv5";
             if (p.includes("2X_INV") || p.includes("곱버스")) return "prod-inv2";
