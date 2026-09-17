@@ -42,7 +42,11 @@ from trading_engine import (
     execute_buy_equipment_listing,
     execute_cancel_equipment_listing,
     get_equipment_market_listings,
-    get_user_inventory_status
+    get_user_inventory_status,
+    get_starforce_event_state,
+    open_starforce_event,
+    close_starforce_event,
+    get_starforce_event_guide
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -51,7 +55,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
 • 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !국고, !남은시간
-• 장비: !내장비, !장착 [번호], !강화 [번호], !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
+• 장비: !내장비, !장착 [번호], !강화 [번호], !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -184,7 +188,16 @@ def handle_chat_command(
         else:
             casino_str = "💤 카지노 마감"
 
-        # 3. User Mining Cooldown
+        # 3. Starforce Fever Remaining
+        sf_state = get_starforce_event_state(db)
+        if sf_state.get("is_active"):
+            rem_sf = sf_state["remaining_sec"]
+            m_sf, s_sf = divmod(rem_sf, 60)
+            sf_str = f"🔥 {sf_state['event_type_name']} ({m_sf}분 {s_sf}초 남음)"
+        else:
+            sf_str = "💤 피버 대기중 (돌발 발동)"
+
+        # 4. User Mining Cooldown
         mine_str = "⛏️ 즉시 가능"
         if user.last_mined_at:
             now_utc = datetime.now(timezone.utc)
@@ -197,7 +210,7 @@ def handle_chat_command(
                 mm, ss = divmod(rem_m, 60)
                 mine_str = f"⛏️ 쿨타임 {mm}분 {ss}초"
 
-        reply = f"⏱️ [현재 남은 시간] 거래: {trade_str} | 도박: {casino_str} | 내 채굴: {mine_str}"
+        reply = f"⏱️ [현재 남은 시간] 거래: {trade_str} | 도박: {casino_str} | 스타포스: {sf_str} | 내 채굴: {mine_str}"
         return reply, None
 
     # 3. Account / Wallet Query (보유와 채굴을 '보유'로 완전 통합)
@@ -626,6 +639,45 @@ def handle_chat_command(
             return "📦 [장비 등록 취소] 사용법: !장비회수 [거래번호] (예: !장비회수 1)", None
         success, reply, details = execute_cancel_equipment_listing(db, user_id, username, tokens[1])
         return reply, None
+
+    # 8-11. Star Force Fever Event Query & Streamer Controls (!피버, !스타포스이벤트, !샤이닝, !피버오픈, !피버마감)
+    if cmd in ["!피버", "!스타포스이벤트", "!샤이닝", "!피버이벤트", "!피버타임", "!피버오픈", "!피버열기", "!피버시작", "!피버마감", "!피버종료", "!피버닫기"]:
+        is_streamer = (user_id == CHANNEL_ID or username in ["치즈나베", "스트리머"] or user_id in ["streamer", "admin"])
+
+        # Streamer Close Event
+        if cmd in ["!피버마감", "!피버종료", "!피버닫기"]:
+            if not is_streamer:
+                return "🚫 피버 이벤트 마감은 스트리머(치즈나베)만 진행할 수 있습니다!", None
+            success, reply, details = close_starforce_event(db)
+            event = {"type": "starforce_fever_close", "data": details} if success and details else None
+            return reply, event
+
+        # Check if this is an open command or !피버 with arguments
+        is_open_cmd = cmd in ["!피버오픈", "!피버열기", "!피버시작"] or (cmd in ["!피버", "!샤이닝"] and len(tokens) >= 2)
+
+        if is_open_cmd:
+            if not is_streamer:
+                return "🚫 피버 이벤트 강제 개장은 스트리머(치즈나베)만 진행할 수 있습니다! (피버는 정해진 주기마다 자동으로도 발동됩니다)", None
+
+            dur = 10.0
+            ev_type_arg = "SHINING"
+            for tok in tokens[1:]:
+                clean_tok = tok.replace("분", "").strip()
+                if clean_tok.replace(".", "", 1).isdigit():
+                    dur = float(clean_tok)
+                elif any(k in tok for k in ["할인", "30", "discount", "세일"]):
+                    ev_type_arg = "DISCOUNT_30"
+                elif any(k in tok for k in ["100", "확정", "fever", "성공"]):
+                    ev_type_arg = "FEVER_100"
+                elif any(k in tok for k in ["샤이닝", "shining", "슈퍼", "all"]):
+                    ev_type_arg = "SHINING"
+
+            success, reply, details = open_starforce_event(db, duration_minutes=dur, event_type_str=ev_type_arg)
+            event = {"type": "starforce_fever_open", "data": details} if success and details else None
+            return reply, event
+
+        # General viewer query
+        return get_starforce_event_guide(db), None
 
     # 9. Treasury Info Query
     if cmd in ["!국고", "!풀", "!채굴풀"]:

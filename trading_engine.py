@@ -1275,7 +1275,224 @@ STARFORCE_TIERS: Dict[int, Dict[str, Any]] = {
     25: {"cost": 0, "success": 0.0, "maintain": 0.0, "drop": 0.0, "destroy": 0.0}
 }
 
-def get_pickaxe_info(level: int) -> Dict[str, Any]:
+STARFORCE_EVENT_TYPES: Dict[str, Dict[str, Any]] = {
+    "DISCOUNT_30": {
+        "code": "DISCOUNT_30",
+        "name": "비용 30% 할인",
+        "title": "💸 [피버] 스타포스 강화 비용 30% 파격 할인!",
+        "has_discount": True,
+        "has_100_percent": False,
+        "desc": "모든 강화 단계의 비용이 30% 파격 할인됩니다!"
+    },
+    "FEVER_100": {
+        "code": "FEVER_100",
+        "name": "5·10·15성 100% 성공",
+        "title": "⭐ [피버] 5성 / 10성 / 15성 100% 확정 성공!",
+        "has_discount": False,
+        "has_100_percent": True,
+        "desc": "★5성➔6성, ★10성➔11성, ★15성➔16성 도전 시 실패/파괴 없이 무조건 100% 성공합니다!"
+    },
+    "SHINING": {
+        "code": "SHINING",
+        "name": "샤이닝 스타포스",
+        "title": "✨🌟 [슈퍼 피버] 샤이닝 스타포스 (비용 30% 할인 + 5/10/15성 100% 성공)!",
+        "has_discount": True,
+        "has_100_percent": True,
+        "desc": "강화 비용 30% 할인 + 5성, 10성, 15성 100% 확정 성공 혜택이 동시 적용됩니다!"
+    }
+}
+
+def get_starforce_event_state(
+    db: Session,
+    force_trigger: bool = False,
+    manual_type: Optional[str] = None,
+    manual_duration: Optional[float] = None
+) -> Dict[str, Any]:
+    """
+    Retrieve current Star Force Fever Event state.
+    Handles spontaneous trigger at random intervals, random duration (5~15 min), and automatic expiration.
+    """
+    state = get_market_state(db)
+    now = time.time()
+
+    ev_type = getattr(state, "sf_event_type", None)
+    end_time = float(getattr(state, "sf_event_end_time", 0.0) or 0.0)
+    title = getattr(state, "sf_event_title", None)
+    next_time = float(getattr(state, "sf_next_event_time", 0.0) or 0.0)
+
+    # 1. Automatic expiration check
+    if ev_type and end_time > 0 and now >= end_time:
+        ev_type = None
+        title = None
+        end_time = 0.0
+        # Schedule next spontaneous event in 20 ~ 45 minutes
+        next_time = now + random.uniform(20.0, 45.0) * 60.0
+        state.sf_event_type = None
+        state.sf_event_title = None
+        state.sf_event_end_time = 0.0
+        state.sf_next_event_time = next_time
+        try:
+            db.commit()
+            db.refresh(state)
+        except Exception:
+            pass
+
+    # 2. Initialization or Spontaneous Random Trigger
+    if not ev_type:
+        if not next_time or next_time <= 0:
+            next_time = now + random.uniform(15.0, 35.0) * 60.0
+            state.sf_next_event_time = next_time
+            try:
+                db.commit()
+                db.refresh(state)
+            except Exception:
+                pass
+
+        if (next_time > 0 and now >= next_time) or force_trigger:
+            if manual_type and manual_type in STARFORCE_EVENT_TYPES:
+                chosen_type = manual_type
+            else:
+                r = random.random()
+                if r < 0.45:
+                    chosen_type = "DISCOUNT_30"
+                elif r < 0.85:
+                    chosen_type = "FEVER_100"
+                else:
+                    chosen_type = "SHINING"
+
+            if manual_duration and manual_duration > 0:
+                dur_minutes = float(manual_duration)
+            else:
+                dur_minutes = random.choice([5.0, 8.0, 10.0, 12.0, 15.0])
+
+            conf = STARFORCE_EVENT_TYPES[chosen_type]
+            ev_type = chosen_type
+            title = conf["title"]
+            end_time = now + dur_minutes * 60.0
+            next_time = end_time + random.uniform(20.0, 45.0) * 60.0
+
+            state.sf_event_type = ev_type
+            state.sf_event_title = title
+            state.sf_event_end_time = end_time
+            state.sf_next_event_time = next_time
+            try:
+                db.commit()
+                db.refresh(state)
+            except Exception:
+                pass
+
+    is_active = bool(ev_type and end_time > now)
+    rem_sec = max(0, int(end_time - now)) if is_active else 0
+    next_rem_sec = max(0, int(next_time - now)) if (not is_active and next_time > now) else 0
+
+    conf = STARFORCE_EVENT_TYPES.get(ev_type, {}) if is_active else {}
+    has_discount = conf.get("has_discount", False)
+    has_100_percent = conf.get("has_100_percent", False)
+    event_type_name = conf.get("name", "")
+
+    return {
+        "is_active": is_active,
+        "event_type": ev_type,
+        "event_type_name": event_type_name,
+        "title": title or "",
+        "end_time": end_time,
+        "remaining_sec": rem_sec,
+        "remaining_seconds": rem_sec,
+        "next_event_time": next_time,
+        "next_remaining_sec": next_rem_sec,
+        "has_discount": has_discount,
+        "has_100_percent": has_100_percent,
+        "desc": conf.get("desc", "")
+    }
+
+def open_starforce_event(
+    db: Session,
+    duration_minutes: float = 10.0,
+    event_type_str: str = "SHINING"
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """Open a Star Force Fever Event manually (Streamer Command)."""
+    state = get_market_state(db)
+    now = time.time()
+
+    t_clean = (event_type_str or "").strip().lower()
+    if any(k in t_clean for k in ["할인", "30", "discount", "세일"]):
+        ev_type = "DISCOUNT_30"
+    elif any(k in t_clean for k in ["100", "확정", "fever", "성공"]):
+        ev_type = "FEVER_100"
+    else:
+        ev_type = "SHINING"
+
+    conf = STARFORCE_EVENT_TYPES[ev_type]
+    dur_min = max(1.0, float(duration_minutes or 10.0))
+    end_time = now + dur_min * 60.0
+    next_time = end_time + random.uniform(20.0, 45.0) * 60.0
+
+    state.sf_event_type = ev_type
+    state.sf_event_title = conf["title"]
+    state.sf_event_end_time = end_time
+    state.sf_next_event_time = next_time
+    db.commit()
+    db.refresh(state)
+
+    dur_str = f"{int(dur_min)}분 동안" if dur_min % 1 == 0 else f"{dur_min}분 동안"
+    reply = (
+        f"🔥 [스타포스 피버 OPEN] {conf['title']} ({dur_str})! "
+        f"지금 채팅창에 '!강화 [장비번호]'로 곡괭이를 강화해보세요! ({conf['desc']})"
+    )
+    details = {
+        "is_active": True,
+        "event_type": ev_type,
+        "title": conf["title"],
+        "duration_minutes": dur_min,
+        "end_time": end_time
+    }
+    return True, reply, details
+
+def close_starforce_event(db: Session) -> Tuple[bool, str, Dict[str, Any]]:
+    """Close active Star Force Fever Event immediately."""
+    state = get_market_state(db)
+    now = time.time()
+    old_title = getattr(state, "sf_event_title", "") or "스타포스 피버"
+    state.sf_event_type = None
+    state.sf_event_title = None
+    state.sf_event_end_time = 0.0
+    state.sf_next_event_time = now + random.uniform(20.0, 45.0) * 60.0
+    db.commit()
+    db.refresh(state)
+
+    reply = "🔒 [스타포스 피버 종료] 진행 중이던 피버 이벤트가 마감되었습니다. 다음 돌발 피버를 기대해주세요!"
+    details = {
+        "is_active": False,
+        "previous_title": old_title
+    }
+    return True, reply, details
+
+def get_starforce_event_guide(db: Session) -> str:
+    """Returns status guide for Star Force Fever events."""
+    sf = get_starforce_event_state(db)
+    if sf["is_active"]:
+        rem_m, rem_s = divmod(sf["remaining_sec"], 60)
+        return (
+            f"🔥 [스타포스 피버 진행 중!]\n"
+            f"• 현재 이벤트: {sf['title']}\n"
+            f"• 남은 시간: {rem_m}분 {rem_s}초\n"
+            f"• 혜택: {sf['desc']}\n"
+            f"👉 지금 !내장비, !강화 명령어로 강화에 도전해보세요!"
+        )
+    else:
+        next_m = sf["next_remaining_sec"] // 60
+        next_str = f"약 {next_m}분 후 예정" if next_m > 0 else "곧 발생 예정"
+        return (
+            f"⭐ [스타포스 돌발 피버 이벤트 안내]\n"
+            f"• 현재 상태: 대기 중 (다음 돌발 피버: {next_str})\n"
+            f"• 이벤트 종류:\n"
+            f"  1. 💸 비용 30% 할인: 전 구간 강화 비용 30% 파격 세일\n"
+            f"  2. ⭐ 5·10·15성 100% 성공: ★5성, ★10성, ★15성(파괴위험구간) 100% 무조건 확정 성공!\n"
+            f"  3. ✨🌟 샤이닝 스타포스: 30% 할인 + 5/10/15성 100% 성공 동시 발동!\n"
+            f"💡 피버는 20~45분 주기로 5~15분간 랜덤 돌발 발생합니다! (스트리머 명령어: !피버 [분] [종류])"
+        )
+
+def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     lvl = max(0, min(25, int(level or 0)))
 
     if lvl >= 25:
@@ -1297,7 +1514,32 @@ def get_pickaxe_info(level: int) -> Dict[str, Any]:
     if lvl == 25:
         name = f"{base_name} (★25성 MAX)"
 
-    t = STARFORCE_TIERS[lvl]
+    t = dict(STARFORCE_TIERS[lvl])
+
+    # Star Force Fever Event adjustments
+    has_discount = False
+    has_100_percent = False
+    if event_state and event_state.get("is_active"):
+        has_discount = bool(event_state.get("has_discount"))
+        has_100_percent = bool(event_state.get("has_100_percent"))
+
+    base_cost = t["cost"]
+    cost = base_cost
+    if has_discount and base_cost > 0:
+        cost = max(100, int(round(base_cost * 0.70)))
+
+    s_rate = t["success"]
+    m_rate = t["maintain"]
+    d_rate = t["drop"]
+    dest_rate = t["destroy"]
+
+    is_guaranteed_100 = False
+    if has_100_percent and lvl in (5, 10, 15):
+        s_rate = 100.0
+        m_rate = 0.0
+        d_rate = 0.0
+        dest_rate = 0.0
+        is_guaranteed_100 = True
 
     # Mining yield multiplier calculation (BUFFED)
     # 0성 1.0x -> 10성 3.0x -> 15성 6.5x -> 20성 22.0x -> 22성 36.0x -> 25성 80.0x
@@ -1367,16 +1609,19 @@ def get_pickaxe_info(level: int) -> Dict[str, Any]:
         "level": lvl,
         "name": name,
         "base_name": base_name,
-        "upgrade_cost": t["cost"],
+        "upgrade_cost": cost,
+        "base_cost": base_cost,
+        "is_discounted": has_discount,
+        "is_guaranteed_100": is_guaranteed_100,
         "yield_multiplier": yield_mult,
         "bonus_points": bonus_points,
         "crit_bonus": crit,
         "cooldown_minutes": cd_min,
         "cooldown_seconds": cd_min * 60,
-        "success_rate": t["success"],
-        "maintain_rate": t["maintain"],
-        "drop_rate": t["drop"],
-        "destroy_rate": t["destroy"],
+        "success_rate": s_rate,
+        "maintain_rate": m_rate,
+        "drop_rate": d_rate,
+        "destroy_rate": dest_rate,
         "desc": desc
     }
 
@@ -1858,7 +2103,8 @@ def execute_pickaxe_upgrade(
         max_item = get_pickaxe_info(25)
         return False, f"✨ [장비 #{target_item.id}]은(는) 이미 최고 등급 종결 장비인 [{max_item['name']}]입니다!", None
 
-    current_item = get_pickaxe_info(curr_level)
+    sf_state = get_starforce_event_state(db)
+    current_item = get_pickaxe_info(curr_level, event_state=sf_state)
     cost = current_item["upgrade_cost"]
 
     # Debt protection: Cannot spend borrowed money on luxury upgrades before repaying debt
@@ -1881,15 +2127,26 @@ def execute_pickaxe_upgrade(
     m_rate = current_item["maintain_rate"]
     d_rate = current_item["drop_rate"]
 
+    fever_suffix = ""
+    if current_item.get("is_discounted"):
+        fever_suffix = " (🔥30% 할인 피버 적용)"
+
     if roll < s_rate:
         outcome = "success"
         new_level = curr_level + 1
         target_item.starforce = new_level
-        new_item = get_pickaxe_info(new_level)
+        new_item = get_pickaxe_info(new_level, event_state=sf_state)
         target_item.name = new_item["name"]
         bp_info = f" + 확정 +{new_item['bonus_points']:,}P" if new_item.get('bonus_points', 0) > 0 else ""
+        if current_item.get("is_guaranteed_100"):
+            success_tag = f"🔨✨ [★{curr_level}성 100% 확정 성공 피버!!]"
+        elif current_item.get("is_discounted"):
+            success_tag = "🔨✨ [스타포스 강화 대성공! (🔥30% 할인)]"
+        else:
+            success_tag = "🔨✨ [스타포스 강화 대성공!!]"
+
         reply = (
-            f"🔨✨ [스타포스 강화 대성공!!] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id} {new_item['name']}] 강화에 성공했습니다! "
+            f"{success_tag} {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id} {new_item['name']}] 강화에 성공했습니다! "
             f"(채굴량: {new_item['yield_multiplier']}배{bp_info} | 크리: +{new_item['crit_bonus']}% | 쿨: {new_item['cooldown_minutes']}분 | "
             f"국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
@@ -1899,17 +2156,17 @@ def execute_pickaxe_upgrade(
         target_item.starforce = new_level
         new_item = current_item
         reply = (
-            f"🔨💨 [강화 실패 (등급 유지)] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화에 실패했습니다. (방지턱/안전 구간으로 등급 유지) "
+            f"🔨💨 [강화 실패 (등급 유지){fever_suffix}] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화에 실패했습니다. (방지턱/안전 구간으로 등급 유지) "
             f"(현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     elif roll < (s_rate + m_rate + d_rate):
         outcome = "drop"
         new_level = max(0, curr_level - 1)
         target_item.starforce = new_level
-        new_item = get_pickaxe_info(new_level)
+        new_item = get_pickaxe_info(new_level, event_state=sf_state)
         target_item.name = new_item["name"]
         reply = (
-            f"🔨📉 [강화 실패 (등급 하락!)] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화 실패로 1성 하락했습니다! ㅠㅠ "
+            f"🔨📉 [강화 실패 (등급 하락!){fever_suffix}] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화 실패로 1성 하락했습니다! ㅠㅠ "
             f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     else:
@@ -1917,10 +2174,10 @@ def execute_pickaxe_upgrade(
         outcome = "destroyed"
         new_level = 12  # 메이플 스타포스 룰: 장비의 흔적 12성 복원!
         target_item.starforce = 12
-        new_item = get_pickaxe_info(12)
+        new_item = get_pickaxe_info(12, event_state=sf_state)
         target_item.name = new_item["name"]
         reply = (
-            f"💥💥 [곡괭이 폭발 파괴!!] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [장비 #{target_item.id} {current_item['name']}]이(가) "
+            f"💥💥 [곡괭이 폭발 파괴!!{fever_suffix}] 굉음과 함께 곡괭이가 산산조각 났습니다!! {user.username}님의 [장비 #{target_item.id} {current_item['name']}]이(가) "
             f"폭발 파괴되어 메이플 장비의 흔적 룰에 따라 [{new_item['name']}]으로 복원되었습니다! (국고 환원: +{cost:,}P | 잔여: {user.points:,}P)"
         )
 
@@ -1941,8 +2198,12 @@ def execute_pickaxe_upgrade(
         "outcome": outcome,
         "pickaxe_name": new_item["name"],
         "cost": cost,
+        "base_cost": current_item.get("base_cost", cost),
         "remaining_points": user.points,
-        "treasury_pool": state.treasury_pool
+        "treasury_pool": state.treasury_pool,
+        "event_type": sf_state.get("event_type"),
+        "discount_applied": current_item.get("is_discounted", False),
+        "guaranteed_100": current_item.get("is_guaranteed_100", False)
     }
     return True, reply, details
 
@@ -2336,6 +2597,7 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
     """Returns full inventory of equipments for a user."""
     user = get_or_create_user(db, user_id, username)
     items = ensure_user_equipment(db, user)
+    sf_state = get_starforce_event_state(db)
 
     active_listing_map = {
         l.equipment_id: l.id for l in
@@ -2343,8 +2605,12 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
     }
 
     lines = [f"🎒 [내 장비 인벤토리] {user.username}님의 보유 장비 ({len(items)}개):"]
+    if sf_state.get("is_active"):
+        rem_m, rem_s = divmod(sf_state["remaining_sec"], 60)
+        lines.append(f"🔥 [피버 진행중: {sf_state['title']} ({rem_m}분 {rem_s}초 남음)]")
+
     for idx, it in enumerate(items, start=1):
-        info = get_pickaxe_info(it.starforce)
+        info = get_pickaxe_info(it.starforce, event_state=sf_state)
         bp_str = f" +{info['bonus_points']:,}P" if info.get("bonus_points", 0) > 0 else ""
         tags = []
         if it.is_equipped:
@@ -2358,7 +2624,12 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
         if it.starforce >= 25:
             next_str = "MAX"
         else:
-            next_str = f"다음강화 {info['upgrade_cost']:,}P"
+            cost_label = f"{info['upgrade_cost']:,}P"
+            if info.get("is_discounted"):
+                cost_label += " (30%할인)"
+            if info.get("is_guaranteed_100"):
+                cost_label += " (100%확정)"
+            next_str = f"다음강화 {cost_label}"
 
         lines.append(
             f"• #{it.id} {tag_str} {it.name} | 채굴 {info['yield_multiplier']}배{bp_str}, 크리+{info['crit_bonus']}%, 쿨{info['cooldown_minutes']}분 ({next_str})"
@@ -2369,7 +2640,7 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
         "• 장비 교체: !장착 [장비번호]\n"
         "• 선택 강화: !강화 [장비번호] (비어있으면 장착 장비 강화)\n"
         "• 새 곡괭이 구매: !곡괭이구매 [0/5/10]\n"
-        "• 장비 거래: !장비판매 [유저] [장비번호] [가격] | 거래소: !장비장터, !장비등록 [번호] [가격]"
+        "• 피버 확인: !피버 | 거래소: !장비장터, !장비등록 [번호] [가격]"
     )
     return "\n".join(lines)
 
@@ -2385,20 +2656,29 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
     equipped = get_user_equipped_item(db, user)
     curr_lvl = equipped.starforce if equipped else 0
     curr_lvl = max(0, min(25, int(curr_lvl)))
-    item = get_pickaxe_info(curr_lvl)
+    sf_state = get_starforce_event_state(db)
+    item = get_pickaxe_info(curr_lvl, event_state=sf_state)
     bp = item.get("bonus_points", 0)
     bp_str = f" | 매 채굴 확정: +{bp:,}P" if bp > 0 else ""
 
+    fever_banner = ""
+    if sf_state.get("is_active"):
+        rem_m, rem_s = divmod(sf_state["remaining_sec"], 60)
+        fever_banner = f"🔥 [피버 진행중: {sf_state['title']} ({rem_m}분 {rem_s}초 남음)]\n"
+
     if curr_lvl >= 25:
         return (
-            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
+            f"{fever_banner}⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
             f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동)\n"
             f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 인벤토리: !내장비 | 거래소: !장비장터"
         )
     else:
-        next_item = get_pickaxe_info(curr_lvl + 1)
+        next_item = get_pickaxe_info(curr_lvl + 1, event_state=sf_state)
         cost = item["upgrade_cost"]
+        cost_str = f"{cost:,}P"
+        if item.get("is_discounted"):
+            cost_str += f" (🔥30% 할인! 기존: {item['base_cost']:,}P)"
 
         s_rate = item["success_rate"]
         m_rate = item["maintain_rate"]
@@ -2406,6 +2686,8 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
         dest_rate = item["destroy_rate"]
 
         rate_parts = [f"성공 {s_rate:.2f}%" if s_rate % 1 else f"성공 {int(s_rate)}%"]
+        if item.get("is_guaranteed_100"):
+            rate_parts[0] = "⭐성공 100% (피버 확정!)"
         if m_rate > 0:
             rate_parts.append(f"유지 {m_rate:.3f}%" if m_rate % 1 else f"유지 {int(m_rate)}%")
         if d_rate > 0:
@@ -2414,15 +2696,20 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
             rate_parts.append(f"💥파괴 {dest_rate:.3f}%" if dest_rate % 1 else f"💥파괴 {int(dest_rate)}%")
         rate_str = " | ".join(rate_parts)
 
-        destroy_warning = "\n  ⚠️ 15성 이상: 파괴(터짐) 위험 존재! (파괴 시 12성 복원)" if dest_rate > 0 else " (15성 미만: 절대 안 터짐!)"
+        if item.get("is_guaranteed_100"):
+            destroy_warning = " (⭐피버 이벤트: 파괴/하락 0% 확정 성공!)"
+        elif dest_rate > 0:
+            destroy_warning = "\n  ⚠️ 15성 이상: 파괴(터짐) 위험 존재! (파괴 시 12성 복원)"
+        else:
+            destroy_warning = " (15성 미만: 절대 안 터짐!)"
 
         return (
-            f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
+            f"{fever_banner}⛏️ [내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
             f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
-            f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost:,}P]\n"
+            f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost_str}]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
             f"  └ 다음 효과: {next_item['desc']}\n"
-            f"💡 명령어: !강화 [장비번호], !장착 [장비번호], !곡괭이구매 [0/5/10], !내장비, !장비장터"
+            f"💡 명령어: !강화 [장비번호], !장착 [장비번호], !곡괭이구매 [0/5/10], !피버, !내장비, !장비장터"
         )
 
 def get_pickaxe_table_guide() -> str:
@@ -2437,6 +2724,7 @@ def get_pickaxe_table_guide() -> str:
         "• 21~22성: 성공 15.8% / 하락 67~72% / 💥파괴 12.6~16.9% (22성 국민졸업: 채굴 36배 + 50만P + 쿨 4분)\n"
         "• 23~25성: 극악의 종결! 성공 10.5% / 하락 71.6% / 💥파괴 17.9% (MAX: 채굴 80배 + 120만P + 크리 150% + 쿨 3분!)\n"
         "* 15강까진 절대 안 터집니다! 15성 이후 파괴 시 12성(흔적)으로 복원됩니다.\n"
+        "* 🔥 돌발 피버 이벤트: 랜덤 시간 동안 비용 30% 할인 또는 5/10/15성 100% 확정 성공 발동! (확인: !피버)\n"
         "* 강화비는 성공/실패/파괴 무관 100% 국고 채굴풀로 환원됩니다!"
     )
 

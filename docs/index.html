@@ -781,6 +781,16 @@
                     <strong>메이플스토리 스타포스 시스템</strong>을 충실히 반영하여 구간별 하락 방지턱과 안전 복원 시스템이 구축되어 있습니다.
                 </p>
 
+                <div class="callout" style="background: rgba(239, 68, 68, 0.08); border-left: 4px solid #ef4444; margin-bottom: 16px;">
+                    🔥 <strong>[돌발 이벤트] 썬데이 메이플 스타포스 피버 타임!</strong><br>
+                    정해진 시간 없이 <strong>랜덤한 주기(약 20~45분)마다 5~15분 동안 돌발 피버</strong>가 기습 발동합니다!<br>
+                    • 💸 <strong>비용 30% 할인</strong> (<code>DISCOUNT_30</code>): 전 구간 강화 비용 30% 파격 세일!<br>
+                    • ⭐ <strong>5성·10성·15성 100% 확정 성공</strong> (<code>FEVER_100</code>): ★5➔6, ★10➔11, <strong>★15➔16(파괴구간 돌파!)</strong> 도전 시 실패/파괴 없이 <strong>100% 확정 성공</strong>!<br>
+                    • ✨🌟 <strong>샤이닝 스타포스</strong> (<code>SHINING</code>): <strong>30% 비용 할인 + 5/10/15성 100% 성공</strong> 동시 폭발 최고급 슈퍼 피버!<br>
+                    • 💡 <strong>채팅 명령어</strong>: <code>!피버</code> (현재 피버 및 다음 피버 시간 확인), <code>!남은시간</code><br>
+                    • 👑 <strong>스트리머 주최</strong>: <code>!피버 [분] [종류]</code> (예: <code>!피버 10 할인</code>, <code>!피버 15 100퍼</code>, <code>!피버 10 샤이닝</code>), <code>!피버마감</code>
+                </div>
+
                 <div class="callout">
                     🛡️ <strong>0성 ~ 10성 (안전 구간)</strong> : 100% 파괴 없음! 실패 시에도 단계가 유지됩니다. (10성 도달 시 채굴 3배 + 1.5만P + 쿨 10분)<br>
                     🛑 <strong>10성 방지턱</strong> : 11성 이상에서 강화 실패로 하락하더라도 10성 밑으로는 절대 떨어지지 않습니다.<br>
@@ -1255,6 +1265,14 @@
                         <div class="cmd-code">!강화표 <span class="copy-icon">📋 복사</span></div>
                         <div class="cmd-desc">메이플 0~25성 스타포스 강화 확률표, 구간별 하락/파괴 룰 안내 (!곡괭이목록)</div>
                     </div>
+                    <div class="cmd-box" onclick="copyCommand('!피버')">
+                        <div class="cmd-code">!피버 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">돌발 스타포스 피버(비용 30% 할인, 5/10/15성 100% 확정 성공) 현황 및 남은 시간 조회 (!스타포스이벤트, !샤이닝)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!피버 10 샤이닝')">
+                        <div class="cmd-code">!피버 [분] [종류] / !피버마감 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">👑 스트리머 전용: 스타포스 피버 즉시 오픈 (종류: 할인/100퍼/샤이닝) 또는 즉시 마감</div>
+                    </div>
                     <div class="cmd-box" onclick="copyCommand('!장비등록 1 50000')">
                         <div class="cmd-code">!장비등록 [장비번호] [가격] <span class="copy-icon">📋 복사</span></div>
                         <div class="cmd-desc">내 곡괭이를 공개 거래소에 판매 등록 (판매 시 거래세 5% 국고 환원)</div>
@@ -1285,7 +1303,7 @@
                     </div>
                     <div class="cmd-box" onclick="copyCommand('!남은시간')">
                         <div class="cmd-code">!남은시간 <span class="copy-icon">📋 복사</span></div>
-                        <div class="cmd-desc">거래 마감, 카지노 운영, 개인 채굴 쿨타임 실시간 확인 (!시간)</div>
+                        <div class="cmd-desc">거래 마감, 카지노 운영, 스타포스 피버, 개인 채굴 쿨타임 실시간 확인 (!시간)</div>
                     </div>
                 </div>
             </div>

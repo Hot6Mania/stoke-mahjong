@@ -1969,6 +1969,166 @@ def test_multi_equipment_buy_swap_upgrade_and_p2p_trade(db_session, monkeypatch)
     r_chat_market, _ = ch.handle_chat_command(db_session, alice_id, "엘리스", "!장비장터")
     assert "나베 장비 거래소" in r_chat_market
 
+def test_starforce_fever_random_events_and_guaranteed_success(db_session, monkeypatch):
+    """
+    Test Star Force fever events:
+    1. Spontaneous random trigger and automatic expiration.
+    2. DISCOUNT_30: 30% discount on upgrade costs.
+    3. FEVER_100: 100% guaranteed success on ★5, ★10, ★15 (no destruction!).
+    4. SHINING: Both 30% discount and 100% guaranteed success.
+    5. Streamer commands (!피버 10, !피버마감) and viewer queries (!피버, !남은시간, !내곡괭이).
+    """
+    uid = "sf_fever_tester"
+    uname = "스타포스러너"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 10000000
+    db_session.commit()
+
+    eqs = te.ensure_user_equipment(db_session, user)
+    eq = eqs[0]
+
+    # 1. Check initial fever state (inactive, next event scheduled)
+    st = te.get_starforce_event_state(db_session)
+    assert st["is_active"] is False
+    assert st["next_event_time"] > 0
+
+    # 2. Spontaneous trigger via force_trigger
+    st_trig = te.get_starforce_event_state(db_session, force_trigger=True, manual_type="DISCOUNT_30", manual_duration=10.0)
+    assert st_trig["is_active"] is True
+    assert st_trig["event_type"] == "DISCOUNT_30"
+    assert st_trig["has_discount"] is True
+    assert st_trig["has_100_percent"] is False
+
+    # 3. Test 30% discount on upgrade
+    # 0성 upgrade cost is normally 2,000P -> with 30% off, cost is 1,400P
+    user.pickaxe_level = 0
+    eq.starforce = 0
+    db_session.commit()
+    info_0 = te.get_pickaxe_info(0, event_state=st_trig)
+    assert info_0["upgrade_cost"] == 1400
+    assert info_0["base_cost"] == 2000
+    assert info_0["is_discounted"] is True
+
+    points_before = user.points
+    treasury_before = te.get_market_state(db_session).treasury_pool
+    # Roll success
+    monkeypatch.setattr("random.uniform", lambda a, b: 0.1)
+    ok_upg, rep_upg, det_upg = te.execute_pickaxe_upgrade(db_session, uid, uname, str(eq.id))
+    assert ok_upg is True
+    assert det_upg["cost"] == 1400
+    assert det_upg["discount_applied"] is True
+    db_session.refresh(user)
+    assert user.points == points_before - 1400
+    assert te.get_market_state(db_session).treasury_pool == treasury_before + 1400
+
+    # 4. Streamer opens FEVER_100 (5, 10, 15-star 100% success)
+    ok_open, rep_open, det_open = te.open_starforce_event(db_session, duration_minutes=15.0, event_type_str="100퍼")
+    assert ok_open is True
+    assert det_open["event_type"] == "FEVER_100"
+
+    st_fever = te.get_starforce_event_state(db_session)
+    assert st_fever["is_active"] is True
+    assert st_fever["has_100_percent"] is True
+    assert st_fever["has_discount"] is False
+
+    # Check 5-star (5->6성) has 100% success rate
+    info_5 = te.get_pickaxe_info(5, event_state=st_fever)
+    assert info_5["success_rate"] == 100.0
+    assert info_5["is_guaranteed_100"] is True
+    assert info_5["maintain_rate"] == 0.0
+
+    # Check 10-star (10->11성) has 100% success rate
+    info_10 = te.get_pickaxe_info(10, event_state=st_fever)
+    assert info_10["success_rate"] == 100.0
+    assert info_10["is_guaranteed_100"] is True
+
+    # Check 15-star (15->16성) has 100% success rate and 0% destruction rate!
+    info_15 = te.get_pickaxe_info(15, event_state=st_fever)
+    assert info_15["success_rate"] == 100.0
+    assert info_15["destroy_rate"] == 0.0
+    assert info_15["maintain_rate"] == 0.0
+    assert info_15["drop_rate"] == 0.0
+    assert info_15["is_guaranteed_100"] is True
+
+    # Perform upgrade at 15-star with high roll (99.0): should STILL succeed with 100% guaranteed success!
+    user.pickaxe_level = 15
+    eq.starforce = 15
+    db_session.commit()
+    monkeypatch.setattr("random.uniform", lambda a, b: 99.0)
+    ok_15, rep_15, det_15 = te.execute_pickaxe_upgrade(db_session, uid, uname, str(eq.id))
+    assert ok_15 is True
+    assert det_15["outcome"] == "success"
+    assert det_15["new_level"] == 16
+    assert det_15["guaranteed_100"] is True
+    assert "100% 확정 성공 피버" in rep_15
+
+    # 5. Test SHINING (Shining Star Force: 30% discount AND 100% success)
+    ok_shining, _, _ = te.open_starforce_event(db_session, duration_minutes=10.0, event_type_str="샤이닝")
+    assert ok_shining is True
+    st_shining = te.get_starforce_event_state(db_session)
+    assert st_shining["has_discount"] is True
+    assert st_shining["has_100_percent"] is True
+
+    # Check 15-star under Shining: 30% discount (300k -> 210k) AND 100% success
+    user.pickaxe_level = 15
+    eq.starforce = 15
+    db_session.commit()
+    info_shining_15 = te.get_pickaxe_info(15, event_state=st_shining)
+    assert info_shining_15["upgrade_cost"] == 210000
+    assert info_shining_15["success_rate"] == 100.0
+    assert info_shining_15["destroy_rate"] == 0.0
+
+    monkeypatch.setattr("random.uniform", lambda a, b: 88.8)
+    ok_shin_upg, rep_shin_upg, det_shin_upg = te.execute_pickaxe_upgrade(db_session, uid, uname, str(eq.id))
+    assert ok_shin_upg is True
+    assert det_shin_upg["cost"] == 210000
+    assert det_shin_upg["discount_applied"] is True
+    assert det_shin_upg["guaranteed_100"] is True
+    assert det_shin_upg["new_level"] == 16
+
+    # 6. Test Expiration
+    # Set end_time in the past
+    state = te.get_market_state(db_session)
+    state.sf_event_end_time = time.time() - 10.0
+    db_session.commit()
+    st_expired = te.get_starforce_event_state(db_session)
+    assert st_expired["is_active"] is False
+
+    # 7. Test Chat Commands
+    viewer_id = "test_viewer_1"
+    streamer_id = ch.CHANNEL_ID
+
+    # Viewer queries !피버
+    r_guide, _ = ch.handle_chat_command(db_session, viewer_id, "시청자1", "!피버")
+    assert "스타포스 돌발 피버 이벤트 안내" in r_guide or "스타포스 피버" in r_guide
+
+    # Viewer queries !남은시간
+    r_time, _ = ch.handle_chat_command(db_session, viewer_id, "시청자1", "!남은시간")
+    assert "스타포스:" in r_time
+
+    # Viewer attempts to open fever -> blocked
+    r_block, _ = ch.handle_chat_command(db_session, viewer_id, "시청자1", "!피버 10")
+    assert "🚫 피버 이벤트 강제 개장은 스트리머" in r_block
+
+    # Streamer opens fever: !피버 10 할인
+    r_streamer_open, ev_open = ch.handle_chat_command(db_session, streamer_id, "치즈나베", "!피버 10 할인")
+    assert "스타포스 피버 OPEN" in r_streamer_open
+    assert ev_open is not None
+    assert ev_open["type"] == "starforce_fever_open"
+
+    # Viewer queries !남은시간 during fever
+    r_time_active, _ = ch.handle_chat_command(db_session, viewer_id, "시청자1", "!남은시간")
+    assert "피버 오픈!" in r_time_active or "비용 30% 할인" in r_time_active
+
+    # Viewer checks !내곡괭이 during fever
+    r_pickaxe, _ = ch.handle_chat_command(db_session, viewer_id, "시청자1", "!곡괭이")
+    assert "피버 진행중" in r_pickaxe or "30% 할인" in r_pickaxe
+
+    # Streamer closes fever: !피버마감
+    r_close, ev_close = ch.handle_chat_command(db_session, streamer_id, "치즈나베", "!피버마감")
+    assert "스타포스 피버 종료" in r_close
+    assert ev_close["type"] == "starforce_fever_close"
+
 
 
 

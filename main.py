@@ -142,6 +142,14 @@ def serialize_market_state(state) -> Dict[str, Any]:
         c_open = False
         c_rem = 0
 
+    # Star Force Fever Event State
+    now = time.time()
+    sf_type = getattr(state, "sf_event_type", None)
+    sf_end = float(getattr(state, "sf_event_end_time", 0.0) or 0.0)
+    sf_title = getattr(state, "sf_event_title", None)
+    sf_active = bool(sf_type and sf_end > now)
+    sf_rem = max(0, int(sf_end - now)) if sf_active else 0
+
     res = {
         "current_rank_point": state.current_rank_point,
         "current_price": state.current_price,
@@ -154,7 +162,11 @@ def serialize_market_state(state) -> Dict[str, Any]:
         "free_trading_end_time": getattr(state, "free_trading_end_time", 0.0) or 0.0,
         "casino_is_open": c_open,
         "casino_remaining": c_rem,
-        "casino_max_bet": c_max_bet
+        "casino_max_bet": c_max_bet,
+        "sf_event_type": sf_type if sf_active else None,
+        "sf_event_title": sf_title if sf_active else None,
+        "sf_is_active": sf_active,
+        "sf_remaining": sf_rem
     }
     return res
 
