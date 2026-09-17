@@ -1299,51 +1299,69 @@ def get_pickaxe_info(level: int) -> Dict[str, Any]:
 
     t = STARFORCE_TIERS[lvl]
 
-    # Mining yield multiplier calculation
-    if lvl == 0:
-        yield_mult = 1.0
-    elif lvl <= 10:
-        yield_mult = round(1.0 + lvl * 0.05, 2)
-    elif lvl <= 15:
-        yield_mult = round(1.50 + (lvl - 10) * 0.12, 2)
-    elif lvl <= 20:
-        yield_mult = round(2.10 + (lvl - 15) * 0.25, 2)
-    elif lvl <= 22:
-        yield_mult = round(3.35 + (lvl - 20) * 0.50, 2)
-    else:
-        yield_mult = round(4.35 + (lvl - 22) * 0.55, 2)
+    # Mining yield multiplier calculation (BUFFED)
+    # 0성 1.0x -> 10성 3.0x -> 15성 6.5x -> 20성 22.0x -> 22성 36.0x -> 25성 80.0x
+    yield_table = {
+        0: 1.00, 1: 1.15, 2: 1.30, 3: 1.45, 4: 1.60,
+        5: 1.80, 6: 2.00, 7: 2.20, 8: 2.40, 9: 2.65,
+        10: 3.00, 11: 3.50, 12: 4.00, 13: 4.60, 14: 5.30,
+        15: 6.50, 16: 8.50, 17: 11.00, 18: 14.00, 19: 17.50,
+        20: 22.00, 21: 28.00,
+        22: 36.00, 23: 45.00, 24: 58.00,
+        25: 80.00
+    }
+    yield_mult = yield_table.get(lvl, 1.00)
 
-    # Crit bonus
-    if lvl == 0:
-        crit = 0.0
-    elif lvl <= 10:
-        crit = round(lvl * 0.5, 1)
-    elif lvl <= 15:
-        crit = round(5.0 + (lvl - 10) * 1.0, 1)
-    elif lvl <= 20:
-        crit = round(10.0 + (lvl - 15) * 1.6, 1)
-    elif lvl <= 22:
-        crit = round(18.0 + (lvl - 20) * 2.0, 1)
-    else:
-        crit = round(22.0 + (lvl - 22) * 2.5, 1)
+    # Guaranteed Bonus Points per Mine (BUFFED: 5성 돌 곡괭이부터 매 채굴마다 무조건 확정 지급되는 추가 현금)
+    # 0~4성 0P -> 5성 5천P -> 10성 1.5만P -> 15성 6만P -> 20성 28만P -> 22성 50만P -> 25성 120만P
+    bonus_points_table = {
+        0: 0, 1: 0, 2: 0, 3: 0, 4: 0,
+        5: 5000, 6: 6500, 7: 8000, 8: 10000, 9: 12000,
+        10: 15000, 11: 20000, 12: 25000, 13: 32000, 14: 40000,
+        15: 60000, 16: 85000, 17: 120000, 18: 160000, 19: 210000,
+        20: 280000, 21: 380000,
+        22: 500000, 23: 650000, 24: 850000,
+        25: 1200000
+    }
+    bonus_points = bonus_points_table.get(lvl, 0)
 
-    # Cooldown minutes
+    # Crit bonus (BUFFED)
+    # 0성 0% -> 10성 20% -> 15성 45% -> 20성 85% -> 22성 100% -> 25성 150%
+    crit_table = {
+        0: 0.0, 1: 1.5, 2: 3.0, 3: 4.5, 4: 6.0,
+        5: 8.0, 6: 10.0, 7: 12.0, 8: 14.0, 9: 16.0,
+        10: 20.0, 11: 24.0, 12: 28.0, 13: 32.0, 14: 36.0,
+        15: 45.0, 16: 52.0, 17: 60.0, 18: 68.0, 19: 76.0,
+        20: 85.0, 21: 92.0,
+        22: 100.0, 23: 110.0, 24: 120.0,
+        25: 150.0
+    }
+    crit = crit_table.get(lvl, 0.0)
+
+    # Cooldown minutes (BUFFED: 15분 -> 10분 -> 8분 -> 6분 -> 5분 -> 4분 -> 3분)
     if lvl >= 25:
-        cd_min = 8
+        cd_min = 3
     elif lvl >= 22:
-        cd_min = 9
+        cd_min = 4
     elif lvl >= 20:
-        cd_min = 10
+        cd_min = 5
     elif lvl >= 17:
-        cd_min = 11
+        cd_min = 6
     elif lvl >= 15:
-        cd_min = 12
+        cd_min = 8
     elif lvl >= 10:
-        cd_min = 13
+        cd_min = 10
     elif lvl >= 5:
-        cd_min = 14
+        cd_min = 13
     else:
         cd_min = 15
+
+    desc_parts = [f"채굴량 {yield_mult}배"]
+    if bonus_points > 0:
+        desc_parts.append(f"확정 +{bonus_points:,}P")
+    desc_parts.append(f"크리 +{crit}%")
+    desc_parts.append(f"쿨 {cd_min}분")
+    desc = ", ".join(desc_parts)
 
     return {
         "level": lvl,
@@ -1351,6 +1369,7 @@ def get_pickaxe_info(level: int) -> Dict[str, Any]:
         "base_name": base_name,
         "upgrade_cost": t["cost"],
         "yield_multiplier": yield_mult,
+        "bonus_points": bonus_points,
         "crit_bonus": crit,
         "cooldown_minutes": cd_min,
         "cooldown_seconds": cd_min * 60,
@@ -1358,7 +1377,7 @@ def get_pickaxe_info(level: int) -> Dict[str, Any]:
         "maintain_rate": t["maintain"],
         "drop_rate": t["drop"],
         "destroy_rate": t["destroy"],
-        "desc": f"채굴량 {yield_mult}배, 크리티컬 +{crit}%, 쿨타임 {cd_min}분"
+        "desc": desc
     }
 
 # Backwards compatibility dictionary mapping
@@ -1450,31 +1469,42 @@ def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
     Higher-level pickaxes grant a crit_bonus which boosts EX/UR+/UR/SSR/SR/R rates.
     """
     cb = max(0.0, float(crit_bonus or 0.0))
-    roll = random.random() * 100.0
 
-    shifts = {
-        "EX": cb * 0.10,
-        "UR+": cb * 0.20,
-        "UR": cb * 0.30,
-        "SSR": cb * 0.40,
-        "SR": cb * 0.20,
-        "R": cb * 0.10,
-        "N": -cb * 0.60,
-        "C": -cb * 0.70,
-    }
-
-    cum = 0.0
+    # Calculate dynamic weights
+    weights = []
     for tier in MINING_TIERS:
-        prob = max(0.1, tier["prob"] + shifts.get(tier["code"], 0.0))
-        cum += prob
-        if roll < cum:
-            t = dict(tier)
-            if "multiplier_range" in t:
-                low, high = t["multiplier_range"]
-                t["multiplier"] = round(random.uniform(low, high), 2)
-            return t
-    t = dict(MINING_TIERS[6])  # Fallback to N
-    t["multiplier"] = 1.0
+        code = tier["code"]
+        base_prob = tier["prob"]
+        if code == "EX":
+            w = base_prob + cb * 0.08      # e.g. +8% at cb=100
+        elif code == "UR+":
+            w = base_prob + cb * 0.14     # e.g. +14% at cb=100
+        elif code == "UR":
+            w = base_prob + cb * 0.20     # e.g. +20% at cb=100
+        elif code == "SSR":
+            w = base_prob + cb * 0.28     # e.g. +28% at cb=100
+        elif code == "SR":
+            w = base_prob + cb * 0.20     # e.g. +20% at cb=100
+        elif code == "R":
+            w = base_prob + cb * 0.10     # e.g. +10% at cb=100
+        elif code == "N":
+            w = max(0.0, base_prob - cb * 0.40)
+        elif code == "C":
+            w = max(0.0, base_prob - cb * 0.50)
+        else:
+            w = base_prob
+        weights.append(max(0.0, w))
+
+    total_w = sum(weights)
+    if total_w <= 0:
+        tier_choice = MINING_TIERS[6]
+    else:
+        tier_choice = random.choices(MINING_TIERS, weights=weights, k=1)[0]
+
+    t = dict(tier_choice)
+    if "multiplier_range" in t:
+        low, high = t["multiplier_range"]
+        t["multiplier"] = round(random.uniform(low, high), 2)
     return t
 
 def execute_mining(
@@ -1496,6 +1526,7 @@ def execute_mining(
     pickaxe = get_pickaxe_info(curr_level)
     cooldown_sec = pickaxe["cooldown_seconds"]
     cooldown_min = pickaxe["cooldown_minutes"]
+    pickaxe_bonus_cash = pickaxe.get("bonus_points", 0)
 
     # 2. Cooldown check based on pickaxe cooldown
     if user.last_mined_at:
@@ -1537,6 +1568,8 @@ def execute_mining(
     else:
         bonus_cash = tier.get("bonus_cash", 0)
 
+    total_bonus_cash = bonus_cash + pickaxe_bonus_cash
+
     bonus_10x = tier.get("bonus_10x", 0.0)
     cd_reduction = tier.get("cooldown_reduction", 0)
     tier_name = tier["name"]
@@ -1549,7 +1582,7 @@ def execute_mining(
     bonus_10x_cost = int(round(bonus_10x * current_price))
 
     # Deduct total mining package cost from treasury pool
-    total_mined_cost = actual_cost + bonus_cash + bonus_10x_cost
+    total_mined_cost = actual_cost + total_bonus_cash + bonus_10x_cost
     state.treasury_pool = max(0.0, state.treasury_pool - total_mined_cost)
 
     # Cooldown setup (boosted on critical hit)
@@ -1568,7 +1601,7 @@ def execute_mining(
     # 5. Check if user has debt -> Forced Labor Mode (탄광 노역 채굴)
     user_debt = getattr(user, "debt", 0) or 0
     if user_debt > 0:
-        total_payout = actual_cost + bonus_cash
+        total_payout = actual_cost + total_bonus_cash
         repay_amt = min(user_debt, total_payout)
         user.debt = user_debt - repay_amt
         # Mined value returned to treasury as debt payoff
@@ -1624,6 +1657,8 @@ def execute_mining(
             "shares_awarded": shares_awarded,
             "cash_value": actual_cost,
             "bonus_cash": bonus_cash,
+            "pickaxe_bonus_cash": pickaxe_bonus_cash,
+            "total_bonus_cash": total_bonus_cash,
             "bonus_10x_shares": bonus_10x,
             "cooldown_reduction_minutes": cd_reduction,
             "repaid_debt": repay_amt,
@@ -1653,9 +1688,9 @@ def execute_mining(
             pos.entry_price = float(current_price)
             pos.invested_cash = float(actual_cost)
 
-    # Credit bonus cash
-    if bonus_cash > 0:
-        user.points += bonus_cash
+    # Credit bonus cash (tier jackpot + pickaxe fixed cash)
+    if total_bonus_cash > 0:
+        user.points += total_bonus_cash
 
     # Credit bonus 10X share
     if bonus_10x > 0:
@@ -1687,7 +1722,9 @@ def execute_mining(
 
     extras = []
     if bonus_cash > 0:
-        extras.append(f"보너스 현금 +{bonus_cash:,}P")
+        extras.append(f"잭팟 현금 +{bonus_cash:,}P")
+    if pickaxe_bonus_cash > 0:
+        extras.append(f"곡괭이 보너스 +{pickaxe_bonus_cash:,}P")
     if bonus_10x > 0:
         extras.append(f"🔥 10X 레버리지 +{format_quantity(bonus_10x)}주")
     extras_str = f" + {' / '.join(extras)}" if extras else ""
@@ -1709,6 +1746,8 @@ def execute_mining(
         "shares_awarded": shares_awarded,
         "cash_value": actual_cost,
         "bonus_cash": bonus_cash,
+        "pickaxe_bonus_cash": pickaxe_bonus_cash,
+        "total_bonus_cash": total_bonus_cash,
         "bonus_10x_shares": bonus_10x,
         "cooldown_reduction_minutes": cd_reduction,
         "treasury_pool": state.treasury_pool,
@@ -1767,9 +1806,10 @@ def execute_pickaxe_upgrade(
         new_level = curr_level + 1
         user.pickaxe_level = new_level
         new_item = get_pickaxe_info(new_level)
+        bp_info = f" + 확정 +{new_item['bonus_points']:,}P" if new_item.get('bonus_points', 0) > 0 else ""
         reply = (
             f"🔨✨ [스타포스 강화 대성공!!] {user.username}님 {cost:,}P를 소모하여 [{new_item['name']}] 강화에 성공했습니다! "
-            f"(채굴량: {new_item['yield_multiplier']}배 | 크리: +{new_item['crit_bonus']}% | 쿨: {new_item['cooldown_minutes']}분 | "
+            f"(채굴량: {new_item['yield_multiplier']}배{bp_info} | 크리: +{new_item['crit_bonus']}% | 쿨: {new_item['cooldown_minutes']}분 | "
             f"국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     elif roll < (s_rate + m_rate):
@@ -1826,18 +1866,18 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
         curr_lvl = 0
     curr_lvl = max(0, min(25, int(curr_lvl)))
     item = get_pickaxe_info(curr_lvl)
+    bp = item.get("bonus_points", 0)
+    bp_str = f" | 매 채굴 확정: +{bp:,}P" if bp > 0 else ""
 
     if curr_lvl >= 25:
         return (
             f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']}\n"
-            f"• 효과: 채굴량 {item['yield_multiplier']}배 | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
-            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다!"
+            f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
+            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동)"
         )
     else:
         next_item = get_pickaxe_info(curr_lvl + 1)
         cost = item["upgrade_cost"]
-        yield_pct = int(round((item["yield_multiplier"] - 1.0) * 100))
-        yield_str = f"+{yield_pct}%" if yield_pct > 0 else "기본"
 
         s_rate = item["success_rate"]
         m_rate = item["maintain_rate"]
@@ -1857,7 +1897,7 @@ def get_user_pickaxe_status(db: Session, user_id: str, username: str) -> str:
 
         return (
             f"⛏️ [내 곡괭이 정보] {user.username}님의 장비: {item['name']}\n"
-            f"• 현재 효과: 채굴량 {yield_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
+            f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {item['cooldown_minutes']}분\n"
             f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost:,}P]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
             f"  └ 다음 효과: {next_item['desc']}\n"
@@ -1868,13 +1908,13 @@ def get_pickaxe_table_guide() -> str:
     """Returns concise pickaxe tiers & Star Force rate guide."""
     return (
         "⛏️📋 [메이플 스타일 곡괭이 스타포스 강화표] (!강화로 업그레이드)\n"
-        "• 0~10성: 안전 구간! 실패해도 하락/파괴 없음 (비용: 2천~5만P)\n"
+        "• 0~10성: 안전 구간! 실패해도 하락/파괴 없음 (10성: 채굴 3배 + 1.5만P + 쿨 10분)\n"
         "• 11~14성: 하락 구간! 실패 시 1성 하락 (10성 세이프존 방지턱, 파괴 0%)\n"
-        "• 15성: 15성 방지턱! 성공 31.5% / 유지 66.4% / 💥파괴 2.1%\n"
-        "• 16~19성: 성공 15~31.5% / 하락 66~77% / 💥파괴 2~8.4%\n"
-        "• 20성: 20성 방지턱! 성공 31.5% / 유지 58.2% / 💥파괴 10.3%\n"
-        "• 21~22성: 성공 15.8% / 하락 67~72% / 💥파괴 12.6~16.9% (국민 졸업!)\n"
-        "• 23~25성: 극악의 종결! 성공 10.5% / 하락 71.6% / 💥파괴 17.9% (MAX: 채굴 6배!)\n"
+        "• 15성: 15성 방지턱! 성공 31.5% / 유지 66.4% / 💥파괴 2.1% (채굴 6.5배 + 6만P + 쿨 8분)\n"
+        "• 16~19성: 성공 15~31.5% / 하락 66~77% / 💥파괴 2~8.4% (17성: 채굴 11배 + 12만P + 쿨 6분)\n"
+        "• 20성: 20성 방지턱! 성공 31.5% / 유지 58.2% / 💥파괴 10.3% (채굴 22배 + 28만P + 쿨 5분)\n"
+        "• 21~22성: 성공 15.8% / 하락 67~72% / 💥파괴 12.6~16.9% (22성 국민졸업: 채굴 36배 + 50만P + 쿨 4분)\n"
+        "• 23~25성: 극악의 종결! 성공 10.5% / 하락 71.6% / 💥파괴 17.9% (MAX: 채굴 80배 + 120만P + 크리 150% + 쿨 3분!)\n"
         "* 15강까진 절대 안 터집니다! 15성 이후 파괴 시 12성(흔적)으로 복원됩니다.\n"
         "* 강화비는 성공/실패/파괴 무관 100% 국고 채굴풀로 환원됩니다!"
     )
