@@ -3011,6 +3011,93 @@ def test_starforce_fever_sanity_clamp_and_frequent_cycle(db_session):
     assert "27시간" not in cd_status
     assert "분 후 예정" in cd_status or "곧 발생" in cd_status
 
+def test_multi_equipment_cooldown_abuse_prevention(db_session, monkeypatch):
+    """
+    Test that having multiple pickaxes cannot be exploited to bypass mining cooldown.
+    - Cooldown is tracked per User account (last_mined_at), not per equipment.
+    - Swapping to another pickaxe keeps the user on cooldown.
+    - Multiple auto-mining sessions cannot be spawned.
+    """
+    uid = "multi_pickaxe_user"
+    uname = "곡괭이다수보유자"
+    user = te.get_or_create_user(db_session, uid, uname)
+    items = te.ensure_user_equipment(db_session, user)
+    default_item = items[0]
+    assert default_item.is_equipped is True
+
+    # Add second pickaxe (15-star, 8m cooldown) and third pickaxe (20-star, 3m cooldown)
+    now_utc = datetime.now(timezone.utc)
+    pickaxe_15 = te.UserEquipment(
+        user_id=user.id,
+        equipment_type="PICKAXE",
+        name="황금 곡괭이 (★15성)",
+        starforce=15,
+        is_equipped=False,
+        created_at=now_utc
+    )
+    pickaxe_20 = te.UserEquipment(
+        user_id=user.id,
+        equipment_type="PICKAXE",
+        name="다이아몬드 곡괭이 (★20성)",
+        starforce=20,
+        is_equipped=False,
+        created_at=now_utc
+    )
+    db_session.add_all([pickaxe_15, pickaxe_20])
+    db_session.commit()
+
+    # Mock tier to normal N so EX/UR cooldown reduction doesn't alter baseline cooldown
+    monkeypatch.setattr(te, "roll_mining_tier", lambda *a, **kw: {
+        "code": "N",
+        "name": "⛏️ [평범한 구리 광맥 일반 채굴]",
+        "multiplier": 1.0,
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0,
+    })
+
+    # 1. Mine with initial equipped pickaxe (0-star, 15m cooldown)
+    ok1, rep1, _ = te.execute_mining(db_session, uid, uname)
+    assert ok1 is True
+    assert user.last_mined_at is not None
+
+    # 2. Re-mine attempt with same pickaxe must be blocked by cooldown
+    ok2, rep2, det2 = te.execute_mining(db_session, uid, uname)
+    assert ok2 is False
+    assert "채굴 쿨타임" in rep2
+
+    # 3. Swap to second pickaxe (15-star)
+    ok_swap1, _, _ = te.execute_equip_item(db_session, uid, uname, str(pickaxe_15.id))
+    assert ok_swap1 is True
+    assert pickaxe_15.is_equipped is True
+    assert default_item.is_equipped is False
+
+    # 4. Attempting to mine with second pickaxe must STILL be blocked!
+    ok3, rep3, det3 = te.execute_mining(db_session, uid, uname)
+    assert ok3 is False
+    assert "채굴 쿨타임" in rep3
+    assert det3["remaining_seconds"] > 0
+
+    # 5. Swap to third pickaxe (20-star)
+    ok_swap2, _, _ = te.execute_equip_item(db_session, uid, uname, str(pickaxe_20.id))
+    assert ok_swap2 is True
+
+    # 6. Attempting to mine with third pickaxe must STILL be blocked!
+    ok4, rep4, det4 = te.execute_mining(db_session, uid, uname)
+    assert ok4 is False
+    assert "채굴 쿨타임" in rep4
+    assert det4["remaining_seconds"] > 0
+
+    # 7. Cooldown status correctly inspects currently equipped pickaxe
+    cd_status = te.get_user_cooldown_status(db_session, uid, uname)
+    assert "다이아몬드 곡괭이 (★20성)" in cd_status
+    assert "남음" in cd_status
+
+    # 8. Auto-mining tick also cannot mine while cooldown is active
+    te.set_auto_mining(db_session, uid, uname, enable=True)
+    tick = te.execute_auto_mining_tick(db_session, user)
+    assert tick is None  # Blocked by cooldown
+
 
 
 
