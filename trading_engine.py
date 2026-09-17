@@ -81,6 +81,8 @@ PRODUCT_SYNONYMS = {
     "10X": ProductType.TEN_X,
     "10x": ProductType.TEN_X,
     "10배": ProductType.TEN_X,
+    "10배주": ProductType.TEN_X,
+    "10배주식": ProductType.TEN_X,
     "10레": ProductType.TEN_X,
     "10버": ProductType.TEN_X,
     "10롱": ProductType.TEN_X,
@@ -182,7 +184,7 @@ def parse_product_type(text: str) -> Optional[ProductType]:
 
     # Handle forms like "10x", "5x", "10배", "5배", "10레", "10버", "10롱"
     upper_c = cleaned.upper()
-    for suffix in ["X", "배", "레", "버", "레버", "배레버", "롱", "배롱", "X롱"]:
+    for suffix in ["X", "배", "레", "버", "레버", "배레버", "롱", "배롱", "X롱", "배주", "배주식"]:
         if upper_c.endswith(suffix):
             prefix = upper_c[:-len(suffix)].strip()
             if prefix in ["1", "2", "3", "5", "10"]:
@@ -370,6 +372,16 @@ def execute_buy(
 
     # Determine quantity
     clean_qty_str = quantity_str.strip()
+    for unit in ["주", "개"]:
+        if clean_qty_str.endswith(unit) and len(clean_qty_str) > len(unit):
+            candidate = clean_qty_str[:-len(unit)].strip()
+            try:
+                float(candidate)
+                clean_qty_str = candidate
+                break
+            except ValueError:
+                pass
+
     if clean_qty_str in ["빚올인", "빚으로올인", "대출올인", "신용올인", "빚투"]:
         return execute_margin_buy(db, user_id, username, product_str, "올인")
 
@@ -612,6 +624,16 @@ def execute_sell(
         return False, f"⚠️ {user.username}님은 {product_type.value} 포지션을 보유하고 있지 않습니다.", None
 
     clean_qty = quantity_str.strip()
+    for unit in ["주", "개"]:
+        if clean_qty.endswith(unit) and len(clean_qty) > len(unit):
+            candidate = clean_qty[:-len(unit)].strip()
+            try:
+                float(candidate)
+                clean_qty = candidate
+                break
+            except ValueError:
+                pass
+
     if clean_qty in ["전량", "all", "모두", "올인", "전부", "다", "최대", "풀매도", "전액"]:
         sell_qty = pos.quantity
     else:

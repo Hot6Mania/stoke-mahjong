@@ -59,14 +59,22 @@ def handle_chat_command(
     Dispatcher for incoming streaming chat commands.
     Returns: (reply_text, broadcast_event_dict)
     """
+    import unicodedata
+    raw_message = unicodedata.normalize('NFKC', str(raw_message or ""))
     msg = raw_message.strip()
     idx = msg.find("!")
     if idx == -1:
         return None, None
     msg = msg[idx:]
 
+    # Handle accidental space after '!' (e.g. "! 10배 올인" -> "!10배 올인")
+    if msg.startswith("! "):
+        msg = "!" + msg[1:].lstrip()
+
     # Split command tokens
     tokens = msg.split()
+    if len(tokens) > 1 and tokens[0] == "!":
+        tokens = [f"!{tokens[1]}"] + tokens[2:]
     cmd = tokens[0].lower()
 
     # 1. Help / System Guide Commands
@@ -251,15 +259,73 @@ def handle_chat_command(
         event = {"type": "trade_buy", "data": details} if success and details else None
         return reply, event
 
-    # 4-0. Direct Product Command (e.g. !10X 올인, !10X 풀매수, !10X 5, !5X 올인)
-    cmd_sub = cmd[1:]
-    if cmd_sub in ["1", "2", "3", "5", "10"]:
-        cmd_sub = f"{cmd_sub}X"
-    direct_prod = parse_product_type(cmd_sub) if cmd.startswith("!") else None
+    # 4-0. Direct Product Command (e.g. !10X 올인, !10배 올인, !10배올인, !10배 전량, !10배 매도, !10롱 올인, !곱버스 전량)
+    direct_prod = None
+    direct_qty = None
+
+    if cmd.startswith("!"):
+        cmd_sub = cmd[1:]
+        cand_sub = f"{cmd_sub}X" if cmd_sub in ["1", "2", "3", "5", "10"] else cmd_sub
+        direct_prod = parse_product_type(cand_sub)
+
+        if direct_prod:
+            direct_qty = tokens[1] if len(tokens) >= 2 else "1"
+        else:
+            # Check attached forms without space (e.g. !10배올인, !10롱올인, !10배풀매수, !10배전량, !10배매도, !10배10)
+            from trading_engine import PRODUCT_SYNONYMS
+            for pfx in sorted(PRODUCT_SYNONYMS.keys(), key=len, reverse=True):
+                if cmd_sub.startswith(pfx.lower()):
+                    rem = cmd_sub[len(pfx):].strip()
+                    cand = parse_product_type(pfx)
+                    if cand:
+                        direct_prod = cand
+                        direct_qty = rem if rem else (tokens[1] if len(tokens) >= 2 else "1")
+                        break
+
     if direct_prod:
-        qty_token = tokens[1].strip().strip("'\"`’‘“”,;[]()").strip() if len(tokens) >= 2 else "1"
+        state = get_market_state(db)
+        if is_market_locked(db, state):
+            db.rollback()
+            return "⚠️ [거래 마감] 경기가 진행 중이므로 거래할 수 없습니다. (조회, 채굴, 대출 명령만 가능)", None
+
         allin_words = ["올인", "all", "전액", "풀매수", "다", "전부", "최대", "올인매수", "전액매수"]
         margin_words = ["빚올인", "빚으로올인", "대출올인", "신용올인", "빚투", "신용구매", "빚", "대출", "신용"]
+        sell_words = ["전량", "매도", "팔기", "판매", "전량매도", "풀매도", "완판", "정리", "청산", "익절", "손절"]
+        buy_words = ["매수", "사기", "구매", "매수하기"]
+
+        qty_token = (direct_qty or "1").strip().strip("'\"`’‘“”,;[]()").strip()
+
+        # Check if action is SELL (e.g. !10배 전량, !10배 매도, !10배 매도 5, !10배전량, !10배팔기)
+        if any(qty_token.startswith(sw) for sw in sell_words) or qty_token in sell_words:
+            sell_qty = "전량"
+            if len(tokens) >= 3:
+                sell_qty = tokens[2].strip()
+            elif qty_token not in sell_words:
+                for sw in sell_words:
+                    if qty_token.startswith(sw):
+                        rem_q = qty_token[len(sw):].strip()
+                        if rem_q:
+                            sell_qty = rem_q
+                        break
+            success, reply, details = execute_sell(db, user_id, username, direct_prod.value, sell_qty)
+            event = {"type": "trade_sell", "data": details} if success and details else None
+            return reply, event
+
+        # Check if action is BUY keyword (e.g. !10배 매수 5, !10배 매수 올인, !10배 매수)
+        if qty_token in buy_words or any(qty_token.startswith(bw) for bw in buy_words):
+            buy_qty = "1"
+            if len(tokens) >= 3:
+                buy_qty = tokens[2].strip()
+            elif qty_token not in buy_words:
+                for bw in buy_words:
+                    if qty_token.startswith(bw):
+                        rem_q = qty_token[len(bw):].strip()
+                        if rem_q:
+                            buy_qty = rem_q
+                        break
+            qty_token = buy_qty
+
+        # Execute Buy / Margin Buy
         if qty_token in margin_words:
             success, reply, details = execute_margin_buy(db, user_id, username, direct_prod.value, "올인")
         elif qty_token in allin_words:

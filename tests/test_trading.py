@@ -884,6 +884,37 @@ def test_product_quote_stripping_and_10x_5x_trading(db_session):
     assert "✅ [매수 체결] [구매 완료]" in r_long
     assert "10X" in r_long
 
+    # Buy with 10배 shorthand with units ("2주")
+    r_bae, ev_bae = ch.handle_chat_command(db_session, uid, uname, "!10배 2주")
+    assert r_bae is not None
+    assert "✅ [매수 체결] [구매 완료]" in r_bae
+    assert "10X" in r_bae
+
+    # Direct sell with 10배 전량
+    r_sell_bae, ev_sell_bae = ch.handle_chat_command(db_session, uid, uname, "!10배 전량")
+    assert r_sell_bae is not None
+    assert "✅ [매도 체결 / 판매 완료]" in r_sell_bae
+    assert ev_sell_bae["type"] == "trade_sell"
+
+    # Attached form without space: !10배올인
+    user.points = 50000
+    db_session.commit()
+    r_att, ev_att = ch.handle_chat_command(db_session, uid, uname, "!10배올인")
+    assert r_att is not None
+    assert "✅ [매수 체결] [구매 완료]" in r_att
+    assert "10X" in r_att
+
+    # Accidental space after ! and full-width: ! 10배 전량
+    r_sp, ev_sp = ch.handle_chat_command(db_session, uid, uname, "! 10배 전량")
+    assert r_sp is not None
+    assert "✅ [매도 체결 / 판매 완료]" in r_sp
+
+    # Full-width Unicode: ！１０배　올인
+    user.points = 50000
+    db_session.commit()
+    r_uni, ev_uni = ch.handle_chat_command(db_session, uid, uname, "！１０배　올인")
+    assert r_uni is not None
+    assert "✅ [매수 체결] [구매 완료]" in r_uni
 
     # Sell 10X
     r4, ev4 = ch.handle_chat_command(db_session, uid, uname, "!매도 10X 1")
