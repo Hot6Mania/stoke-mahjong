@@ -1020,19 +1020,19 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     assert ok_jackpot is True
     assert details_jackpot["is_jackpot"] is True
     assert "777 JACKPOT" in reply_jackpot
-    assert details_jackpot["net_payout"] == 100000  # 20% of 500k treasury pool = 100,000P
+    assert details_jackpot["net_payout"] == 50000  # 10% of 500k treasury pool = 50,000P
     db_session.refresh(user)
-    assert user.points > 100000
+    assert user.points > 50000
 
-    # 5. Rig slot spin to Yakuman 10x: ['🀄', '🀄', '🀄']
+    # 5. Rig slot spin to Yakuman 7x: ['🀄', '🀄', '🀄']
     user.points = 50000
     db_session.commit()
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["🀄", "🀄", "🀄"])
     ok_yaku, reply_yaku, details_yaku = te.execute_slot_gamble(db_session, uid, uname, "1000")
     assert ok_yaku is True
-    assert details_yaku["net_payout"] == 9000  # 10x total payout (net +9,000P)
+    assert details_yaku["net_payout"] == 6000  # 7x total payout (net +6,000P)
     db_session.refresh(user)
-    assert user.points == 50000 + 9000
+    assert user.points == 50000 + 6000
 
     # 6. Rig slot spin to Loss: ['💣', '🍒', '🍇']
     user.points = 50000
@@ -1048,27 +1048,27 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     db_session.refresh(state)
     assert state.treasury_pool == treasury_before + 2000
 
-    # 7. Rig slot spin to 2-matching standard pair: ['🍒', '🍒', '💣'] -> 1.5x payout (net +0.5x)
+    # 7. Rig slot spin to 2-matching standard pair: ['🍒', '🍒', '💣'] -> 1.3x payout (net +0.3x)
     user.points = 50000
     db_session.commit()
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["🍒", "🍒", "💣"])
     ok_pair, reply_pair, details_pair = te.execute_slot_gamble(db_session, uid, uname, "1000")
     assert ok_pair is True
     assert details_pair["won"] is True
-    assert details_pair["net_payout"] == 500 # 1.5x total payout (net +0.5x)
+    assert details_pair["net_payout"] == 300 # 1.3x total payout (net +0.3x)
     db_session.refresh(user)
-    assert user.points == 50500
+    assert user.points == 50300
 
-    # 8. Rig slot spin to 2-matching high pair: ['💎', '💎', '🍒'] -> 2.0x payout (net +1.0x)
+    # 8. Rig slot spin to 2-matching high pair: ['💎', '💎', '🍒'] -> 1.6x payout (net +0.6x)
     user.points = 50000
     db_session.commit()
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["💎", "💎", "🍒"])
     ok_hpair, reply_hpair, details_hpair = te.execute_slot_gamble(db_session, uid, uname, "1000")
     assert ok_hpair is True
     assert details_hpair["won"] is True
-    assert details_hpair["net_payout"] == 1000 # 2.0x total payout (net +1.0x)
+    assert details_hpair["net_payout"] == 600 # 1.6x total payout (net +0.6x)
     db_session.refresh(user)
-    assert user.points == 51000
+    assert user.points == 50600
 
     # 9. Bet up to 100,000P on slot succeeds and net payout is NOT capped at 100k (uncapped big win!)
     user.points = 200000
@@ -1076,9 +1076,9 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     monkeypatch.setattr("random.choices", lambda *args, **kwargs: ["🀄", "🀄", "🀄"])
     ok_100k, reply_100k, details_100k = te.execute_slot_gamble(db_session, uid, uname, "100000")
     assert ok_100k is True
-    assert details_100k["net_payout"] == 900000  # 10x total payout (net +900,000P uncapped!)
+    assert details_100k["net_payout"] == 600000  # 7x total payout (net +600,000P uncapped!)
     db_session.refresh(user)
-    assert user.points == 200000 + 900000
+    assert user.points == 200000 + 600000
 
     # 10. Bet over 100,000P on slot is rejected
     ok_over, reply_over, _ = te.execute_slot_gamble(db_session, uid, uname, "100001")
@@ -1086,7 +1086,7 @@ def test_casino_slot_gamble(db_session, monkeypatch):
     assert "최대 베팅 한도" in reply_over
 
 def test_casino_dice_gamble(db_session, monkeypatch):
-    """Test 2-dice high-roller battle mechanics including odd/even/high/low and double 2.5x critical."""
+    """Test 2-dice high-roller battle mechanics including odd/even/high/low and double 2.2x critical."""
     uid = "gambler_dice_1"
     uname = "주사위의신"
     user = te.get_or_create_user(db_session, uid, uname)
@@ -1099,18 +1099,18 @@ def test_casino_dice_gamble(db_session, monkeypatch):
     ok, reply, details = te.execute_dice_gamble(db_session, uid, uname, "짝", "1000")
     assert ok is True
     assert details["won"] is True
-    assert details["net_payout"] == 1000 # 2.0x payout (net +1.0x)
+    assert details["net_payout"] == 800 # 1.8x payout (net +0.8x)
     db_session.refresh(user)
-    assert user.points == 51000
+    assert user.points == 50800
 
-    # 2. Critical Double 3.0x jackpot: roll (6, 6) -> sum = 12
+    # 2. Critical Double 2.2x jackpot: roll (6, 6) -> sum = 12
     dice_double = iter([6, 6])
     monkeypatch.setattr("random.randint", lambda a, b: next(dice_double))
     ok_d, reply_d, details_d = te.execute_dice_gamble(db_session, uid, uname, "대", "2000")
     assert ok_d is True
     assert details_d["won"] is True
     assert details_d["is_critical"] is True
-    assert details_d["net_payout"] == 4000 # 3.0x payout (net +2.0x)
+    assert details_d["net_payout"] == 2400 # 2.2x payout (net +1.2x)
     assert "크리티컬 잭팟" in reply_d
 
     # 3. High/Low push refund on 7: roll (3, 4) -> sum = 7
@@ -1131,9 +1131,9 @@ def test_casino_dice_gamble(db_session, monkeypatch):
     ok_100k, _, det_100k = te.execute_dice_gamble(db_session, uid, uname, "짝", "100000")
     assert ok_100k is True
     assert det_100k["is_critical"] is True
-    assert det_100k["net_payout"] == 200000  # 3.0x payout -> net +200,000P uncapped!
+    assert det_100k["net_payout"] == 120000  # 2.2x payout -> net +120,000P uncapped!
     db_session.refresh(user)
-    assert user.points == 200000 + 200000
+    assert user.points == 200000 + 120000
 
     # 5. Bet over 100,000P on dice is rejected
     ok_over, reply_over, _ = te.execute_dice_gamble(db_session, uid, uname, "짝", "100001")
@@ -3097,6 +3097,54 @@ def test_multi_equipment_cooldown_abuse_prevention(db_session, monkeypatch):
     te.set_auto_mining(db_session, uid, uname, enable=True)
     tick = te.execute_auto_mining_tick(db_session, user)
     assert tick is None  # Blocked by cooldown
+
+def test_casino_debuff_and_payback_cap(db_session, monkeypatch):
+    """Test debuffed casino multipliers and 40% maximum payback cap."""
+    uid = "debuff_casino_user"
+    uname = "카지노디버프검증"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 100000
+    items = te.ensure_user_equipment(db_session, user)
+    eq = items[0]
+
+    # Equip item with 3x Legendary dice payback (which would sum to > 40%)
+    eq.potential_tier = "LEGENDARY"
+    eq.potential_line_1 = json.dumps({"code": "CASINO_DICE_PAYBACK", "val": 20.0, "text": "20%"})
+    eq.potential_line_2 = json.dumps({"code": "CASINO_DICE_PAYBACK", "val": 20.0, "text": "20%"})
+    eq.potential_line_3 = json.dumps({"code": "CASINO_DICE_PAYBACK", "val": 20.0, "text": "20%"})
+    db_session.commit()
+
+    te.open_casino(db_session, duration_minutes=5.0, max_bet=100000)
+
+    # 1. Test loss with payback cap: 60% total payback must be clamped to 40% max
+    monkeypatch.setattr(random, "randint", lambda a, b: 1) # 1+1 = 2 (Even)
+    # Bet on "홀" (Odd) -> Loss!
+    initial_pts = user.points
+    ok, reply, det = te.execute_dice_gamble(db_session, uid, uname, "홀", "10000")
+    assert ok is True
+    assert det["won"] is False
+    assert "잠재 페이백 40% 발동" in reply
+    # Net loss must be 10000 - 4000 = 6000
+    assert user.points == initial_pts - 6000
+
+    # 2. Test standard win payout is 1.8x (+80% net)
+    dice_res = iter([2, 4])
+    monkeypatch.setattr(random, "randint", lambda a, b: next(dice_res))
+    ok_w, reply_w, det_w = te.execute_dice_gamble(db_session, uid, uname, "짝", "10000")
+    assert ok_w is True
+    assert det_w["won"] is True
+    assert det_w["net_payout"] == 8000 # 1.8x payout
+    assert "1.8배 당첨" in reply_w
+
+    # 3. Test critical win payout is 2.2x (+120% net)
+    dice_crit = iter([6, 6])
+    monkeypatch.setattr(random, "randint", lambda a, b: next(dice_crit))
+    ok_c, reply_c, det_c = te.execute_dice_gamble(db_session, uid, uname, "대", "10000")
+    assert ok_c is True
+    assert det_c["won"] is True
+    assert det_c["is_critical"] is True
+    assert det_c["net_payout"] == 12000 # 2.2x payout
+    assert "2.2배 크리티컬" in reply_c
 
 
 

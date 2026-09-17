@@ -329,9 +329,9 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "unit": "%",
         "icon": "🎰",
         "tiers": {
-            "EPIC": (10.0, "슬롯머신 최종 당첨금 +10%"),
-            "UNIQUE": (25.0, "슬롯머신 최종 당첨금 +25%"),
-            "LEGENDARY": (50.0, "슬롯머신 최종 당첨금 +50%"),
+            "EPIC": (5.0, "슬롯머신 최종 당첨금 +5%"),
+            "UNIQUE": (10.0, "슬롯머신 최종 당첨금 +10%"),
+            "LEGENDARY": (20.0, "슬롯머신 최종 당첨금 +20%"),
         }
     },
     "CASINO_DICE_PAYBACK": {
@@ -339,9 +339,9 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "unit": "%",
         "icon": "🎲",
         "tiers": {
-            "EPIC": (10.0, "주사위 패배 시 베팅금 10% 페이백"),
-            "UNIQUE": (20.0, "주사위 패배 시 베팅금 20% 페이백"),
-            "LEGENDARY": (40.0, "주사위 패배 시 베팅금 40% 페이백"),
+            "EPIC": (5.0, "주사위 패배 시 베팅금 5% 페이백"),
+            "UNIQUE": (10.0, "주사위 패배 시 베팅금 10% 페이백"),
+            "LEGENDARY": (15.0, "주사위 패배 시 베팅금 15% 페이백"),
         }
     },
     "STARFORCE_DISCOUNT": {
@@ -5228,15 +5228,15 @@ def execute_slot_gamble(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute 3-reel Jackpot Slot (Uncapped Payouts!):
-    Payouts:
-    - 7️⃣ 7️⃣ 7️⃣ : MEGA JACKPOT (20% of treasury pool, uncapped, min 15x bet)
-    - 🀄 🀄 🀄 : 10x Yakuman Jackpot (Net +9x, uncapped)
-    - 💎 💎 💎 : 6x Diamond Triple (Net +5x, uncapped)
-    - 🔔 🔔 🔔 : 4x Golden Bell (Net +3x, uncapped)
-    - 🍇 🍇 🍇 : 3x Grape Triple (Net +2x, uncapped)
-    - 🍒 🍒 🍒 : 2x Cherry Triple (Net +1x, uncapped)
-    - High 2-pair (7, 🀄, 💎): 2.0x payout (+1.0x net, uncapped)
-    - Standard 2-pair (🔔, 🍇, 🍒): 1.5x payout (+0.5x net, uncapped)
+    Payouts (Debuffed for balanced economy):
+    - 7️⃣ 7️⃣ 7️⃣ : MEGA JACKPOT (10% of treasury pool, uncapped, min 10x bet)
+    - 🀄 🀄 🀄 : 7.0x Yakuman Jackpot (Net +6.0x, uncapped)
+    - 💎 💎 💎 : 4.5x Diamond Triple (Net +3.5x, uncapped)
+    - 🔔 🔔 🔔 : 3.0x Golden Bell (Net +2.0x, uncapped)
+    - 🍇 🍇 🍇 : 2.2x Grape Triple (Net +1.2x, uncapped)
+    - 🍒 🍒 🍒 : 1.6x Cherry Triple (Net +0.6x, uncapped)
+    - High 2-pair (7, 🀄, 💎): 1.6x payout (+0.6x net, uncapped)
+    - Standard 2-pair (🔔, 🍇, 🍒): 1.3x payout (+0.3x net, uncapped)
     - Non-matched / 💣: Loss (100% absorbed into Treasury Pool)
     """
     c_state = get_casino_state(db)
@@ -5281,31 +5281,31 @@ def execute_slot_gamble(
         if s1 == "7️⃣":
             is_jackpot = True
             won = True
-            pool_share = int(round(state.treasury_pool * 0.20))
-            guaranteed = bet * 15
+            pool_share = int(round(state.treasury_pool * 0.10))
+            guaranteed = bet * 10
             net_payout = max(guaranteed, pool_share)
-            multiplier = round((net_payout + bet) / bet, 1) if bet > 0 else 15.0
+            multiplier = round((net_payout + bet) / bet, 1) if bet > 0 else 10.0
         elif s1 == "🀄":
             is_jackpot = True
             won = True
-            multiplier = 10.0
-            net_payout = int(round(bet * 9.0))
+            multiplier = 7.0
+            net_payout = int(round(bet * 6.0))
         elif s1 == "💎":
             won = True
-            multiplier = 6.0
-            net_payout = int(round(bet * 5.0))
+            multiplier = 4.5
+            net_payout = int(round(bet * 3.5))
         elif s1 == "🔔":
-            won = True
-            multiplier = 4.0
-            net_payout = int(round(bet * 3.0))
-        elif s1 == "🍇":
             won = True
             multiplier = 3.0
             net_payout = int(round(bet * 2.0))
+        elif s1 == "🍇":
+            won = True
+            multiplier = 2.2
+            net_payout = int(round(bet * 1.2))
         elif s1 == "🍒":
             won = True
-            multiplier = 2.0
-            net_payout = int(round(bet * 1.0))
+            multiplier = 1.6
+            net_payout = int(round(bet * 0.6))
         elif s1 == "💣":
             won = False
             net_payout = -bet
@@ -5314,11 +5314,11 @@ def execute_slot_gamble(
         won = True
         matched_sym = s1 if (s1 == s2 or s1 == s3) else s2
         if matched_sym in ["7️⃣", "🀄", "💎"]:
-            multiplier = 2.0
-            net_payout = max(10, int(round(bet * 1.0))) # Net gain +1.0x (2.0x total payout)
+            multiplier = 1.6
+            net_payout = max(10, int(round(bet * 0.6))) # Net gain +0.6x (1.6x total payout)
         else: # 🔔, 🍇, 🍒
-            multiplier = 1.5
-            net_payout = max(10, int(round(bet * 0.5))) # Net gain +0.5x (1.5x total payout)
+            multiplier = 1.3
+            net_payout = max(10, int(round(bet * 0.3))) # Net gain +0.3x (1.3x total payout)
     else:
         won = False
         net_payout = -bet
@@ -5327,7 +5327,7 @@ def execute_slot_gamble(
         # Check potential effects from equipped pickaxe
         equipped_item = get_user_equipped_item(db, user)
         pot_effects = get_equipment_potential_effects(equipped_item)
-        slot_boost = min(150.0, float(pot_effects.get("slot_boost_pct", 0.0)))
+        slot_boost = min(50.0, float(pot_effects.get("slot_boost_pct", 0.0)))
         extra_slot_payout = 0
         if slot_boost > 0 and net_payout > 0:
             extra_slot_payout = int(round(net_payout * (slot_boost / 100.0)))
@@ -5339,12 +5339,12 @@ def execute_slot_gamble(
         if is_jackpot and s1 == "7️⃣":
             msg = (
                 f"🚨🚨🚨 [MEGA 777 JACKPOT!] {user.username}님이 {display_reels} 대박 터짐! "
-                f"국고의 20%인 +{net_payout:,}P를 싹쓸이 강탈했습니다!{pot_slot_msg} (잔여: {user.points:,}P | 남은 국고: {int(state.treasury_pool):,}P)"
+                f"국고의 10%인 +{net_payout:,}P를 싹쓸이 강탈했습니다!{pot_slot_msg} (잔여: {user.points:,}P | 남은 국고: {int(state.treasury_pool):,}P)"
             )
         elif is_jackpot and s1 == "🀄":
             msg = (
                 f"🀄🔥 [역만 잭팟 당첨!] {user.username}님이 {display_reels} 적중! "
-                f"배팅금 10배인 +{net_payout:,}P를 국고에서 출금 지급!{pot_slot_msg} (잔여: {user.points:,}P)"
+                f"배팅금 7배인 +{net_payout:,}P를 국고에서 출금 지급!{pot_slot_msg} (잔여: {user.points:,}P)"
             )
         else:
             gain_label = f"{multiplier}배" if multiplier > 0 else "보너스"
@@ -5387,9 +5387,10 @@ def execute_dice_gamble(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute 2-Dice High-Roller Gamble (Uncapped Payouts!):
-    Choices: '홀' (Odd - 2.0x), '짝' (Even - 2.0x), '대' (8~12 High - 2.0x), '소' (2~6 Low - 2.0x).
-    Sum 7 on High/Low: PUSH (무승부 - 베팅금 100% 전액 환급, 원금 보존).
-    Special: Double 1-1 or 6-6 gives 3.0x CRITICAL JACKPOT! (Uncapped)
+    Choices (Debuffed for balanced economy):
+    - '홀' (Odd - 1.8x), '짝' (Even - 1.8x), '대' (8~12 High - 1.8x), '소' (2~6 Low - 1.8x).
+    - Sum 7 on High/Low: PUSH (무승부 - 베팅금 100% 전액 환급, 원금 보존).
+    - Special: Double 1-1 or 6-6 gives 2.2x CRITICAL JACKPOT!
     """
     c_state = get_casino_state(db)
     if not c_state["is_open"]:
@@ -5461,18 +5462,18 @@ def execute_dice_gamble(
     is_critical = is_correct and ((d1 == 1 and d2 == 1) or (d1 == 6 and d2 == 6))
 
     if is_critical:
-        # 3.0x Critical Payout (Net profit 2.0x, uncapped)
-        net_payout = int(round(bet * 2.0))
+        # 2.2x Critical Payout (Net profit 1.2x)
+        net_payout = int(round(bet * 1.2))
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
         msg = (
-            f"🎲🔥 [주사위 3배 크리티컬 잭팟!] {user.username}님이 더블 잭팟 적중! "
-            f"[ 🎲{d1} + 🎲{d2} = {total} ] 3배 크리티컬 당첨으로 +{net_payout:,}P 국고 획득! (잔여: {user.points:,}P)"
+            f"🎲🔥 [주사위 2.2배 크리티컬 잭팟!] {user.username}님이 더블 잭팟 적중! "
+            f"[ 🎲{d1} + 🎲{d2} = {total} ] 2.2배 크리티컬 당첨으로 +{net_payout:,}P 국고 획득! (잔여: {user.points:,}P)"
         )
     elif is_correct:
-        # 2.0x Payout (Net profit 1.0x, uncapped)
-        net_payout = bet
-        gain_label = "2배"
+        # 1.8x Payout (Net profit 0.8x)
+        net_payout = int(round(bet * 0.8))
+        gain_label = "1.8배"
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
         odd_label = "홀" if is_odd else "짝"
@@ -5487,10 +5488,10 @@ def execute_dice_gamble(
             f"[ 🎲{d1} + 🎲{d2} = 7 ] 베팅금 {bet:,}P는 전액 환급됩니다! (잔여: {user.points:,}P)"
         )
     else:
-        # Check dice payback potential
+        # Check dice payback potential (capped at 40% to prevent exploit)
         equipped_item = get_user_equipped_item(db, user)
         pot_effects = get_equipment_potential_effects(equipped_item)
-        payback_pct = min(80.0, float(pot_effects.get("dice_payback_pct", 0.0)))
+        payback_pct = min(40.0, float(pot_effects.get("dice_payback_pct", 0.0)))
         payback_amt = 0
         if payback_pct > 0:
             payback_amt = int(round(bet * (payback_pct / 100.0)))
