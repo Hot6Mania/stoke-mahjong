@@ -6,6 +6,7 @@ from typing import Set, Optional, Dict, Any, List, Tuple
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 import httpx
@@ -129,7 +130,7 @@ def serialize_market_state(state) -> Dict[str, Any]:
         c_open = False
         c_rem = 0
 
-    return {
+    res = {
         "current_rank_point": state.current_rank_point,
         "current_price": state.current_price,
         "previous_price": state.previous_price,
@@ -143,6 +144,28 @@ def serialize_market_state(state) -> Dict[str, Any]:
         "casino_remaining": c_rem,
         "casino_max_bet": c_max_bet
     }
+    return res
+
+def sync_docs_market_state(state):
+    """Save latest market state to docs/market_state.json for GitHub Pages."""
+    try:
+        docs_dir = os.path.join(os.path.dirname(__file__), "docs")
+        if os.path.exists(docs_dir):
+            data = serialize_market_state(state)
+            day_open = data.get("day_open_price", 2034)
+            day_diff = state.current_price - day_open
+            day_diff_pct = (day_diff / day_open * 100.0) if day_open > 0 else 0.0
+            payload = {
+                **data,
+                "day_diff": day_diff,
+                "day_diff_pct": round(day_diff_pct, 2),
+                "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            json_path = os.path.join(docs_dir, "market_state.json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 # ---------------------------------------------------------
 # WebSocket Connection Manager for OBS & Admin Panels
@@ -663,6 +686,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="마작 주식 & 파생상품 거래 시스템", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ---------------------------------------------------------
 # Request Models
 # ---------------------------------------------------------
@@ -1045,6 +1076,7 @@ async def api_market_state(db=Depends(get_db)):
     day_open = m["day_open_price"]
     day_diff = state.current_price - day_open
     day_diff_pct = (day_diff / day_open * 100.0) if day_open > 0 else 0.0
+    sync_docs_market_state(state)
     return {
         **m,
         "day_diff": day_diff,
