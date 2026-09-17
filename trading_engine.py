@@ -96,6 +96,9 @@ PRODUCT_SYNONYMS = {
     "1X_INV": ProductType.INV,
     "1XINV": ProductType.INV,
     "1배인버스": ProductType.INV,
+    "1인": ProductType.INV,
+    "1곱": ProductType.INV,
+    "1숏": ProductType.INV,
     "인버스": ProductType.INV,
     "인버스1X": ProductType.INV,
     "숏": ProductType.INV,
@@ -109,6 +112,8 @@ PRODUCT_SYNONYMS = {
     "2x인버스": ProductType.TWO_X_INV,
     "2배인버스": ProductType.TWO_X_INV,
     "2배곱버스": ProductType.TWO_X_INV,
+    "2인": ProductType.TWO_X_INV,
+    "2곱": ProductType.TWO_X_INV,
     "2X숏": ProductType.TWO_X_INV,
     "2배숏": ProductType.TWO_X_INV,
     "2숏": ProductType.TWO_X_INV,
@@ -121,6 +126,8 @@ PRODUCT_SYNONYMS = {
     "3xinv": ProductType.THREE_X_INV,
     "3배인버스": ProductType.THREE_X_INV,
     "3배곱버스": ProductType.THREE_X_INV,
+    "3인": ProductType.THREE_X_INV,
+    "3곱": ProductType.THREE_X_INV,
     "3X인버스": ProductType.THREE_X_INV,
     "3X숏": ProductType.THREE_X_INV,
     "3배숏": ProductType.THREE_X_INV,
@@ -134,6 +141,8 @@ PRODUCT_SYNONYMS = {
     "5xinv": ProductType.FIVE_X_INV,
     "5배인버스": ProductType.FIVE_X_INV,
     "5배곱버스": ProductType.FIVE_X_INV,
+    "5인": ProductType.FIVE_X_INV,
+    "5곱": ProductType.FIVE_X_INV,
     "5X인버스": ProductType.FIVE_X_INV,
     "5X숏": ProductType.FIVE_X_INV,
     "5배숏": ProductType.FIVE_X_INV,
@@ -147,6 +156,8 @@ PRODUCT_SYNONYMS = {
     "10xinv": ProductType.TEN_X_INV,
     "10배인버스": ProductType.TEN_X_INV,
     "10배곱버스": ProductType.TEN_X_INV,
+    "10인": ProductType.TEN_X_INV,
+    "10곱": ProductType.TEN_X_INV,
     "10X인버스": ProductType.TEN_X_INV,
     "10X숏": ProductType.TEN_X_INV,
     "10배숏": ProductType.TEN_X_INV,
@@ -176,6 +187,14 @@ def parse_product_type(text: str) -> Optional[ProductType]:
             prefix = upper_c[:-len(suffix)].strip()
             if prefix in ["1", "2", "3", "5", "10"]:
                 return PRODUCT_SYNONYMS.get(f"{prefix}X")
+
+    # Handle inverse forms like "10숏", "10인", "10곱", "10인버스", "10곱버스"
+    for suffix in ["인", "곱", "숏", "배인", "배곱", "배숏", "인버스", "곱버스", "X인버스", "X숏", "X_INV", "XINV"]:
+        if upper_c.endswith(suffix):
+            prefix = upper_c[:-len(suffix)].strip()
+            if prefix in ["1", "2", "3", "5", "10"]:
+                inv_key = "INV" if prefix == "1" else f"{prefix}X_INV"
+                return PRODUCT_SYNONYMS.get(inv_key)
 
     return None
 

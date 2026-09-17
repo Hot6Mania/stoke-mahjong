@@ -824,7 +824,16 @@ def test_product_quote_stripping_and_10x_5x_trading(db_session):
     assert te.parse_product_type("5버") == ProductType.FIVE_X
     assert te.parse_product_type("5롱") == ProductType.FIVE_X
     assert te.parse_product_type("10X_INV") == ProductType.TEN_X_INV
+    assert te.parse_product_type("10숏") == ProductType.TEN_X_INV
+    assert te.parse_product_type("10인") == ProductType.TEN_X_INV
+    assert te.parse_product_type("10곱") == ProductType.TEN_X_INV
     assert te.parse_product_type("5X_INV") == ProductType.FIVE_X_INV
+    assert te.parse_product_type("5숏") == ProductType.FIVE_X_INV
+    assert te.parse_product_type("5인") == ProductType.FIVE_X_INV
+    assert te.parse_product_type("곱버스") == ProductType.TWO_X_INV
+    assert te.parse_product_type("2숏") == ProductType.TWO_X_INV
+    assert te.parse_product_type("숏") == ProductType.INV
+    assert te.parse_product_type("인버스") == ProductType.INV
 
     # 2. Buy commands with quotes and typos
     uid = "user_10x_5x"
