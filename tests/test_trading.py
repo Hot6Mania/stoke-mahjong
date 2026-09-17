@@ -2129,6 +2129,138 @@ def test_starforce_fever_random_events_and_guaranteed_success(db_session, monkey
     assert "스타포스 피버 종료" in r_close
     assert ev_close["type"] == "starforce_fever_close"
 
+def test_auto_mining_system_and_commands(db_session, monkeypatch):
+    """
+    Test Auto-Mining system:
+    1. Duration scaling based on pickaxe tier (0성 30m, 5성 2h, 10성 4h, 15성 8h, 25성 24h).
+    2. Auto-mining tier restrictions: maximum is SR (황금 광맥). Never rolls EX, UR+, UR, SSR.
+    3. ON / OFF / Renew operations.
+    4. Auto-mining tick execution, share awarding, debt payoff, cooldown check, session tracking.
+    5. Expiration handling.
+    6. Chat commands: !자동채굴 on/off/갱신/상태, !남은시간, !내정보.
+    """
+    uid = "auto_miner_1"
+    uname = "오토광부"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 100000
+    db_session.commit()
+
+    # 1. Test Duration Table
+    assert te.get_auto_mining_duration_hours(0) == 0.5
+    assert te.get_auto_mining_duration_hours(5) == 2.0
+    assert te.get_auto_mining_duration_hours(10) == 4.0
+    assert te.get_auto_mining_duration_hours(15) == 8.0
+    assert te.get_auto_mining_duration_hours(20) == 14.0
+    assert te.get_auto_mining_duration_hours(25) == 24.0
+
+    # 2. Test Tier restrictions: maximum is SR (황금 광맥), never rolls higher tiers
+    valid_codes = {"SR", "R", "N", "C"}
+    for _ in range(100):
+        t = te.roll_auto_mining_tier(crit_bonus=50.0)
+        assert t["code"] in valid_codes
+        assert t["code"] not in {"EX", "UR+", "UR", "SSR"}
+
+    # 3. Test Turning ON
+    eqs = te.ensure_user_equipment(db_session, user)
+    eq = eqs[0]
+    user.pickaxe_level = 5
+    eq.starforce = 5
+    db_session.commit()
+
+    ok_on, rep_on, det_on = te.set_auto_mining(db_session, uid, uname, enable=True)
+    assert ok_on is True
+    assert det_on["auto_mining_enabled"] is True
+    assert det_on["duration_hours"] == 2.0
+    db_session.refresh(user)
+    assert user.auto_mining_enabled is True
+    assert user.auto_mining_end_time > time.time()
+
+    # 4. Test Auto-Mining Tick Execution
+    # Ensure cooldown is ready
+    user.last_mined_at = None
+    db_session.commit()
+
+    # Mock tier to SR (황금 광맥)
+    monkeypatch.setattr("trading_engine.roll_auto_mining_tier", lambda crit_bonus=0.0: {
+        "code": "SR",
+        "name": "⚡ [자동 채굴] 황금 광맥 크리티컬! (5.0%)",
+        "multiplier": 1.6,
+        "bonus_cash": 1000,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0
+    })
+
+    tick = te.execute_auto_mining_tick(db_session, user)
+    assert tick is not None
+    assert tick["shares_awarded"] > 0
+    assert tick["tier_code"] == "SR"
+    db_session.refresh(user)
+    assert user.auto_mining_session_mined > 0
+    assert user.last_mined_at is not None
+
+    # Immediate second tick should be blocked due to cooldown
+    tick_blocked = te.execute_auto_mining_tick(db_session, user)
+    assert tick_blocked is None
+
+    # 5. Test Renew
+    # Upgrade pickaxe to 15성
+    user.pickaxe_level = 15
+    eq.starforce = 15
+    db_session.commit()
+
+    ok_ren, rep_ren, det_ren = te.renew_auto_mining(db_session, uid, uname)
+    assert ok_ren is True
+    assert det_ren["duration_hours"] == 8.0
+    db_session.refresh(user)
+    assert user.auto_mining_end_time > time.time() + 7.9 * 3600
+
+    # 6. Test Expiration
+    user.auto_mining_end_time = time.time() - 10.0
+    db_session.commit()
+    tick_exp = te.execute_auto_mining_tick(db_session, user)
+    assert tick_exp is None
+    db_session.refresh(user)
+    assert user.auto_mining_enabled is False
+
+    # 7. Test Turning OFF
+    # Turn back on then off
+    te.set_auto_mining(db_session, uid, uname, enable=True)
+    ok_off, rep_off, det_off = te.set_auto_mining(db_session, uid, uname, enable=False)
+    assert ok_off is True
+    assert det_off["auto_mining_enabled"] is False
+    db_session.refresh(user)
+    assert user.auto_mining_enabled is False
+
+    # Turning OFF when already off
+    ok_off2, rep_off2, _ = te.set_auto_mining(db_session, uid, uname, enable=False)
+    assert ok_off2 is False
+    assert "켜져 있지 않습니다" in rep_off2
+
+    # 8. Test Chat Commands
+    r_chat_off, _ = ch.handle_chat_command(db_session, uid, uname, "!자동채굴")
+    assert "자동 채굴 상태: 정지" in r_chat_off
+
+    r_cmd_on, ev_on = ch.handle_chat_command(db_session, uid, uname, "!자동채굴 on")
+    assert "자동 채굴 활성화" in r_cmd_on
+    assert ev_on["type"] == "auto_mining_toggle"
+
+    r_chat_on, _ = ch.handle_chat_command(db_session, uid, uname, "!자동채굴")
+    assert "자동 채굴 상태: 가동 중" in r_chat_on
+
+    r_cmd_ren, ev_ren = ch.handle_chat_command(db_session, uid, uname, "!자동채굴 갱신")
+    assert "자동 채굴 갱신 완료" in r_cmd_ren
+    assert ev_ren["type"] == "auto_mining_renew"
+
+    r_time, _ = ch.handle_chat_command(db_session, uid, uname, "!남은시간")
+    assert "자동채굴: 🟢 가동중" in r_time
+
+    r_info, _ = ch.handle_chat_command(db_session, uid, uname, "!내정보")
+    assert "자동채굴: 🟢ON" in r_info
+
+    r_cmd_off, ev_off = ch.handle_chat_command(db_session, uid, uname, "!자동채굴 off")
+    assert "자동 채굴 비활성화" in r_cmd_off
+    assert ev_off["type"] == "auto_mining_toggle"
+
 
 
 

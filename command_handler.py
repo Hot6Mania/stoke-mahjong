@@ -46,7 +46,10 @@ from trading_engine import (
     get_starforce_event_state,
     open_starforce_event,
     close_starforce_event,
-    get_starforce_event_guide
+    get_starforce_event_guide,
+    set_auto_mining,
+    renew_auto_mining,
+    get_auto_mining_status
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -54,7 +57,7 @@ GUIDE_WEB_URL = os.getenv("GUIDE_WEB_URL", "https://hot6mania.github.io/stoke-ma
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !국고, !남은시간
+• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간
 • 장비: !내장비, !장착 [번호], !강화 [번호], !피버, !곡괭이구매 [0/5/10], !장비판매 [유저] [번호] [가격], !장비장터, !장비구매 [번호]
 • 도박: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !카지노, !슬롯확률
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) (약어: !약어)
@@ -198,6 +201,9 @@ def handle_chat_command(
             sf_str = "💤 피버 대기중 (돌발 발동)"
 
         # 4. User Mining Cooldown
+        pick_lvl = getattr(user, "pickaxe_level", 0) or 0
+        pick_info = get_pickaxe_info(pick_lvl)
+        pickaxe_cd = pick_info["cooldown_seconds"]
         mine_str = "⛏️ 즉시 가능"
         if user.last_mined_at:
             now_utc = datetime.now(timezone.utc)
@@ -205,12 +211,22 @@ def handle_chat_command(
             if last_t.tzinfo is None:
                 last_t = last_t.replace(tzinfo=timezone.utc)
             elapsed = (now_utc - last_t).total_seconds()
-            if elapsed < 900:
-                rem_m = int(900 - elapsed)
+            if elapsed < pickaxe_cd:
+                rem_m = int(pickaxe_cd - elapsed)
                 mm, ss = divmod(rem_m, 60)
                 mine_str = f"⛏️ 쿨타임 {mm}분 {ss}초"
 
-        reply = f"⏱️ [현재 남은 시간] 거래: {trade_str} | 도박: {casino_str} | 스타포스: {sf_str} | 내 채굴: {mine_str}"
+        # 5. Auto Mining Remaining
+        end_am = float(getattr(user, "auto_mining_end_time", 0.0) or 0.0)
+        if bool(getattr(user, "auto_mining_enabled", False)) and end_am > now:
+            rem_am = int(end_am - now)
+            h_am, mod_am = divmod(rem_am, 3600)
+            m_am, s_am = divmod(mod_am, 60)
+            auto_str = f"🟢 가동중 ({h_am}시간 {m_am}분 남음)" if h_am > 0 else f"🟢 가동중 ({m_am}분 {s_am}초 남음)"
+        else:
+            auto_str = "💤 OFF"
+
+        reply = f"⏱️ [현재 남은 시간] 거래: {trade_str} | 도박: {casino_str} | 스타포스: {sf_str} | 내 채굴: {mine_str} | 자동채굴: {auto_str}"
         return reply, None
 
     # 3. Account / Wallet Query (보유와 채굴을 '보유'로 완전 통합)
@@ -246,14 +262,25 @@ def handle_chat_command(
         pickaxe = get_pickaxe_info(user_pick_lvl)
         pickaxe_str = f" | 장비: {pickaxe['name']}"
 
+        am_enabled = bool(getattr(user, "auto_mining_enabled", False))
+        am_end = float(getattr(user, "auto_mining_end_time", 0.0) or 0.0)
+        now_ts = time.time()
+        if am_enabled and am_end > now_ts:
+            rem_sec = int(am_end - now_ts)
+            h = rem_sec // 3600
+            m = (rem_sec % 3600) // 60
+            am_str = f" | 자동채굴: 🟢ON ({h}시간 {m}분)" if h > 0 else f" | 자동채굴: 🟢ON ({m}분)"
+        else:
+            am_str = " | 자동채굴: 💤OFF"
+
         if pos_summaries:
             pos_str = " | ".join(pos_summaries)
             reply = (
-                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str} | "
+                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str} | "
                 f"보유: [{pos_str}]"
             )
         else:
-            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str} | 보유 포지션이 없습니다."
+            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str} | 보유 포지션이 없습니다."
 
         return reply, None
 
@@ -567,6 +594,24 @@ def handle_chat_command(
     # 8-1. Mining Probability & Critical Guide
     if cmd in ["!채굴확률", "!채굴안내", "!채굴정보", "!광맥", "!채굴배율"]:
         return GUIDE_MINING, None
+
+    # 8-1-1. Auto-Mining Controls (!자동채굴, !오토채굴, !오토, !automine)
+    if cmd in ["!자동채굴", "!오토채굴", "!오토", "!automine", "!autonmine", "!오토마이닝"]:
+        sub_arg = tokens[1].strip().lower() if len(tokens) >= 2 else ""
+        if sub_arg in ["on", "켜기", "시작", "start", "enable", "가동"]:
+            success, reply, details = set_auto_mining(db, user_id, username, enable=True)
+            event = {"type": "auto_mining_toggle", "data": details} if success and details else None
+            return reply, event
+        elif sub_arg in ["off", "끄기", "중지", "종료", "stop", "disable", "정지"]:
+            success, reply, details = set_auto_mining(db, user_id, username, enable=False)
+            event = {"type": "auto_mining_toggle", "data": details} if success and details else None
+            return reply, event
+        elif sub_arg in ["갱신", "연장", "리셋", "renew", "reset", "재시작"]:
+            success, reply, details = renew_auto_mining(db, user_id, username)
+            event = {"type": "auto_mining_renew", "data": details} if success and details else None
+            return reply, event
+        else:
+            return get_auto_mining_status(db, user_id, username), None
 
     # 8-2. Pickaxe / Equipment Status / Inventory (!곡괭이, !내장비, !인벤토리)
     if cmd in ["!곡괭이", "!채굴기", "!장비", "!아이템", "!내곡괭이", "!내장비", "!인벤토리", "!인벤", "!pickaxe", "!inventory"]:

@@ -65,6 +65,10 @@ def init_db():
                 "ALTER TABLE users ADD COLUMN debt INTEGER DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN last_bankrupt_at DATETIME",
                 "ALTER TABLE users ADD COLUMN pickaxe_level INTEGER DEFAULT 1",
+                "ALTER TABLE users ADD COLUMN auto_mining_enabled BOOLEAN DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN auto_mining_end_time FLOAT DEFAULT 0.0",
+                "ALTER TABLE users ADD COLUMN auto_mining_session_mined FLOAT DEFAULT 0.0",
+                "ALTER TABLE users ADD COLUMN auto_mining_session_points INTEGER DEFAULT 0",
             ]:
                 try:
                     conn.execute(sqlalchemy.text(col_sql))

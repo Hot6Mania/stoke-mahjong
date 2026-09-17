@@ -774,6 +774,89 @@
 
             <div class="content-card">
                 <div class="card-header">
+                    <div class="card-title">🤖 자동 채굴 (Auto Mining) 시스템 & 곡괭이 등급별 지속 시간</div>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    <code>!자동채굴 on</code> 명령어로 AFK 상태에서도 백그라운드에서 쿨타임마다 자동으로 채굴을 진행할 수 있습니다.<br>
+                    곡괭이 강화 등급(★성)이 높을수록 자동 채굴 지속 시간이 대폭 늘어나며, <code>!자동채굴 갱신</code>으로 언제든 연장할 수 있습니다.
+                </p>
+
+                <div class="callout" style="background: rgba(14, 165, 233, 0.08); border-left: 4px solid #0ea5e9; margin-bottom: 16px;">
+                    ⚙️ <strong>자동 채굴 주요 규칙 & 밸런스</strong><br>
+                    • ⏳ <strong>자동 쿨타임 수확</strong>: 장착한 곡괭이의 쿨타임(15분 ~ 3분)마다 자동으로 광맥을 캐어 1X 주식 및 현금 보너스로 즉시 적립됩니다.<br>
+                    • ⚡ <strong>최대 황금 광맥(5%) 제한</strong>: 자동 채굴에서는 <strong>최대 황금 광맥(SR)</strong>까지만 출현합니다. (천화, 구련보등, 국사무쌍, 다이아 등 신화급 잭팟은 오직 수동 <code>!채굴</code>에서만 가능!)<br>
+                    • ⚖️ <strong>기본 확률 너프</strong>: 황금 광맥(5%), 은 광맥(18%), 구리(42%), 석탄·자갈(35%)로 수동 채굴 대비 확률이 조정되어 경제 밸런스가 유지됩니다.<br>
+                    • 🔄 <strong>언제든 갱신 가능</strong>: <code>!자동채굴 갱신</code>을 입력하면 현재 장착 곡괭이의 최대 지속 시간으로 즉시 시간이 리셋·연장됩니다!
+                </div>
+
+                <div class="table-responsive">
+                    <table class="styled-table">
+                        <thead>
+                            <tr>
+                                <th>곡괭이 등급</th>
+                                <th>대표 장비 외형</th>
+                                <th>자동 채굴 지속 시간</th>
+                                <th>채굴 쿨타임</th>
+                                <th>특징 / 비고</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>★0성 ~ ★4성</td>
+                                <td>🪵 나무 곡괭이</td>
+                                <td><strong>30분 ~ 1시간</strong></td>
+                                <td>15분</td>
+                                <td>초보자 입문 구간 (자주 갱신 필요)</td>
+                            </tr>
+                            <tr>
+                                <td>★5성 ~ ★9성</td>
+                                <td>🪨 돌 곡괭이</td>
+                                <td><strong>2시간 ~ 3시간 30분</strong></td>
+                                <td>13분</td>
+                                <td>방송 시청 1타임 방치 가능</td>
+                            </tr>
+                            <tr>
+                                <td>★10성 ~ ★14성</td>
+                                <td>⛓️ 철 곡괭이</td>
+                                <td><strong>4시간 ~ 6시간</strong></td>
+                                <td>10분</td>
+                                <td>반나절 여유로운 자동 채굴</td>
+                            </tr>
+                            <tr>
+                                <td>★15성 ~ ★19성</td>
+                                <td>🪙 황금 곡괭이</td>
+                                <td><strong>8시간 ~ 12시간</strong></td>
+                                <td>8분 ~ 6분</td>
+                                <td>수면 시간(8시간) 완벽 방치 커버!</td>
+                            </tr>
+                            <tr>
+                                <td>★20성 ~ ★21성</td>
+                                <td>💎 다이아 곡괭이</td>
+                                <td><strong>14시간 ~ 16시간</strong></td>
+                                <td>5분</td>
+                                <td>초고속 5분 쿨타임 대량 자동 수확</td>
+                            </tr>
+                            <tr>
+                                <td>★22성 ~ ★24성</td>
+                                <td>🌌 옵시디언 곡괭이</td>
+                                <td><strong>20시간 ~ 22시간</strong></td>
+                                <td>4분</td>
+                                <td>하루 가까이 끊김 없는 자동 채굴</td>
+                            </tr>
+                            <tr>
+                                <td>★25성 (MAX)</td>
+                                <td>🀄 역만 마작 곡괭이</td>
+                                <td><strong>24시간 (1일 종일)</strong></td>
+                                <td>3분</td>
+                                <td>👑 1일 1회 갱신으로 3분마다 무한 채굴 폭격!</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="content-card">
+                <div class="card-header">
                     <div class="card-title">🔨 메이플스토리 스타포스 0성 ~ 25성 (MAX) 상세 강화 확률표</div>
                 </div>
                 <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
@@ -1244,6 +1327,18 @@
                     <div class="cmd-box" onclick="copyCommand('!채굴확률')">
                         <div class="cmd-code">!채굴확률 <span class="copy-icon">📋 복사</span></div>
                         <div class="cmd-desc">천화 신화잭팟(0.2%), 구련보등(0.8%), 국사무쌍(2%), 다이아(5%) 등 등급 및 보상 확인</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!자동채굴 on')">
+                        <div class="cmd-code">!자동채굴 on / off <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">자동 채굴 켜기/끄기 (곡괭이 등급에 따라 30분~24시간 지속, 쿨마다 자동 채굴)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!자동채굴 갱신')">
+                        <div class="cmd-code">!자동채굴 갱신 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">자동 채굴 지속 시간을 현재 장착 곡괭이 최대 지속 시간으로 즉시 연장 (!오토갱신)</div>
+                    </div>
+                    <div class="cmd-box" onclick="copyCommand('!자동채굴')">
+                        <div class="cmd-code">!자동채굴 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">자동 채굴 가동 상태, 남은 지속 시간, 다음 수확 쿨타임 및 누적 수확 조회 (!오토)</div>
                     </div>
                     <div class="cmd-box" onclick="copyCommand('!곡괭이')">
                         <div class="cmd-code">!곡괭이 / !내장비 <span class="copy-icon">📋 복사</span></div>

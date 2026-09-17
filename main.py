@@ -757,6 +757,21 @@ async def sync_tracker_loop():
             pass
         await asyncio.sleep(2)
 
+async def auto_mining_loop():
+    """Background worker that periodically executes auto-mining ticks for active viewers."""
+    while True:
+        try:
+            await asyncio.sleep(15)
+            db = SessionLocal()
+            try:
+                te.process_all_auto_mining(db)
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
+
 # ---------------------------------------------------------
 # FastAPI Lifespan & App Setup
 # ---------------------------------------------------------
@@ -770,12 +785,14 @@ async def lifespan(app: FastAPI):
     bot_task = asyncio.create_task(bot_instance.run())
     session_task = asyncio.create_task(session_worker.run())
     tracker_task = asyncio.create_task(sync_tracker_loop())
+    auto_mining_task = asyncio.create_task(auto_mining_loop())
 
     yield
 
     bot_task.cancel()
     session_task.cancel()
     tracker_task.cancel()
+    auto_mining_task.cancel()
 
 app = FastAPI(title="마작 주식 & 파생상품 거래 시스템", lifespan=lifespan)
 

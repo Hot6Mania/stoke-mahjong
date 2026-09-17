@@ -43,6 +43,10 @@ class User(Base):
     total_mined = Column(Float, default=0.0, nullable=False)
     total_dividends = Column(Integer, default=0, nullable=False)
     pickaxe_level = Column(Integer, default=1, nullable=False)
+    auto_mining_enabled = Column(Boolean, default=False, nullable=False)
+    auto_mining_end_time = Column(Float, default=0.0, nullable=True)
+    auto_mining_session_mined = Column(Float, default=0.0, nullable=False)
+    auto_mining_session_points = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     positions = relationship("Position", back_populates="user", cascade="all, delete-orphan")

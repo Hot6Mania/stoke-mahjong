@@ -1752,6 +1752,402 @@ def roll_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
         t["multiplier"] = round(random.uniform(low, high), 2)
     return t
 
+# =========================================================
+# 자동 채굴 (Auto Mining) 시스템
+# - 곡괭이 등급(스타포스)에 따른 세션 지속 시간 (0성 30분 ~ 25성 24시간)
+# - 최대 황금 광맥(SR)까지만 출현 (EX, UR+, UR, SSR 잭팟 제외)
+# - 기본 확률 및 배율 하향(너프) 조정으로 AFK 패시브 밸런스 유지
+# =========================================================
+AUTO_MINING_DURATION_HOURS: Dict[int, float] = {
+    0: 0.5,    # 30분 (나무 곡괭이 0성)
+    1: 0.6,    # 36분
+    2: 0.75,   # 45분
+    3: 0.85,   # 51분
+    4: 1.0,    # 1시간
+    5: 2.0,    # 2시간 (돌 곡괭이 5성)
+    6: 2.25,   # 2시간 15분
+    7: 2.5,    # 2시간 30분
+    8: 3.0,    # 3시간
+    9: 3.5,    # 3시간 30분
+    10: 4.0,   # 4시간 (철 곡괭이 10성)
+    11: 4.5,   # 4시간 30분
+    12: 5.0,   # 5시간
+    13: 5.5,   # 5시간 30분
+    14: 6.0,   # 6시간
+    15: 8.0,   # 8시간 (황금 곡괭이 15성)
+    16: 9.0,   # 9시간
+    17: 10.0,  # 10시간
+    18: 11.0,  # 11시간
+    19: 12.0,  # 12시간
+    20: 14.0,  # 14시간 (다이아 곡괭이 20성)
+    21: 16.0,  # 16시간
+    22: 20.0,  # 20시간 (옵시디언 22성)
+    23: 21.0,  # 21시간
+    24: 22.0,  # 22시간
+    25: 24.0   # 24시간 (역만 마작 곡괭이 25성 MAX)
+}
+
+def get_auto_mining_duration_hours(level: int) -> float:
+    lvl = max(0, min(25, int(level or 0)))
+    return AUTO_MINING_DURATION_HOURS.get(lvl, 0.5)
+
+def format_duration_hours(hours: float) -> str:
+    total_min = int(round(hours * 60))
+    h, m = divmod(total_min, 60)
+    if h > 0 and m > 0:
+        return f"{h}시간 {m}분"
+    elif h > 0:
+        return f"{h}시간"
+    else:
+        return f"{m}분"
+
+AUTO_MINING_TIERS = [
+    {
+        "code": "SR",
+        "name": "⚡ [자동 채굴] 황금 광맥 크리티컬! (5.0%)",
+        "prob": 5.0,
+        "multiplier": 1.6,
+        "bonus_cash": 1000,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0
+    },
+    {
+        "code": "R",
+        "name": "✨ [자동 채굴] 은 광맥 보너스 채굴 (18.0%)",
+        "prob": 18.0,
+        "multiplier_range": (1.1, 1.3),
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0
+    },
+    {
+        "code": "N",
+        "name": "⛏️ [자동 채굴] 구리 광맥 일반 채굴 (42.0%)",
+        "prob": 42.0,
+        "multiplier": 0.9,
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0
+    },
+    {
+        "code": "C",
+        "name": "🪨 [자동 채굴] 석탄·자갈 광맥 소박 채굴 (35.0%)",
+        "prob": 35.0,
+        "multiplier_range": (0.5, 0.7),
+        "bonus_cash": 0,
+        "bonus_10x": 0.0,
+        "cooldown_reduction": 0
+    }
+]
+
+def roll_auto_mining_tier(crit_bonus: float = 0.0) -> Dict[str, Any]:
+    """
+    Roll random tier specifically for auto-mining:
+    - Maximum tier is 황금 광맥 (SR). Never rolls EX, UR+, UR, SSR.
+    - Probabilities and multipliers are nerfed compared to manual mining.
+    """
+    cb = max(0.0, float(crit_bonus or 0.0))
+    w_sr = min(12.0, 5.0 + cb * 0.05)
+    w_r = min(25.0, 18.0 + cb * 0.08)
+    w_n = max(30.0, 42.0 - cb * 0.06)
+    w_c = max(20.0, 35.0 - cb * 0.07)
+
+    tier_choice = random.choices(AUTO_MINING_TIERS, weights=[w_sr, w_r, w_n, w_c], k=1)[0]
+    t = dict(tier_choice)
+    if "multiplier_range" in t:
+        low, high = t["multiplier_range"]
+        t["multiplier"] = round(random.uniform(low, high), 2)
+    return t
+
+def execute_auto_mining_tick(
+    db: Session,
+    user: User,
+    now_utc: Optional[datetime] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Execute a single auto-mining tick for a user if auto-mining is enabled and cooldown is ready.
+    """
+    if not bool(getattr(user, "auto_mining_enabled", False)):
+        return None
+
+    now_utc = now_utc or datetime.now(timezone.utc)
+    now_ts = now_utc.timestamp()
+    end_time = float(getattr(user, "auto_mining_end_time", 0.0) or 0.0)
+
+    # 1. Expiration check
+    if end_time <= 0 or now_ts >= end_time:
+        user.auto_mining_enabled = False
+        user.auto_mining_end_time = 0.0
+        try:
+            db.commit()
+        except Exception:
+            pass
+        return None
+
+    # 2. Pickaxe and cooldown check
+    equipped_item = get_user_equipped_item(db, user)
+    star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
+    star = max(0, min(25, int(star or 0)))
+    pickaxe = get_pickaxe_info(star)
+    cooldown_sec = pickaxe["cooldown_seconds"]
+    pickaxe_bonus_cash = pickaxe.get("bonus_points", 0)
+
+    if user.last_mined_at:
+        last_time = user.last_mined_at
+        if last_time.tzinfo is None:
+            last_time = last_time.replace(tzinfo=timezone.utc)
+        elapsed = (now_utc - last_time).total_seconds()
+        if elapsed < cooldown_sec:
+            return None
+
+    # 3. Dynamic Base Reward & Tier Roll
+    state = get_market_state(db)
+    current_price = state.current_price
+    target_cash = min(float(current_price), max(current_price * 0.2, state.treasury_pool * 0.05))
+    base_shares = round(target_cash / current_price, 2)
+    if base_shares <= 0.05:
+        base_shares = 0.1
+    base_shares = round(base_shares * pickaxe["yield_multiplier"], 2)
+
+    tier = roll_auto_mining_tier(crit_bonus=pickaxe.get("crit_bonus", 0.0))
+    multiplier = tier["multiplier"]
+    bonus_cash = tier.get("bonus_cash", 0)
+    total_bonus_cash = bonus_cash + pickaxe_bonus_cash
+
+    shares_awarded = round(base_shares * multiplier, 2)
+    if shares_awarded <= 0.05:
+        shares_awarded = 0.05
+    actual_cost = int(round(shares_awarded * current_price))
+    total_mined_cost = actual_cost + total_bonus_cash
+
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool = max(0.0, state.treasury_pool - total_mined_cost)
+
+    # 4. Debt payoff or shares credit
+    user_debt = getattr(user, "debt", 0) or 0
+    if user_debt > 0:
+        total_payout = actual_cost + total_bonus_cash
+        repay_amt = min(user_debt, total_payout)
+        user.debt = user_debt - repay_amt
+        state.treasury_pool += repay_amt
+        excess = total_payout - repay_amt
+        if excess > 0:
+            user.points += excess
+    else:
+        pos = db.query(Position).filter_by(user_id=user.id, product_type=ProductType.ONE_X).first()
+        if pos and pos.quantity > 0:
+            pos.quantity += shares_awarded
+            pos.invested_cash += actual_cost
+            pos.entry_price = pos.invested_cash / pos.quantity
+        else:
+            if not pos:
+                pos = Position(
+                    user_id=user.id,
+                    product_type=ProductType.ONE_X,
+                    quantity=shares_awarded,
+                    entry_price=current_price,
+                    invested_cash=actual_cost
+                )
+                db.add(pos)
+            else:
+                pos.quantity = shares_awarded
+                pos.entry_price = current_price
+                pos.invested_cash = actual_cost
+        if total_bonus_cash > 0:
+            user.points += total_bonus_cash
+
+    # 5. Session and lifetime stats
+    user.total_mined = float(getattr(user, "total_mined", 0.0) or 0.0) + shares_awarded
+    user.auto_mining_session_mined = float(getattr(user, "auto_mining_session_mined", 0.0) or 0.0) + shares_awarded
+    user.auto_mining_session_points = int(getattr(user, "auto_mining_session_points", 0) or 0) + actual_cost + total_bonus_cash
+    user.last_mined_at = now_utc
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    return {
+        "user_id": user.id,
+        "username": user.username,
+        "shares_awarded": shares_awarded,
+        "bonus_cash": total_bonus_cash,
+        "actual_cost": actual_cost,
+        "tier_name": tier["name"],
+        "tier_code": tier["code"],
+        "pickaxe_name": pickaxe["name"],
+        "session_mined": user.auto_mining_session_mined,
+        "session_points": user.auto_mining_session_points
+    }
+
+def process_all_auto_mining(db: Session) -> List[Dict[str, Any]]:
+    """Runs a single auto-mining pass for all users with auto-mining enabled."""
+    users = db.query(User).filter(User.auto_mining_enabled == True).all()
+    results = []
+    now_utc = datetime.now(timezone.utc)
+    for u in users:
+        tick = execute_auto_mining_tick(db, u, now_utc=now_utc)
+        if tick:
+            results.append(tick)
+    return results
+
+def set_auto_mining(
+    db: Session,
+    user_id: str,
+    username: str,
+    enable: bool
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Turn Auto-Mining ON or OFF for a user."""
+    user = get_or_create_user(db, user_id, username)
+    equipped_item = get_user_equipped_item(db, user)
+    star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
+    star = max(0, min(25, int(star or 0)))
+
+    if enable:
+        dur_hours = get_auto_mining_duration_hours(star)
+        dur_sec = dur_hours * 3600.0
+        now = time.time()
+        user.auto_mining_enabled = True
+        user.auto_mining_end_time = now + dur_sec
+        user.auto_mining_session_mined = 0.0
+        user.auto_mining_session_points = 0
+        db.commit()
+        db.refresh(user)
+
+        dur_str = format_duration_hours(dur_hours)
+        info = get_pickaxe_info(star)
+        reply = (
+            f"⛏️🤖 [자동 채굴 활성화 (ON)] {user.username}님의 자동 채굴이 시작되었습니다!\n"
+            f"• 장착 장비: {equipped_item.name} (★{star}성, 쿨타임 {info['cooldown_minutes']}분)\n"
+            f"• 지속 시간: {dur_str} (만료 전 !자동채굴 갱신 으로 연장 가능)\n"
+            f"• 채굴 규칙: 쿨마다 자동 채굴 진행 (최대 황금 광맥 출현, 기본 확률 조정 적용)\n"
+            f"💡 명령어: !자동채굴 (상태 확인), !자동채굴 갱신, !자동채굴 끄기"
+        )
+        details = {
+            "auto_mining_enabled": True,
+            "duration_hours": dur_hours,
+            "end_time": user.auto_mining_end_time,
+            "starforce": star,
+            "pickaxe_name": equipped_item.name
+        }
+        return True, reply, details
+    else:
+        if not bool(user.auto_mining_enabled):
+            return False, "⚠️ 현재 자동 채굴이 켜져 있지 않습니다. (!자동채굴 켜기 로 시작 가능)", None
+
+        mined = float(getattr(user, "auto_mining_session_mined", 0.0) or 0.0)
+        pts = int(getattr(user, "auto_mining_session_points", 0) or 0)
+        user.auto_mining_enabled = False
+        user.auto_mining_end_time = 0.0
+        db.commit()
+        db.refresh(user)
+
+        reply = (
+            f"🛑🤖 [자동 채굴 비활성화 (OFF)] {user.username}님의 자동 채굴을 중지했습니다.\n"
+            f"• 이번 세션 누적 수확: 1X {mined:.2f}주 (+{pts:,}P 가치)"
+        )
+        details = {
+            "auto_mining_enabled": False,
+            "session_mined": mined,
+            "session_points": pts
+        }
+        return True, reply, details
+
+def renew_auto_mining(
+    db: Session,
+    user_id: str,
+    username: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Renew/Extend Auto-Mining session based on currently equipped pickaxe."""
+    user = get_or_create_user(db, user_id, username)
+    equipped_item = get_user_equipped_item(db, user)
+    star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
+    star = max(0, min(25, int(star or 0)))
+
+    dur_hours = get_auto_mining_duration_hours(star)
+    dur_sec = dur_hours * 3600.0
+    now = time.time()
+
+    user.auto_mining_enabled = True
+    user.auto_mining_end_time = now + dur_sec
+    db.commit()
+    db.refresh(user)
+
+    dur_str = format_duration_hours(dur_hours)
+    reply = (
+        f"🔄🤖 [자동 채굴 갱신 완료!] {user.username}님의 자동 채굴 지속 시간이 지금부터 {dur_str} 동안 연장되었습니다!\n"
+        f"• 현재 장착: {equipped_item.name} (★{star}성)\n"
+        f"• 쿨타임 주기마다 최대 황금 광맥 자동 채굴이 계속 유지됩니다."
+    )
+    details = {
+        "auto_mining_enabled": True,
+        "duration_hours": dur_hours,
+        "end_time": user.auto_mining_end_time,
+        "starforce": star,
+        "pickaxe_name": equipped_item.name
+    }
+    return True, reply, details
+
+def get_auto_mining_status(db: Session, user_id: str, username: str) -> str:
+    """Returns detailed status of user's Auto-Mining state."""
+    user = get_or_create_user(db, user_id, username)
+    # Quick catch-up tick
+    execute_auto_mining_tick(db, user)
+
+    equipped_item = get_user_equipped_item(db, user)
+    star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
+    star = max(0, min(25, int(star or 0)))
+    info = get_pickaxe_info(star)
+
+    now = time.time()
+    end_time = float(getattr(user, "auto_mining_end_time", 0.0) or 0.0)
+    is_active = bool(getattr(user, "auto_mining_enabled", False) and end_time > now)
+
+    if not is_active and getattr(user, "auto_mining_enabled", False):
+        user.auto_mining_enabled = False
+        user.auto_mining_end_time = 0.0
+        db.commit()
+
+    if is_active:
+        rem_sec = max(0, int(end_time - now))
+        rem_h, rem_sec_mod = divmod(rem_sec, 3600)
+        rem_m, rem_s = divmod(rem_sec_mod, 60)
+        time_str = f"{rem_h}시간 {rem_m}분 {rem_s}초" if rem_h > 0 else f"{rem_m}분 {rem_s}초"
+
+        # Next mining countdown
+        cd_sec = info["cooldown_seconds"]
+        next_cd_str = "잠시 후 진행 예정"
+        if user.last_mined_at:
+            now_utc = datetime.now(timezone.utc)
+            last_t = user.last_mined_at if user.last_mined_at.tzinfo else user.last_mined_at.replace(tzinfo=timezone.utc)
+            el = (now_utc - last_t).total_seconds()
+            if el < cd_sec:
+                rem_cd = int(cd_sec - el)
+                next_cd_str = f"{rem_cd // 60}분 {rem_cd % 60}초 후"
+
+        session_mined = float(getattr(user, "auto_mining_session_mined", 0.0) or 0.0)
+        session_pts = int(getattr(user, "auto_mining_session_points", 0) or 0)
+
+        return (
+            f"⛏️🤖 [자동 채굴 상태: 가동 중 (ON)]\n"
+            f"• 장비: {equipped_item.name} (★{star}성, 쿨 {info['cooldown_minutes']}분)\n"
+            f"• 남은 지속 시간: {time_str} (만료 전 !자동채굴 갱신 으로 연장 가능)\n"
+            f"• 다음 채굴: {next_cd_str}\n"
+            f"• 이번 세션 수확: 1X {session_mined:.2f}주 (+{session_pts:,}P 가치)\n"
+            f"• 규칙: 최대 황금 광맥(5%)까지만 출현하며 기본 확률이 하향 조정됩니다.\n"
+            f"💡 명령어: !자동채굴 끄기, !자동채굴 갱신"
+        )
+    else:
+        max_dur = format_duration_hours(get_auto_mining_duration_hours(star))
+        return (
+            f"💤🤖 [자동 채굴 상태: 정지 (OFF)]\n"
+            f"• 내 장비: {equipped_item.name} (★{star}성)\n"
+            f"• 1회 지속 시간: {max_dur} (곡괭이 등급이 높을수록 30분에서 최대 24시간까지 대폭 증가!)\n"
+            f"• 기능: 켜두면 쿨타임마다 자동으로 광맥을 채굴하여 1X 주식으로 적립합니다.\n"
+            f"• 제약: 최대 황금 광맥(5%)까지만 출현하며 기본 확률이 하향 조정됩니다.\n"
+            f"👉 시작하기: !자동채굴 켜기 (또는 !자동채굴 on) | 갱신: !자동채굴 갱신"
+        )
+
 def ensure_user_equipment(db: Session, user: User) -> List[UserEquipment]:
     """Ensures user has at least one equipment in user_equipments table, with one equipped."""
     items = db.query(UserEquipment).filter_by(user_id=user.id).order_by(UserEquipment.id.asc()).all()
