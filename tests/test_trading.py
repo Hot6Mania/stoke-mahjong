@@ -1190,3 +1190,23 @@ def test_remaining_time_command(db_session):
     assert r3 is not None
     assert "쿨타임" in r3
 
+def test_abbreviation_guide_command(db_session):
+    """Verify !약어 and aliases displaying shorthand stock guides."""
+    uid = "abbr_viewer"
+    uname = "약어질문러"
+
+    aliases = ["!약어", "!단축어", "!종목약어", "!줄임말", "!은어", "!별칭", "!alias"]
+    for cmd in aliases:
+        reply, ev = ch.handle_chat_command(db_session, uid, uname, cmd)
+        assert reply is not None, f"Failed for {cmd}"
+        assert "🏷️ [종목 약어 & 단축어 가이드]" in reply
+        assert "10롱" in reply
+        assert "10숏" in reply
+        assert "곱버스" in reply
+        assert ev is None
+
+    # Verify HELP_MESSAGE includes guidance to !약어
+    help_reply, _ = ch.handle_chat_command(db_session, uid, uname, "!명령어")
+    assert "!약어" in help_reply
+
+
