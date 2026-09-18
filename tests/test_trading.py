@@ -4812,6 +4812,80 @@ def test_special_snipe_and_bank_debt_and_lottery_buff(db_session):
         assert "50%" in payback_tier["name"] or "페이백" in payback_tier["name"]
 
 
+def test_absolute_100_scrolls_and_activities(db_session, monkeypatch):
+    import main
+    # 1. Test merchant item 6 & 7 registration and purchasing
+    te.open_merchant(db_session, duration_minutes=10)
+    state = te.get_market_state(db_session)
+    state.merchant_shield_100_price = 15000000
+    state.merchant_shield_100_stock = 1
+    state.merchant_downgrade_100_price = 10000000
+    state.merchant_downgrade_100_stock = 1
+    db_session.commit()
+
+    u = te.get_or_create_user(db_session, "whale_tester", "고래유저")
+    u.points = 100000000 # 100M points
+    db_session.commit()
+
+    # Buy absolute shield scroll (item 6)
+    ok_b6, rep_b6, det_b6 = te.execute_buy_merchant_item(db_session, u.id, u.username, "6", 1)
+    assert ok_b6 is True
+    assert u.shield_100_scroll_count == 1
+    assert state.merchant_shield_100_stock == 0
+
+    # Buy absolute downgrade prevention scroll (item 7)
+    ok_b7, rep_b7, det_b7 = te.execute_buy_merchant_item(db_session, u.id, u.username, "7", 1)
+    assert ok_b7 is True
+    assert u.downgrade_100_scroll_count == 1
+    assert state.merchant_downgrade_100_stock == 0
+
+    # 2. Test toggle commands
+    rep_tog_off, _ = ch.handle_chat_command(db_session, u.id, u.username, "!주문서 절대파방 off")
+    assert "🔴비활성화(OFF)" in rep_tog_off
+    assert u.arm_shield_100 is False
+
+    rep_tog_on, _ = ch.handle_chat_command(db_session, u.id, u.username, "!주문서 절대파방 on")
+    assert "🟢활성화(ON)" in rep_tog_on
+    assert u.arm_shield_100 is True
+
+    # 3. Test Starforce Enhancement with 100% Absolute Defense
+    eqs = te.ensure_user_equipment(db_session, u)
+    eq = eqs[0]
+    eq.starforce = 20
+    eq.name = "🔮 오리하르콘 곡괭이 (★20성)"
+    eq.is_equipped = True
+    u.pickaxe_level = 20
+    db_session.commit()
+
+    # Test downgrade defense: monkeypatch drop rate to test drop defense branch
+    monkeypatch.setitem(te.STARFORCE_TIERS[20], "drop", 50.0)
+    monkeypatch.setitem(te.STARFORCE_TIERS[20], "maintain", 10.0)
+    monkeypatch.setattr(random, "uniform", lambda a, b: 50.0)
+    ok_up1, rep_up1, det_up1 = te.execute_pickaxe_upgrade(db_session, u.id, u.username, str(eq.id), use_downgrade_100=True)
+    assert ok_up1 is True
+    assert det_up1["used_downgrade_100_scroll"] is True
+    assert det_up1["outcome"] == "downgrade_prevented_100"
+    assert eq.starforce == 20 # 100% prevented from dropping to 19!
+    assert u.downgrade_100_scroll_count == 0
+
+    # Test destruction defense: roll 98.0 hits destroy tier
+    monkeypatch.setattr(random, "uniform", lambda a, b: 98.0)
+    ok_up2, rep_up2, det_up2 = te.execute_pickaxe_upgrade(db_session, u.id, u.username, str(eq.id), use_shield_100=True)
+    assert ok_up2 is True
+    assert det_up2["used_shield_100_scroll"] is True
+    assert det_up2["outcome"] == "destruction_prevented_100"
+    assert eq.starforce == 20 # 100% prevented from blowing up to 12!
+    assert u.shield_100_scroll_count == 0
+
+    # 4. Test Live Activity Feed recording
+    main.recent_activities.clear()
+    act = main.record_activity("starforce", u.username, "🛡️✨ 절대 파방 성공", "100% 방어로 폭발 차단!", badge="🛡️", outcome="win")
+    assert act["type"] == "starforce"
+    assert len(main.recent_activities) == 1
+    assert main.recent_activities[0]["title"] == "🛡️✨ 절대 파방 성공"
+
+
+
 
 
 

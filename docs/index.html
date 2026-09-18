@@ -40,9 +40,20 @@
 
         /* Container */
         .container {
-            max-width: 900px;
+            max-width: 960px;
             margin: 0 auto;
             padding: 20px 16px;
+            transition: max-width 0.2s ease;
+        }
+        @media (min-width: 1200px) {
+            .container {
+                max-width: 1180px;
+            }
+        }
+        @media (min-width: 1440px) {
+            .container {
+                max-width: 1320px;
+            }
         }
 
         /* Header & Hero */
@@ -1211,6 +1222,141 @@
         body.github-pages-mode .gh-pages-show-block {
             display: block !important;
         }
+
+        /* Stockholders Table Horizontal Scroll Enhancement */
+        .sh-table-scroll-wrapper {
+            overflow-x: auto;
+            max-height: 540px;
+            border-radius: 10px;
+            border: 1px solid #334155;
+            background: #0b101b;
+            scrollbar-width: thin;
+            scrollbar-color: #38bdf8 #0f172a;
+            position: relative;
+        }
+        .sh-table-scroll-wrapper::-webkit-scrollbar {
+            height: 10px;
+            width: 8px;
+        }
+        .sh-table-scroll-wrapper::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-radius: 6px;
+        }
+        .sh-table-scroll-wrapper::-webkit-scrollbar-thumb {
+            background: linear-gradient(90deg, #0284c7, #38bdf8);
+            border-radius: 6px;
+            border: 2px solid #0f172a;
+        }
+        .sh-table-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #38bdf8;
+        }
+        .sh-table th, .sh-table td {
+            white-space: nowrap !important;
+        }
+
+        /* Live Activity Floating Feed Widget (우하단 실시간 상황판) */
+        #live-activity-dock {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9990;
+            font-family: inherit;
+        }
+        #live-activity-card {
+            width: 360px;
+            max-width: calc(100vw - 32px);
+            background: rgba(15, 23, 42, 0.96);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            border-radius: 14px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 20px rgba(56, 189, 248, 0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #live-activity-card.minimized {
+            display: none;
+        }
+        #live-activity-pill {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.98));
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 14px rgba(56, 189, 248, 0.25);
+            border-radius: 9999px;
+            padding: 9px 16px;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+        }
+        #live-activity-pill:hover {
+            transform: translateY(-2px);
+            border-color: #38bdf8;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 20px rgba(56, 189, 248, 0.4);
+        }
+        #live-activity-pill.show {
+            display: inline-flex;
+        }
+        .act-badge-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+            animation: actPulse 1.8s infinite;
+        }
+        @keyframes actPulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.15); box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+            transition: background 0.15s;
+            font-size: 12px;
+        }
+        .activity-item:hover {
+            background: rgba(30, 41, 59, 0.5);
+        }
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        .activity-icon {
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .activity-icon.jackpot {
+            background: linear-gradient(135deg, rgba(234, 179, 8, 0.25), rgba(244, 114, 182, 0.25));
+            border-color: #f59e0b;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+        }
+        .activity-icon.win {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.15);
+        }
+        .activity-icon.destroy {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.2);
+        }
+        .activity-icon.trade {
+            border-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.15);
+        }
     </style>
 </head>
 <body>
@@ -1565,9 +1711,24 @@
                         <button type="button" class="quick-amt-btn sh-filter-btn" data-filter="high_lev" onclick="setStockholdersFilter('high_lev')" style="padding: 5px 12px; font-size: 12px; font-weight: 800;">🔥 10X+ 고배율</button>
                     </div>
 
-                    <!-- Responsive Table Container -->
-                    <div style="overflow-x: auto; max-height: 520px; border-radius: 8px; border: 1px solid #334155;">
-                        <table class="styled-table" style="margin: 0; min-width: 820px;">
+                    <!-- Quick Scroll Navigation Controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; border-radius: 8px; padding: 6px 12px; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                        <span style="font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 4px;">
+                            <span>↔️</span> <strong>좌우 스크롤</strong>: 10개 전체 지표(매수평단가/원금/평가손익/현금) 확인 가능
+                        </span>
+                        <div style="display: flex; gap: 6px;">
+                            <button type="button" onclick="scrollStockholdersTable(-350)" style="background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-weight: 800; font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                ◀ 좌측
+                            </button>
+                            <button type="button" onclick="scrollStockholdersTable(350)" style="background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-weight: 800; font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                우측 ▶
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Responsive Table Container with Prominent Scrollbar -->
+                    <div id="sh-table-wrapper" class="sh-table-scroll-wrapper">
+                        <table class="styled-table sh-table" style="margin: 0; min-width: 1100px; width: 100%;">
                             <thead>
                                 <tr style="position: sticky; top: 0; background: #0b101b; z-index: 2;">
                                     <th style="width: 50px; text-align: center;">순위</th>
@@ -1590,6 +1751,11 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px;">
+                        <button type="button" onclick="scrollStockholdersTable(-350)" style="background: transparent; border: 1px solid #334155; color: #94a3b8; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer;">◀ 맨 왼쪽</button>
+                        <button type="button" onclick="scrollStockholdersTable(350)" style="background: transparent; border: 1px solid #334155; color: #94a3b8; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer;">맨 오른쪽 ▶</button>
                     </div>
                 </div>
 
@@ -5356,11 +5522,56 @@
     <div id="toast">✅ 명령어가 복사되었습니다!</div>
 
     <!-- Real-time Arena Battle Notification Banner -->
-    <div id="live-arena-toast" style="display: none; position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 10000; background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(88, 28, 135, 0.96)); border: 2px solid #a855f7; border-radius: 12px; padding: 10px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(168, 85, 247, 0.5); align-items: center; gap: 12px; max-width: 90vw; backdrop-filter: blur(8px);">
-        <span style="font-size: 20px;">⚔️</span>
-        <div id="live-arena-toast-body" style="font-size: 13px; color: #f1f5f9; font-weight: 700; line-height: 1.4;"></div>
-        <button id="live-arena-toast-action-btn" style="background: linear-gradient(135deg, #7c3aed, #be123c); color: #fff; font-size: 12px; font-weight: 900; padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(190, 18, 60, 0.5); white-space: nowrap;">🎬 결과 보기</button>
-        <button onclick="document.getElementById('live-arena-toast').style.display='none'" style="background: none; border: none; color: #94a3b8; font-size: 16px; cursor: pointer; padding: 2px 6px;">✕</button>
+    <!-- Live Activity Floating Feed Widget (우하단 실시간 상황판) -->
+    <div id="live-activity-dock">
+        <!-- Minimized Floating Pill -->
+        <div id="live-activity-pill" onclick="toggleLiveActivityDock(true)" title="클릭하여 실시간 상황판 열기">
+            <span class="act-badge-dot"></span>
+            <span style="font-size: 12px; font-weight: 800; color: #fff;">실시간 상황판</span>
+            <span id="activity-pill-latest" style="font-size: 11px; color: #38bdf8; font-weight: 700; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</span>
+            <span id="activity-pill-badge" style="background: #0284c7; color: #fff; font-size: 10px; font-weight: 900; padding: 1px 6px; border-radius: 8px;">LIVE</span>
+            <span style="font-size: 11px; color: #94a3b8; font-weight: 800;">▲ 펼치기</span>
+        </div>
+
+        <!-- Expanded Popup Card -->
+        <div id="live-activity-card">
+            <!-- Header -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(30, 41, 59, 0.85); border-bottom: 1px solid rgba(56, 189, 248, 0.25);">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="act-badge-dot"></span>
+                    <span style="font-size: 13px; font-weight: 900; color: #fff; display: flex; align-items: center; gap: 4px;">
+                        ⚡ 실시간 상황판
+                    </span>
+                    <span id="activity-live-cnt-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 6px;">0건</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <button type="button" onclick="fetchLiveActivities(true)" title="새로고침" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;">🔄</button>
+                    <button type="button" onclick="toggleLiveActivityDock(false)" title="최소화" style="background: rgba(51, 65, 85, 0.7); border: 1px solid #475569; color: #cbd5e1; cursor: pointer; font-size: 13px; font-weight: 900; padding: 2px 8px; border-radius: 6px; line-height: 1;">_</button>
+                </div>
+            </div>
+
+            <!-- Filter Tabs -->
+            <div style="display: flex; gap: 4px; padding: 6px 10px; background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid rgba(51, 65, 85, 0.5); overflow-x: auto;">
+                <button type="button" class="quick-amt-btn act-filter-btn active" data-filter="all" onclick="filterLiveActivity('all')" style="padding: 3px 8px; font-size: 11px; font-weight: 800; background: #0284c7; color: #fff; border-color: #38bdf8;">전체</button>
+                <button type="button" class="quick-amt-btn act-filter-btn" data-filter="casino" onclick="filterLiveActivity('casino')" style="padding: 3px 8px; font-size: 11px; font-weight: 700;">🎰 카지노</button>
+                <button type="button" class="quick-amt-btn act-filter-btn" data-filter="lottery" onclick="filterLiveActivity('lottery')" style="padding: 3px 8px; font-size: 11px; font-weight: 700;">🎫 복권</button>
+                <button type="button" class="quick-amt-btn act-filter-btn" data-filter="starforce" onclick="filterLiveActivity('starforce')" style="padding: 3px 8px; font-size: 11px; font-weight: 700;">🔨 강화</button>
+                <button type="button" class="quick-amt-btn act-filter-btn" data-filter="trade" onclick="filterLiveActivity('trade')" style="padding: 3px 8px; font-size: 11px; font-weight: 700;">📈 주식</button>
+            </div>
+
+            <!-- Feed List -->
+            <div id="live-activity-list" style="max-height: 290px; overflow-y: auto; display: flex; flex-direction: column;">
+                <div style="padding: 24px; text-align: center; color: #64748b; font-size: 12px;">
+                    실시간 상황을 불러오는 중입니다...
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="padding: 6px 12px; background: rgba(11, 15, 25, 0.95); border-top: 1px solid rgba(51, 65, 85, 0.5); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #94a3b8;">
+                <span>💡 카지노·복권·강화·거래 실시간</span>
+                <span id="live-activity-time-hint" style="color: #64748b;">자동 갱신 중</span>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -5628,6 +5839,10 @@
                 updateLiveEventsTicker(data);
             }
 
+            if (data.recent_activities && typeof updateLiveActivityFeed === 'function') {
+                updateLiveActivityFeed(data.recent_activities);
+            }
+
             if (document.getElementById("web-merchant-modal") && document.getElementById("web-merchant-modal").style.display === "flex") {
                 if (typeof loadMerchantStatus === 'function') {
                     loadMerchantStatus();
@@ -5696,6 +5911,12 @@
                         const msg = JSON.parse(event.data);
                         if (msg.market_state) updateUI(msg.market_state);
                         else if (msg.type === 'settlement' && msg.market_state) updateUI(msg.market_state);
+
+                        if (msg.activity && typeof handleNewActivityEvent === 'function') {
+                            handleNewActivityEvent(msg.activity);
+                        } else if (msg.recent_activities && typeof updateLiveActivityFeed === 'function') {
+                            updateLiveActivityFeed(msg.recent_activities);
+                        }
 
                         if (msg.type === 'pvp_duel' && msg.data) {
                             handleLiveArenaDuelEvent(msg.data, msg.reply);
@@ -13075,12 +13296,219 @@
             showToast(`💰 대출 원금 ${repayAmt.toLocaleString()}P 상환 완료! (남은 대출: ${activeBankData.debt.toLocaleString()}P)`);
         }
 
+        // ---------------------------------------------------------
+        // Stockholders Table Horizontal Scroll & Drag Support
+        // ---------------------------------------------------------
+        function scrollStockholdersTable(offset) {
+            const el = document.getElementById('sh-table-wrapper');
+            if (el) {
+                el.scrollBy({ left: offset, behavior: 'smooth' });
+            }
+        }
+
+        function initStockholdersDragScroll() {
+            const el = document.getElementById('sh-table-wrapper');
+            if (!el) return;
+            let isDown = false;
+            let startX = 0;
+            let scrollLeft = 0;
+
+            el.addEventListener('mousedown', (e) => {
+                if (['BUTTON', 'INPUT', 'SELECT', 'A'].includes(e.target.tagName)) return;
+                isDown = true;
+                el.style.cursor = 'grabbing';
+                startX = e.pageX - el.offsetLeft;
+                scrollLeft = el.scrollLeft;
+            });
+            el.addEventListener('mouseleave', () => {
+                isDown = false;
+                el.style.cursor = 'default';
+            });
+            el.addEventListener('mouseup', () => {
+                isDown = false;
+                el.style.cursor = 'default';
+            });
+            el.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                e.preventDefault();
+                const x = e.pageX - el.offsetLeft;
+                const walk = (x - startX) * 1.5;
+                el.scrollLeft = scrollLeft - walk;
+            });
+        }
+
+        // ---------------------------------------------------------
+        // Live Activity Floating Feed (우하단 실시간 상황판)
+        // ---------------------------------------------------------
+        let cachedActivities = [];
+        let activeActivityFilter = 'all';
+
+        function toggleLiveActivityDock(expand) {
+            const card = document.getElementById('live-activity-card');
+            const pill = document.getElementById('live-activity-pill');
+            if (!card || !pill) return;
+            if (expand) {
+                card.classList.remove('minimized');
+                pill.classList.remove('show');
+                localStorage.setItem('live_activity_minimized', '0');
+            } else {
+                card.classList.add('minimized');
+                pill.classList.add('show');
+                localStorage.setItem('live_activity_minimized', '1');
+            }
+        }
+
+        function initLiveActivityDock() {
+            const isMin = localStorage.getItem('live_activity_minimized');
+            const shouldMin = isMin === '1' || (isMin === null && window.innerWidth < 640);
+            toggleLiveActivityDock(!shouldMin);
+            fetchLiveActivities(false);
+        }
+
+        function filterLiveActivity(filterType) {
+            activeActivityFilter = filterType;
+            document.querySelectorAll('.act-filter-btn').forEach(btn => {
+                const match = btn.getAttribute('data-filter') === filterType;
+                btn.classList.toggle('active', match);
+                if (match) {
+                    btn.style.background = '#0284c7';
+                    btn.style.color = '#fff';
+                    btn.style.borderColor = '#38bdf8';
+                } else {
+                    btn.style.background = '#1e293b';
+                    btn.style.color = '#cbd5e1';
+                    btn.style.borderColor = '#475569';
+                }
+            });
+            renderLiveActivities();
+        }
+
+        function handleNewActivityEvent(activity) {
+            if (!activity) return;
+            cachedActivities.unshift(activity);
+            if (cachedActivities.length > 60) cachedActivities.pop();
+            updateLiveActivityFeed(cachedActivities);
+        }
+
+        function updateLiveActivityFeed(activities) {
+            if (!activities || !Array.isArray(activities)) return;
+            cachedActivities = activities;
+
+            const latest = activities[0];
+            const pillEl = document.getElementById('activity-pill-latest');
+            if (pillEl && latest) {
+                pillEl.textContent = `${latest.badge || ''} ${latest.username}: ${latest.title}`;
+            }
+
+            const cntEl = document.getElementById('activity-live-cnt-badge');
+            if (cntEl) cntEl.textContent = `${activities.length}건`;
+
+            renderLiveActivities();
+        }
+
+        function renderLiveActivities() {
+            const container = document.getElementById('live-activity-list');
+            if (!container) return;
+
+            let list = cachedActivities;
+            if (activeActivityFilter !== 'all') {
+                list = cachedActivities.filter(a => a.type === activeActivityFilter);
+            }
+
+            if (!list || list.length === 0) {
+                container.innerHTML = `
+                    <div style="padding: 28px 16px; text-align: center; color: #64748b; font-size: 12px;">
+                        해당 카테고리의 최근 활동 내역이 없습니다.
+                    </div>
+                `;
+                return;
+            }
+
+            const html = list.map(item => {
+                let badgeClass = "info";
+                let titleColor = "#e2e8f0";
+                let summaryColor = "#94a3b8";
+
+                if (item.outcome === "jackpot") {
+                    badgeClass = "jackpot";
+                    titleColor = "#fde047";
+                    summaryColor = "#fbcfe8";
+                } else if (item.outcome === "win" || item.outcome === "success") {
+                    badgeClass = "win";
+                    titleColor = "#4ade80";
+                    summaryColor = "#bbf7d0";
+                } else if (item.outcome === "destroy" || item.outcome === "fail") {
+                    badgeClass = "destroy";
+                    titleColor = "#f87171";
+                    summaryColor = "#fca5a5";
+                } else if (item.outcome === "trade") {
+                    badgeClass = "trade";
+                    titleColor = item.badge === "📈" ? "#f87171" : "#60a5fa";
+                    summaryColor = "#cbd5e1";
+                }
+
+                const timeStr = item.time_str || (item.timestamp ? new Date(item.timestamp * 1000).toTimeString().split(' ')[0] : '');
+
+                return `
+                    <div class="activity-item">
+                        <div class="activity-icon ${badgeClass}">
+                            ${escapeHtml(item.badge || '⚡')}
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 6px;">
+                                <span style="font-weight: 800; color: ${titleColor}; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    ${escapeHtml(item.title)}
+                                </span>
+                                <span style="font-size: 10px; color: #64748b; font-family: monospace; white-space: nowrap;">
+                                    ${escapeHtml(timeStr)}
+                                </span>
+                            </div>
+                            <div style="font-size: 11.5px; color: ${summaryColor}; margin-top: 2px; word-break: break-all; line-height: 1.35;">
+                                ${escapeHtml(item.summary)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+        }
+
+        async function fetchLiveActivities(showToastMsg = false) {
+            const apiBase = getApiBaseUrl();
+            try {
+                const res = await fetch(`${apiBase}/api/web/activities`, { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.activities) {
+                        updateLiveActivityFeed(data.activities);
+                        if (showToastMsg) showToast("✅ 실시간 상황판 갱신 완료!");
+                        return;
+                    }
+                }
+            } catch (e) {}
+
+            try {
+                const res = await fetch('./market_state.json?t=' + Date.now(), { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.recent_activities) {
+                        updateLiveActivityFeed(data.recent_activities);
+                        if (showToastMsg) showToast("✅ 실시간 상황판 갱신 완료!");
+                    }
+                }
+            } catch (e) {}
+        }
+
         // Initialize Live Sync
         fetchMarketState();
         fetchUsersData();
         checkWebAuthSession();
+        initStockholdersDragScroll();
+        initLiveActivityDock();
         setInterval(fetchMarketState, 3000);
         setInterval(fetchUsersData, 15000);
+        setInterval(fetchLiveActivities, 6000);
         setInterval(checkWebAuthSession, 12000);
         initWebSocket();
         handleUrlHash();

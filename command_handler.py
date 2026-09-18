@@ -846,13 +846,27 @@ def handle_chat_command(
         use_shield = None
         use_boost = None
         use_downgrade = None
+        use_shield_100 = None
+        use_downgrade_100 = None
 
         for tok in tokens[1:]:
             clean_tok = tok.strip().strip("'\"`’‘“”,;[]()").lower()
-            if clean_tok in ["풀", "풀주문서", "풀장착", "올", "all", "전부", "다"]:
+            if clean_tok in ["절대풀", "100풀", "절대풀장착", "절대올"]:
+                use_shield_100 = True
+                use_downgrade_100 = True
+                use_boost = True
+            elif clean_tok in ["풀", "풀주문서", "풀장착", "올", "all", "전부", "다"]:
                 use_shield = True
                 use_boost = True
                 use_downgrade = True
+            elif clean_tok in ["절대파방", "100파방", "절대파방권", "절대방어권", "shield100", "shield_100", "100파괴방어"]:
+                use_shield_100 = True
+            elif clean_tok in ["노절대파방", "노100파방", "절대파방off", "100파방off"]:
+                use_shield_100 = False
+            elif clean_tok in ["절대하강", "100하강", "절대하방", "100하방", "downgrade100", "downgrade_100", "100하방권"]:
+                use_downgrade_100 = True
+            elif clean_tok in ["노절대하강", "노100하강", "절대하강off", "100하강off"]:
+                use_downgrade_100 = False
             elif clean_tok in ["파방", "파방권", "파괴방어", "파괴방어권", "방어권", "shield"]:
                 use_shield = True
             elif clean_tok in ["노파방", "노실드", "noshield", "파방off"]:
@@ -872,7 +886,8 @@ def handle_chat_command(
 
         success, reply, details = execute_pickaxe_upgrade(
             db, user_id, username, target_token,
-            use_shield=use_shield, use_boost=use_boost, use_downgrade=use_downgrade
+            use_shield=use_shield, use_boost=use_boost, use_downgrade=use_downgrade,
+            use_shield_100=use_shield_100, use_downgrade_100=use_downgrade_100
         )
         event = {"type": "pickaxe_upgrade", "data": details} if success and details else None
         return reply, event

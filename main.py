@@ -122,10 +122,166 @@ def extract_day_start_points(score_str: str) -> Optional[int]:
     return None
 
 # ---------------------------------------------------------
-# 5-Minute Free Trading Window Timer Manager & Recent Trades
+# 5-Minute Free Trading Window Timer Manager, Recent Trades & Live Activities
 # ---------------------------------------------------------
 from collections import deque
 recent_trades: deque = deque(maxlen=20)
+recent_activities: deque = deque(maxlen=60)
+_activity_id_seq = int(time.time() * 1000)
+
+def record_activity(
+    activity_type: str,
+    username: str,
+    title: str,
+    summary: str,
+    badge: str = "⚡",
+    outcome: str = "info",
+    details: Optional[Dict[str, Any]] = None,
+    user_id: Optional[str] = None
+) -> Dict[str, Any]:
+    global _activity_id_seq
+    _activity_id_seq += 1
+    item = {
+        "id": _activity_id_seq,
+        "type": activity_type,
+        "username": username or "시청자",
+        "user_id": user_id,
+        "title": title,
+        "summary": summary,
+        "badge": badge,
+        "outcome": outcome,
+        "timestamp": time.time(),
+        "time_str": time.strftime("%H:%M:%S"),
+        "details": details or {}
+    }
+    recent_activities.appendleft(item)
+    return item
+
+def record_activity_from_event(event: Optional[Dict[str, Any]], reply: str = ""):
+    if not event or not isinstance(event, dict):
+        return None
+    ev_type = event.get("type")
+    data = event.get("data") or {}
+    uname = data.get("username") or data.get("user_name") or "시청자"
+    uid = data.get("user_id")
+
+    if ev_type in ("pickaxe_upgrade", "starforce"):
+        outcome = data.get("outcome", "")
+        new_lvl = data.get("new_level", 0)
+        pname = data.get("pickaxe_name", "곡괭이")
+        if outcome == "destruction_prevented_100":
+            return record_activity("starforce", uname, "🛡️✨ 절대 파방 성공", f"{uname}님 100% 무적 방어로 폭발 차단! ({pname})", badge="🛡️", outcome="win", details=data, user_id=uid)
+        elif outcome == "destruction_prevented":
+            return record_activity("starforce", uname, "🛡️ 파괴방어 성공", f"{uname}님 60% 확률로 장비 폭발 방어! ({pname})", badge="🛡️", outcome="win", details=data, user_id=uid)
+        elif outcome == "downgrade_prevented_100":
+            return record_activity("starforce", uname, "📉✨ 절대 하강방지 성공", f"{uname}님 100% 무적 방어로 1성 하락 방어! ({pname})", badge="📉", outcome="win", details=data, user_id=uid)
+        elif outcome == "downgrade_prevented":
+            return record_activity("starforce", uname, "📉 하강방지 성공", f"{uname}님 70% 확률로 1성 하락 방어! ({pname})", badge="📉", outcome="win", details=data, user_id=uid)
+        elif outcome == "success":
+            badge = "⭐" if new_lvl >= 20 else "🔨"
+            out = "jackpot" if new_lvl >= 20 else "success"
+            return record_activity("starforce", uname, f"🔨 ★{new_lvl}성 강화 성공!", f"{uname}님 [{pname}] 달성!", badge=badge, outcome=out, details=data, user_id=uid)
+        elif outcome == "destroyed":
+            return record_activity("starforce", uname, "💥 장비 폭발 파괴", f"{uname}님 장비 파괴 (12성 흔적 복원)", badge="💥", outcome="destroy", details=data, user_id=uid)
+        elif outcome in ("drop", "safeguarded_drop"):
+            return record_activity("starforce", uname, f"📉 ★{new_lvl}성 하락", f"{uname}님 1성 하락 ([{pname}])", badge="📉", outcome="fail", details=data, user_id=uid)
+        else:
+            return record_activity("starforce", uname, "🔨 강화 실패(유지)", f"{uname}님 강화 실패 (등급 유지)", badge="🔨", outcome="info", details=data, user_id=uid)
+
+    elif ev_type in ("lottery_jackpot", "lottery_scratch"):
+        lname = data.get("lottery_name", "국가 복지 복권")
+        net = int(data.get("net_profit", 0))
+        prize = int(data.get("total_prize", 0))
+        cnt = data.get("ticket_count", 1)
+        if data.get("has_jackpot") or ev_type == "lottery_jackpot":
+            return record_activity("lottery", uname, f"🎫 {lname} 잭팟!!", f"{uname}님 당첨금 +{prize:,}P 대박 획득!!", badge="🎫", outcome="jackpot", details=data, user_id=uid)
+        elif net > 0:
+            return record_activity("lottery", uname, f"🎫 {lname} 당첨 ({cnt}장)", f"{uname}님 순수익 +{net:,}P 당첨!", badge="🎫", outcome="win", details=data, user_id=uid)
+        else:
+            return record_activity("lottery", uname, f"🎫 {lname} 긁기 ({cnt}장)", f"{uname}님 긁기 완료 (손실 {abs(net):,}P)", badge="🎫", outcome="lose", details=data, user_id=uid)
+
+    elif ev_type in ("casino_jackpot", "casino_spin", "casino_dice"):
+        g_type = data.get("gamble_type", "")
+        payout = int(data.get("payout", 0))
+        bet = int(data.get("bet_amount", data.get("bet", 0)))
+        won = bool(data.get("win") or data.get("won"))
+
+        if ev_type == "casino_jackpot" or "jackpot" in g_type or payout >= 1000000:
+            return record_activity("casino", uname, "🎰 슬롯 대박 잭팟!!", f"{uname}님 +{payout:,}P 초대형 잭팟 터짐!!", badge="🎰", outcome="jackpot", details=data, user_id=uid)
+        elif "slot" in g_type:
+            if won:
+                return record_activity("casino", uname, "🎰 슬롯 승리", f"{uname}님 +{payout:,}P 획득!", badge="🎰", outcome="win", details=data, user_id=uid)
+            else:
+                return record_activity("casino", uname, "🎰 슬롯 스핀", f"{uname}님 {bet:,}P 베팅 아쉽게 실패", badge="🎰", outcome="lose", details=data, user_id=uid)
+        elif "race" in g_type:
+            if won:
+                return record_activity("casino", uname, "🏇 역만 경마 승리", f"{uname}님 +{payout:,}P 배당금 획득!", badge="🏇", outcome="win", details=data, user_id=uid)
+            else:
+                return record_activity("casino", uname, "🏇 역만 경마 베팅", f"{uname}님 {bet:,}P 베팅 실패", badge="🏇", outcome="lose", details=data, user_id=uid)
+        elif "dice" in g_type:
+            if won:
+                return record_activity("casino", uname, "🎲 주사위 승리", f"{uname}님 +{payout:,}P 승리!", badge="🎲", outcome="win", details=data, user_id=uid)
+            else:
+                return record_activity("casino", uname, "🎲 주사위 패배", f"{uname}님 {bet:,}P 베팅 실패", badge="🎲", outcome="lose", details=data, user_id=uid)
+        else:
+            if won:
+                return record_activity("casino", uname, "🎲 카지노 승리", f"{uname}님 +{payout:,}P 획득!", badge="🎲", outcome="win", details=data, user_id=uid)
+            else:
+                return record_activity("casino", uname, "🎲 카지노 게임", f"{uname}님 {bet:,}P 베팅 실패", badge="🎲", outcome="lose", details=data, user_id=uid)
+
+    elif ev_type in ("trade_buy", "trade_sell"):
+        shares = int(data.get("shares", data.get("quantity", 0)))
+        if ev_type == "trade_buy":
+            cost = int(data.get("total_cost", data.get("price", 0) * shares))
+            return record_activity("trade", uname, "📈 주식 매수", f"{uname}님 {shares:,}주 매수 ({cost:,}P)", badge="📈", outcome="trade", details=data, user_id=uid)
+        else:
+            rev = int(data.get("total_revenue", data.get("revenue", 0)))
+            return record_activity("trade", uname, "📉 주식 매도", f"{uname}님 {shares:,}주 매도 (+{rev:,}P)", badge="📉", outcome="trade", details=data, user_id=uid)
+
+    elif ev_type == "merchant_bought":
+        iname = data.get("item_name", data.get("item_type", "아이템"))
+        qty = data.get("quantity", 1)
+        return record_activity("merchant", uname, "🛒 신비상인 구매", f"{uname}님 [{iname}] {qty}개 구매", badge="🛒", outcome="info", details=data, user_id=uid)
+
+    elif ev_type == "pvp_duel":
+        wname = data.get("winner_name", uname)
+        pot = int(data.get("pot", 0))
+        return record_activity("pvp", wname, "⚔️ 아레나 결투 승리", f"{wname}님이 결투 승리로 +{pot:,}P 쟁탈!", badge="⚔️", outcome="pvp", details=data, user_id=uid)
+
+    elif ev_type == "cube_use":
+        tier = data.get("tier")
+        p_name = data.get("target_name", "장비")
+        if tier in ("레전더리", "유니크"):
+            return record_activity("cube", uname, f"🔮 {tier} 잠재능력 탄생!", f"{uname}님 [{p_name}] {tier} 등급 달성!", badge="🔮", outcome="jackpot", details=data, user_id=uid)
+
+    return None
+
+def seed_initial_activities():
+    if len(recent_activities) > 0:
+        return
+    now = time.time()
+    sample_events = [
+        ("casino", "CYTFT", "⭐ ★26성 강화 달성!", "CYTFT님 [🔮 미스릴 곡괭이 (★26성)] 26강 달성!", "⭐", "jackpot", -120),
+        ("lottery", "황금도박사", "🎫 금 복권 2등 당첨!", "황금도박사님 당첨금 +1,000,000P 획득!", "🎫", "jackpot", -340),
+        ("casino", "잭팟헌터", "🎰 슬롯 대박 잭팟!!", "잭팟헌터님 777 잭팟 +3,500,000P 획득!!", "🎰", "jackpot", -620),
+        ("starforce", "곡괭이장인", "🛡️✨ 절대 파방 성공", "곡괭이장인님 100% 무적 방어로 폭발 차단!", "🛡️", "win", -950),
+        ("trade", "주식대왕", "📈 주식 매수", "주식대왕님 2,500주 매수 (5,850,000P)", "📈", "trade", -1400),
+        ("casino", "경마의신", "🏇 역만 경마 승리", "경마의신님 1번마 대삼원 단승식 적중 (+720,000P)", "🏇", "win", -2100)
+    ]
+    for act_type, uname, title, summary, badge, outcome, dt in sample_events:
+        recent_activities.append({
+            "id": int((now + dt) * 1000),
+            "type": act_type,
+            "username": uname,
+            "user_id": None,
+            "title": title,
+            "summary": summary,
+            "badge": badge,
+            "outcome": outcome,
+            "timestamp": now + dt,
+            "time_str": time.strftime("%H:%M:%S", time.localtime(now + dt)),
+            "details": {}
+        })
 
 def record_trade_event(event: Optional[Dict[str, Any]]):
     if event and event.get("type") in ("trade_buy", "trade_sell"):
@@ -233,8 +389,19 @@ def serialize_market_state(state) -> Dict[str, Any]:
                 "name": "🎯 잠재저격주문서",
                 "price": getattr(state, "merchant_snipe_price", 500000) or 500000,
                 "stock": getattr(state, "merchant_snipe_stock", 3) or 0,
+            },
+            "shield_100": {
+                "name": "🛡️✨ 절대 파괴방어권 (100% 무적)",
+                "price": getattr(state, "merchant_shield_100_price", 15000000) or 15000000,
+                "stock": getattr(state, "merchant_shield_100_stock", 0) or 0,
+            },
+            "downgrade_100": {
+                "name": "📉✨ 절대 하강방지권 (100% 무적)",
+                "price": getattr(state, "merchant_downgrade_100_price", 10000000) or 10000000,
+                "stock": getattr(state, "merchant_downgrade_100_stock", 0) or 0,
             }
-        }
+        },
+        "recent_activities": list(recent_activities)
     }
     return res
 
@@ -922,6 +1089,7 @@ class ChzzkBot:
                                             if event.get("type") == "settlement":
                                                 await start_free_trading_window(300)
                                             record_trade_event(event)
+                                            act_item = record_activity_from_event(event, reply)
                                             # Broadcast trade/order update to OBS overlay immediately
                                             leaderboard = te.get_leaderboard(db, top_n=3)
                                             state = te.get_market_state(db)
@@ -931,11 +1099,13 @@ class ChzzkBot:
                                                 "cube_used", "starforce", "bank_deposit", "bank_withdraw",
                                                 "bank_savings_open", "bank_savings_cancel", "bank_fund_buy",
                                                 "bank_fund_sell", "bank_insurance_buy", "bank_loan_borrow",
-                                                "bank_loan_repay", "transfer"
+                                                "bank_loan_repay", "transfer", "pickaxe_upgrade"
                                             ]:
                                                 sync_docs_users_state(db)
                                             await manager.broadcast({
                                                 **event,
+                                                "activity": act_item,
+                                                "recent_activities": list(recent_activities),
                                                 "leaderboard": leaderboard,
                                                 "market_state": serialize_market_state(state),
                                                 "recent_trades": list(recent_trades)
@@ -1392,6 +1562,7 @@ async def lifespan(app: FastAPI):
 
     # Sync initial GitHub Pages docs snapshot (market_state.json & users_state.json)
     try:
+        seed_initial_activities()
         db_init = SessionLocal()
         te.seed_initial_asset_history_if_needed(db_init)
         sync_all_docs(db_init)
@@ -1654,6 +1825,8 @@ class WebEnhanceRequest(BaseModel):
     use_shield: Optional[bool] = None
     use_boost: Optional[bool] = None
     use_downgrade: Optional[bool] = None
+    use_shield_100: Optional[bool] = None
+    use_downgrade_100: Optional[bool] = None
 
 class WebCubeUseRequest(BaseModel):
     token: str
@@ -2308,10 +2481,13 @@ async def api_chat_command(req: ChatCommandRequest, db=Depends(get_db)):
 
     if event:
         record_trade_event(event)
+        act_item = record_activity_from_event(event, reply)
         leaderboard = te.get_leaderboard(db, top_n=3)
         state = te.get_market_state(db)
         await manager.broadcast({
             **event,
+            "activity": act_item,
+            "recent_activities": list(recent_activities),
             "leaderboard": leaderboard,
             "market_state": serialize_market_state(state),
             "recent_trades": list(recent_trades)
@@ -2322,6 +2498,11 @@ async def api_chat_command(req: ChatCommandRequest, db=Depends(get_db)):
         "reply": reply,
         "event": event
     }
+
+@app.get("/api/web/activities")
+async def api_web_activities():
+    """Fetches recent viewer activities (casino, lottery, starforce, trades) for live feed."""
+    return {"success": True, "activities": list(recent_activities)}
 
 @app.post("/api/transfer")
 async def api_transfer(req: TransferRequest, db=Depends(get_db)):
@@ -2741,17 +2922,22 @@ async def api_web_enhancement_upgrade(req: WebEnhanceRequest, db=Depends(get_db)
         item_id_or_index=str(req.equipment_id) if req.equipment_id else None,
         use_shield=req.use_shield,
         use_boost=req.use_boost,
-        use_downgrade=req.use_downgrade
+        use_downgrade=req.use_downgrade,
+        use_shield_100=req.use_shield_100,
+        use_downgrade_100=req.use_downgrade_100
     )
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     if reply:
         maybe_dispatch_web_grand_notice("enhancement", details, reply)
+    act_item = record_activity_from_event({"type": "pickaxe_upgrade", "data": details}, reply)
     state = te.get_market_state(db)
     leaderboard = te.get_leaderboard(db, top_n=3)
     await manager.broadcast({
         "type": "starforce_upgrade",
         "data": details,
+        "activity": act_item,
+        "recent_activities": list(recent_activities),
         "leaderboard": leaderboard,
         "market_state": serialize_market_state(state)
     })
@@ -2957,9 +3143,18 @@ async def api_web_lottery_buy(req: WebLotteryBuyRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_buy_lottery(db, user.id, user.username, count=cnt, lottery_type=req.lottery_type or "basic")
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
+    act_type = "lottery_jackpot" if details.get("has_jackpot") else "lottery_scratch"
+    act_item = record_activity_from_event({"type": act_type, "data": details}, reply)
     maybe_dispatch_web_grand_notice("lottery", details, reply)
     sync_all_docs(db)
     state = te.get_market_state(db)
+    await manager.broadcast({
+        "type": act_type,
+        "data": details,
+        "activity": act_item,
+        "recent_activities": list(recent_activities),
+        "market_state": serialize_market_state(state)
+    })
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
     return {"success": True, "reply": reply, "details": details, "user": user_data, "lottery": te.get_lottery_event_state(db)}
 

@@ -1707,6 +1707,38 @@ def test_web_lottery_endpoints_and_admin_security(client):
     assert res_cf_blocked.status_code == 403
 
 
+def test_web_activities_and_scroll_enhancement_api(client):
+    import main
+    # 1. Test /api/web/activities endpoint
+    res_act = client.get("/api/web/activities")
+    assert res_act.status_code == 200
+    act_data = res_act.json()
+    assert act_data["success"] is True
+    assert "activities" in act_data
+    assert isinstance(act_data["activities"], list)
+
+    # 2. Test manual recording and retrieval
+    main.recent_activities.clear()
+    main.record_activity("casino", "잭팟맨", "🎰 슬롯 잭팟", "777 잭팟 +5,000,000P 획득!", badge="🎰", outcome="jackpot")
+    res_act2 = client.get("/api/web/activities")
+    assert res_act2.status_code == 200
+    acts2 = res_act2.json()["activities"]
+    assert len(acts2) == 1
+    assert acts2[0]["username"] == "잭팟맨"
+    assert acts2[0]["outcome"] == "jackpot"
+    assert acts2[0]["badge"] == "🎰"
+
+    # 3. Test market state includes recent_activities and 100% absolute scrolls in merchant_items
+    res_m = client.get("/api/market/state")
+    assert res_m.status_code == 200
+    m_data = res_m.json()
+    assert "recent_activities" in m_data
+    assert "merchant_items" in m_data
+    assert "shield_100" in m_data["merchant_items"]
+    assert "downgrade_100" in m_data["merchant_items"]
+
+
+
 
 
 

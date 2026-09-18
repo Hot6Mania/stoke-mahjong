@@ -3757,6 +3757,28 @@ MERCHANT_ITEMS = {
         "max_price": 650000,
         "min_stock": 2,
         "max_stock": 5
+    },
+    "shield_100": {
+        "id": 6,
+        "name": "🛡️✨ [100% 확정] 절대 파괴방어권",
+        "aliases": ["6", "절대파방", "100파방", "100%파방", "절대파괴방어권", "100%파괴방어권", "완전파방", "shield100", "perfect_shield"],
+        "field": "shield_100_scroll_count",
+        "desc": "★15 이상 스타포스 강화 실패 시 폭발 파괴를 100% 완벽 방어! (0% 파괴, 절대 무적 결계)",
+        "min_price": 5000000,
+        "max_price": 10000000,
+        "min_stock": 1,
+        "max_stock": 1
+    },
+    "downgrade_100": {
+        "id": 7,
+        "name": "📉✨ [100% 확정] 절대 하강방지권",
+        "aliases": ["7", "절대하강", "100하강", "100%하강", "절대하강방지권", "100%하강방지권", "완전하강", "downgrade100", "perfect_downgrade"],
+        "field": "downgrade_100_scroll_count",
+        "desc": "스타포스 강화 실패 시 등급(성수) 하락을 100% 완벽 방어! (0% 하락, 성수 절대 보존)",
+        "min_price": 3500000,
+        "max_price": 7000000,
+        "min_stock": 1,
+        "max_stock": 1
     }
 }
 
@@ -3923,6 +3945,21 @@ def get_merchant_state(
             state.merchant_special_snipe_price = sp_price
             state.merchant_special_snipe_stock = sp_stock
 
+            # Ultra-luxury 100% Absolute Defense & Drop Prevention Scrolls (35% chance, 1 stock, dynamic pricing)
+            if random.uniform(0, 100) < 35.0:
+                base_s100 = random.randint(50, 95) * 100000
+                state.merchant_shield_100_price = int(round(base_s100 * infl_mult / 100000)) * 100000
+                state.merchant_shield_100_stock = 1
+            else:
+                state.merchant_shield_100_stock = 0
+
+            if random.uniform(0, 100) < 35.0:
+                base_d100 = random.randint(35, 75) * 100000
+                state.merchant_downgrade_100_price = int(round(base_d100 * infl_mult / 100000)) * 100000
+                state.merchant_downgrade_100_stock = 1
+            else:
+                state.merchant_downgrade_100_stock = 0
+
             state.merchant_is_open = True
             state.merchant_end_time = end_time
             state.merchant_name = name
@@ -4005,6 +4042,24 @@ def get_merchant_state(
             "desc": state.merchant_special_snipe_desc or "큐브 사용 시 1줄 88% 확정급 저격!"
         }
 
+    if getattr(state, "merchant_shield_100_stock", 0) > 0:
+        items_dict["shield_100"] = {
+            "id": 6,
+            "name": "🛡️✨ [100% 확정] 절대 파괴방어권",
+            "price": getattr(state, "merchant_shield_100_price", 15000000) or 15000000,
+            "stock": getattr(state, "merchant_shield_100_stock", 0) or 0,
+            "desc": "★15 이상 스타포스 폭발 파괴를 100% 완벽 방어! (0% 파괴, 절대 무적 방패)"
+        }
+
+    if getattr(state, "merchant_downgrade_100_stock", 0) > 0:
+        items_dict["downgrade_100"] = {
+            "id": 7,
+            "name": "📉✨ [100% 확정] 절대 하강방지권",
+            "price": getattr(state, "merchant_downgrade_100_price", 10000000) or 10000000,
+            "stock": getattr(state, "merchant_downgrade_100_stock", 0) or 0,
+            "desc": "스타포스 강화 실패 시 등급(성수) 하락을 100% 완벽 방어! (0% 하락, 성수 절대 보존)"
+        }
+
     return {
         "is_active": active,
         "remaining_sec": rem_sec,
@@ -4072,11 +4127,30 @@ def open_merchant(
     state.merchant_special_snipe_price = sp_price
     state.merchant_special_snipe_stock = sp_stock
 
+    # Ultra-luxury 100% Absolute Defense & Drop Prevention Scrolls (35% chance, 1 stock, dynamic pricing)
+    if random.uniform(0, 100) < 35.0:
+        base_s100 = random.randint(50, 95) * 100000
+        state.merchant_shield_100_price = int(round(base_s100 * mult / 100000)) * 100000
+        state.merchant_shield_100_stock = 1
+    else:
+        state.merchant_shield_100_stock = 0
+
+    if random.uniform(0, 100) < 35.0:
+        base_d100 = random.randint(35, 75) * 100000
+        state.merchant_downgrade_100_price = int(round(base_d100 * mult / 100000)) * 100000
+        state.merchant_downgrade_100_stock = 1
+    else:
+        state.merchant_downgrade_100_stock = 0
+
     db.commit()
     db.refresh(state)
 
     ev_state = get_merchant_state(db)
     sp_msg = f" | ⭐ 한정 특매: [{state.merchant_special_snipe_name}]" if state.merchant_special_snipe_stock > 0 else ""
+    if state.merchant_shield_100_stock > 0:
+        sp_msg += " | 🛡️ [100% 절대파방 한정 입고!]"
+    if state.merchant_downgrade_100_stock > 0:
+        sp_msg += " | 📉 [100% 절대하강 한정 입고!]"
     msg = f"🧞‍♂️🛒 [신비상인 등장] 방랑 {name}이(가) 마을에 나타났습니다! ({dur_m}분간 영업{sp_msg} | 명령어: !신비상인, !상인구매)"
     return True, msg, ev_state
 
@@ -4158,6 +4232,12 @@ def execute_buy_merchant_item(
         elif matched_item_type == "downgrade":
             unit_price = getattr(state, "merchant_downgrade_price", 400000) or 400000
             avail_stock = getattr(state, "merchant_downgrade_stock", 0) or 0
+        elif matched_item_type == "shield_100":
+            unit_price = getattr(state, "merchant_shield_100_price", 15000000) or 15000000
+            avail_stock = getattr(state, "merchant_shield_100_stock", 0) or 0
+        elif matched_item_type == "downgrade_100":
+            unit_price = getattr(state, "merchant_downgrade_100_price", 10000000) or 10000000
+            avail_stock = getattr(state, "merchant_downgrade_100_stock", 0) or 0
         else:  # snipe
             unit_price = getattr(state, "merchant_snipe_price", 500000) or 500000
             avail_stock = getattr(state, "merchant_snipe_stock", 0) or 0
@@ -4166,7 +4246,7 @@ def execute_buy_merchant_item(
         return False, f"⚠️ [{item_def['name']}]은(는) 오늘 준비된 수량이 모두 매진되었습니다!", None
 
     try:
-        clean_q = quantity_str.strip().lower()
+        clean_q = str(quantity_str).strip().lower()
         if clean_q in ["올인", "최대", "max", "다", "전부"]:
             qty = min(avail_stock, max(1, user.points // unit_price if unit_price > 0 else 1))
         else:
@@ -4214,6 +4294,14 @@ def execute_buy_merchant_item(
         state.merchant_downgrade_stock = max(0, avail_stock - qty)
         user.downgrade_scroll_count = (getattr(user, "downgrade_scroll_count", 0) or 0) + qty
         user_stock = user.downgrade_scroll_count
+    elif matched_item_type == "shield_100":
+        state.merchant_shield_100_stock = max(0, avail_stock - qty)
+        user.shield_100_scroll_count = (getattr(user, "shield_100_scroll_count", 0) or 0) + qty
+        user_stock = user.shield_100_scroll_count
+    elif matched_item_type == "downgrade_100":
+        state.merchant_downgrade_100_stock = max(0, avail_stock - qty)
+        user.downgrade_100_scroll_count = (getattr(user, "downgrade_100_scroll_count", 0) or 0) + qty
+        user_stock = user.downgrade_100_scroll_count
     else:  # snipe
         state.merchant_snipe_stock = max(0, avail_stock - qty)
         user.snipe_scroll_count = (getattr(user, "snipe_scroll_count", 0) or 0) + qty
@@ -4224,7 +4312,9 @@ def execute_buy_merchant_item(
         (getattr(state, "merchant_boost_stock", 0) or 0) +
         (getattr(state, "merchant_downgrade_stock", 0) or 0) +
         (getattr(state, "merchant_snipe_stock", 0) or 0) +
-        (getattr(state, "merchant_special_snipe_stock", 0) or 0)
+        (getattr(state, "merchant_special_snipe_stock", 0) or 0) +
+        (getattr(state, "merchant_shield_100_stock", 0) or 0) +
+        (getattr(state, "merchant_downgrade_100_stock", 0) or 0)
     )
 
     all_sold_out = (total_remaining_stock <= 0)
@@ -4266,20 +4356,32 @@ def get_merchant_guide(db: Session) -> str:
     m = rem // 60
     s = rem % 60
 
-    special_line = ""
+    extra_lines = []
     buy_guide = "!상인구매 [1/2/3/4] [수량] (예: !상인구매 4 1, !상인구매 저격 1)"
     if "special" in items and items["special"].get("stock", 0) > 0:
         sp = items["special"]
-        special_line = f"5. 🌟 {sp['name']} : {sp['price']:,}P (재고 {sp['stock']}개) - {sp['desc']}\n"
-        buy_guide = "!상인구매 [1/2/3/4/5] [수량] (예: !상인구매 5 1, !상인구매 전용 1)"
+        extra_lines.append(f"5. 🌟 {sp['name']} : {sp['price']:,}P (재고 {sp['stock']}개) - {sp['desc']}")
+        buy_guide = "!상인구매 [1~5] [수량]"
+
+    if "shield_100" in items and items["shield_100"].get("stock", 0) > 0:
+        s100 = items["shield_100"]
+        extra_lines.append(f"6. 🛡️✨ {s100['name']} : {s100['price']:,}P (한정 1개) - ★15+ 파괴 확률 100% 완전 방어!")
+        buy_guide = "!상인구매 [1~7] [수량] (예: !상인구매 6 1, !상인구매 절대파방)"
+
+    if "downgrade_100" in items and items["downgrade_100"].get("stock", 0) > 0:
+        d100 = items["downgrade_100"]
+        extra_lines.append(f"7. 📉✨ {d100['name']} : {d100['price']:,}P (한정 1개) - 실패 시 성수 하락 100% 완전 방어!")
+        buy_guide = "!상인구매 [1~7] [수량] (예: !상인구매 7 1, !상인구매 절대하강)"
+
+    extra_txt = ("\n".join(extra_lines) + "\n") if extra_lines else ""
 
     return (
         f"🧞‍♂️✨ [신비상인의 비밀 보따리 상점] (남은 시간: {m}분 {s:02d}초)\n"
-        f"1. 🛡️ 파괴방어권 : {items['shield']['price']:,}P (재고 {items['shield']['stock']}개) - 15성+ 폭발 파괴 100% 방어\n"
+        f"1. 🛡️ 파괴방어권 : {items['shield']['price']:,}P (재고 {items['shield']['stock']}개) - 15성+ 폭발 파괴 60% 방어\n"
         f"2. ⚡ 강화확률상승권 : {items['boost']['price']:,}P (재고 {items['boost']['stock']}개) - 강화 성공률 +25% 곱연산 증폭\n"
-        f"3. 📉 하강방지권 : {items['downgrade']['price']:,}P (재고 {items['downgrade']['stock']}개) - 실패 시 성수 하락 100% 방어\n"
+        f"3. 📉 하강방지권 : {items['downgrade']['price']:,}P (재고 {items['downgrade']['stock']}개) - 실패 시 성수 하락 70% 방어\n"
         f"4. 🎯 잠재저격주문서 : {items['snipe']['price']:,}P (재고 {items['snipe']['stock']}개) - 큐브 사용 시 원하는 옵션 확률 대폭 증가 (1줄 35% 저격 + 전체 3.5배 가중치)\n"
-        f"{special_line}"
+        f"{extra_txt}"
         f"💡 구매 명령어: {buy_guide}"
     )
 
@@ -5575,7 +5677,9 @@ def execute_pickaxe_upgrade(
     item_id_or_index: Optional[str] = None,
     use_shield: Optional[bool] = None,
     use_boost: Optional[bool] = None,
-    use_downgrade: Optional[bool] = None
+    use_downgrade: Optional[bool] = None,
+    use_shield_100: Optional[bool] = None,
+    use_downgrade_100: Optional[bool] = None
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !강화 / !업그레이드 [장비번호/슬롯] (MapleStory Star Force pickaxe enhancement).
@@ -5583,7 +5687,7 @@ def execute_pickaxe_upgrade(
     - 0성 ~ 14성: 파괴 확률 없음 (0%), 실패 시 하락 없이 등급 유지 (100%)
     - 15성 ~ 29성: 실패 시 단계 하락 없이 등급 유지, 파괴 확률 존재 (파괴 시 12성 장비의 흔적으로 복원)
     - 강화 비용은 성공/실패/파괴 무관 100% 국고 채굴풀로 환원
-    - 주문서는 유저가 지정(!강화 파방/하강/상승/풀)하거나 상시 설정(!주문서)했을 때만 사용
+    - 주문서는 유저가 지정(!강화 파방/하강/상승/절대파방/절대하강/풀)하거나 상시 설정(!주문서)했을 때만 사용
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
@@ -5623,6 +5727,29 @@ def execute_pickaxe_upgrade(
     arm_d = getattr(user, "arm_downgrade", None)
     effective_use_downgrade = use_downgrade if use_downgrade is not None else (True if arm_d is None or arm_d is True else False)
     effective_use_boost = use_boost if use_boost is not None else bool(getattr(user, "arm_boost", False))
+
+    arm_s100 = getattr(user, "arm_shield_100", None)
+    effective_use_shield_100 = use_shield_100 if use_shield_100 is not None else (True if arm_s100 is None or arm_s100 is True else False)
+    arm_d100 = getattr(user, "arm_downgrade_100", None)
+    effective_use_downgrade_100 = use_downgrade_100 if use_downgrade_100 is not None else (True if arm_d100 is None or arm_d100 is True else False)
+
+    # If user explicitly requested standard shield/downgrade, do not consume precious 100% scrolls
+    if use_shield is True and use_shield_100 is None:
+        effective_use_shield_100 = False
+    if use_downgrade is True and use_downgrade_100 is None:
+        effective_use_downgrade_100 = False
+
+    # If user explicitly requested 100% scrolls, do not consume standard scrolls
+    if use_shield_100 is True and use_shield is None:
+        effective_use_shield = False
+    if use_downgrade_100 is True and use_downgrade is None:
+        effective_use_downgrade = False
+
+    if use_shield_100 is True and (getattr(user, "shield_100_scroll_count", 0) or 0) <= 0:
+        return False, "⚠️ [절대 파괴방어권(100%)]을 보유하고 있지 않습니다! (보유: 0장 | 신비상인에게서 구매 가능)", None
+
+    if use_downgrade_100 is True and (getattr(user, "downgrade_100_scroll_count", 0) or 0) <= 0:
+        return False, "⚠️ [절대 하강방지권(100%)]을 보유하고 있지 않습니다! (보유: 0장 | 신비상인에게서 구매 가능)", None
 
     if use_shield is True and (getattr(user, "shield_scroll_count", 0) or 0) <= 0:
         return False, "⚠️ [파괴방어권]을 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
@@ -5686,6 +5813,8 @@ def execute_pickaxe_upgrade(
 
     used_downgrade_scroll = False
     used_shield_scroll = False
+    used_downgrade_100_scroll = False
+    used_shield_100_scroll = False
 
     if roll < s_rate:
         outcome = "success"
@@ -5716,7 +5845,18 @@ def execute_pickaxe_upgrade(
             f"(현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     elif roll < (s_rate + m_rate + d_rate):
-        if effective_use_downgrade and (getattr(user, "downgrade_scroll_count", 0) or 0) > 0:
+        if effective_use_downgrade_100 and (getattr(user, "downgrade_100_scroll_count", 0) or 0) > 0:
+            user.downgrade_100_scroll_count -= 1
+            used_downgrade_100_scroll = True
+            outcome = "downgrade_prevented_100"
+            new_level = curr_level
+            target_item.starforce = new_level
+            new_item = current_item
+            reply = (
+                f"🛡️📉✨ [절대 하강방지권 100% 무적 방어 성공!{fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화에 실패했으나, "
+                f"절대 하강방지권을 소모하여 100% 확률로 1성 하락을 완벽히 방어했습니다! (남은 절대 하강방지권: {user.downgrade_100_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+            )
+        elif effective_use_downgrade and (getattr(user, "downgrade_scroll_count", 0) or 0) > 0:
             user.downgrade_scroll_count -= 1
             used_downgrade_scroll = True
             downgrade_defend_roll = random.uniform(0, 100)
@@ -5752,7 +5892,19 @@ def execute_pickaxe_upgrade(
     else:
         # Destroyed / Blown up! (Only possible at 15성+)
         shield_defended = False
-        if effective_use_shield and (getattr(user, "shield_scroll_count", 0) or 0) > 0:
+        if effective_use_shield_100 and (getattr(user, "shield_100_scroll_count", 0) or 0) > 0:
+            user.shield_100_scroll_count -= 1
+            used_shield_100_scroll = True
+            shield_defended = True
+            outcome = "destruction_prevented_100"
+            new_level = curr_level
+            target_item.starforce = new_level
+            new_item = current_item
+            reply = (
+                f"🛡️✨💎 [절대 파괴방어권 100% 무적 방어 성공!{fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴될 위기였으나, "
+                f"절대 파괴방어권의 무적 방어막으로 폭발을 100% 완벽히 차단하고 성수를 지켜냈습니다! (남은 절대 파괴방어권: {user.shield_100_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+            )
+        elif effective_use_shield and (getattr(user, "shield_scroll_count", 0) or 0) > 0:
             user.shield_scroll_count -= 1
             used_shield_scroll = True
             dest_defend_roll = random.uniform(0, 100)
@@ -5841,9 +5993,13 @@ def execute_pickaxe_upgrade(
         "used_boost_scroll": used_boost_scroll,
         "used_downgrade_scroll": used_downgrade_scroll,
         "used_shield_scroll": used_shield_scroll,
+        "used_shield_100_scroll": used_shield_100_scroll,
+        "used_downgrade_100_scroll": used_downgrade_100_scroll,
         "remaining_boost_scrolls": getattr(user, "boost_scroll_count", 0) or 0,
         "remaining_downgrade_scrolls": getattr(user, "downgrade_scroll_count", 0) or 0,
-        "remaining_shield_scrolls": getattr(user, "shield_scroll_count", 0) or 0
+        "remaining_shield_scrolls": getattr(user, "shield_scroll_count", 0) or 0,
+        "remaining_shield_100_scrolls": getattr(user, "shield_100_scroll_count", 0) or 0,
+        "remaining_downgrade_100_scrolls": getattr(user, "downgrade_100_scroll_count", 0) or 0
     }
     return True, reply, details
 
@@ -6258,10 +6414,14 @@ def toggle_user_scroll_arm(
         s_cnt = getattr(user, "shield_scroll_count", 0) or 0
         d_cnt = getattr(user, "downgrade_scroll_count", 0) or 0
         b_cnt = getattr(user, "boost_scroll_count", 0) or 0
+        s100_cnt = getattr(user, "shield_100_scroll_count", 0) or 0
+        d100_cnt = getattr(user, "downgrade_100_scroll_count", 0) or 0
         snipe_cnt = getattr(user, "snipe_scroll_count", 0) or 0
         s_arm = "🟢확정(ON)" if getattr(user, "arm_shield", True) else "🔴OFF"
         d_arm = "🟢확정(ON)" if getattr(user, "arm_downgrade", True) else "🔴OFF"
         b_arm = "🟢ON" if getattr(user, "arm_boost", False) else "🔴OFF"
+        s100_arm = "🟢확정(ON)" if getattr(user, "arm_shield_100", True) else "🔴OFF"
+        d100_arm = "🟢확정(ON)" if getattr(user, "arm_downgrade_100", True) else "🔴OFF"
         snipe_arm = "🟢ON" if getattr(user, "arm_snipe", False) else "🔴OFF"
 
         special_scrolls = get_user_special_snipe_scrolls(user)
@@ -6283,16 +6443,20 @@ def toggle_user_scroll_arm(
 
         reply = (
             f"📜 [{user.username}님의 주문서 상시 사용 설정 및 보유 현황]\n"
-            f"• 🛡️ 파괴방어권: {s_arm} (보유: {s_cnt}장) [강화 시 자동 확정 사용 | 설정: !주문서 파방 on/off]\n"
-            f"• 📉 하강방지권: {d_arm} (보유: {d_cnt}장) [강화 시 자동 확정 사용 | 설정: !주문서 하강 on/off]\n"
+            f"• 🛡️ 파괴방어권(60%): {s_arm} (보유: {s_cnt}장) [강화 시 자동 사용 | 설정: !주문서 파방 on/off]\n"
+            f"• 📉 하강방지권(70%): {d_arm} (보유: {d_cnt}장) [강화 시 자동 사용 | 설정: !주문서 하강 on/off]\n"
+            f"• 🛡️✨ 절대 파괴방어권(100% 무적): {s100_arm} (보유: {s100_cnt}장) [설정: !주문서 절대파방 on/off]\n"
+            f"• 📉✨ 절대 하강방지권(100% 무적): {d100_arm} (보유: {d100_cnt}장) [설정: !주문서 절대하강 on/off]\n"
             f"• ⚡ 강화확률상승권: {b_arm} (보유: {b_cnt}장) [설정: !주문서 상승 on/off]\n"
             f"• 🎯 잠재저격주문서: {snipe_arm} (보유: {snipe_cnt}장) [사용: !주문서 저격 [옵션명] | 설정: !주문서 저격 on/off]{special_txt}\n"
             f"💡 저격 주문서 사용: `!주문서 저격 고블린`, `!주문서 저격 과충전`, `!주문서 저격 쿨초`, `!주문서 저격 크리`\n"
-            f"💡 강화 주문서 설정: `!주문서 파방 off`, `!주문서 하강 off`, `!주문서 상승 on`, `!주문서 전체 on` (⚠️ 저격은 전체 ON에서 자동 제외)"
+            f"💡 강화 주문서 설정: `!주문서 절대파방 on`, `!주문서 절대하강 on`, `!주문서 파방 off`, `!주문서 하강 off`, `!주문서 전체 on`"
         )
         return True, reply, {
             "arm_shield": bool(getattr(user, "arm_shield", True)),
             "arm_downgrade": bool(getattr(user, "arm_downgrade", True)),
+            "arm_shield_100": bool(getattr(user, "arm_shield_100", True)),
+            "arm_downgrade_100": bool(getattr(user, "arm_downgrade_100", True)),
             "arm_boost": bool(getattr(user, "arm_boost", False)),
             "arm_snipe": bool(getattr(user, "arm_snipe", False))
         }
@@ -6306,8 +6470,24 @@ def toggle_user_scroll_arm(
         elif s_clean in ["off", "끄기", "비활성", "0", "false", "stop"]:
             target_state = False
 
+    # 0-1. 🛡️✨ 절대 파괴방어권 100% (Shield 100% - Item 6)
+    if clean_target in ["6", "절대파방", "절대파방권", "절대방어권", "shield100", "shield_100", "100파방", "100파방권", "100파괴방어"] or any(k in clean_target for k in ["절대파방", "100파방", "절대파괴"]):
+        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_shield_100", True))
+        user.arm_shield_100 = new_val
+        db.commit()
+        stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
+        return True, f"🛡️✨ [절대 파괴방어권(100%) 상시사용] 설정이 {stat}되었습니다. (보유: {getattr(user, 'shield_100_scroll_count', 0)}장)", {"arm_shield_100": new_val}
+
+    # 0-2. 📉✨ 절대 하강방지권 100% (Downgrade 100% - Item 7)
+    elif clean_target in ["7", "절대하강", "절대하방", "절대하방권", "downgrade100", "downgrade_100", "100하강", "100하방", "100하강권"] or any(k in clean_target for k in ["절대하강", "100하강", "절대하방", "100하방"]):
+        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_downgrade_100", True))
+        user.arm_downgrade_100 = new_val
+        db.commit()
+        stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
+        return True, f"📉✨ [절대 하강방지권(100%) 상시사용] 설정이 {stat}되었습니다. (보유: {getattr(user, 'downgrade_100_scroll_count', 0)}장)", {"arm_downgrade_100": new_val}
+
     # 1. 🛡️ 파괴방어권 (Shield - Item 1)
-    if clean_target in ["1", "파방", "파방권", "방어권", "shield"] or any(k in clean_target for k in ["파괴방어", "파괴방지", "파괴", "파방"]):
+    elif clean_target in ["1", "파방", "파방권", "방어권", "shield"] or any(k in clean_target for k in ["파괴방어", "파괴방지", "파괴", "파방"]):
         new_val = target_state if target_state is not None else not bool(getattr(user, "arm_shield", True))
         user.arm_shield = new_val
         db.commit()
@@ -6385,6 +6565,8 @@ def toggle_user_scroll_arm(
         user.arm_shield = new_val
         user.arm_downgrade = new_val
         user.arm_boost = new_val
+        user.arm_shield_100 = new_val
+        user.arm_downgrade_100 = new_val
         # Exclude snipe scroll from '전체 on' to prevent unintended burning
         if not new_val:
             user.arm_snipe = False
@@ -6394,6 +6576,8 @@ def toggle_user_scroll_arm(
             "arm_shield": user.arm_shield,
             "arm_downgrade": user.arm_downgrade,
             "arm_boost": user.arm_boost,
+            "arm_shield_100": user.arm_shield_100,
+            "arm_downgrade_100": user.arm_downgrade_100,
             "arm_snipe": user.arm_snipe
         }
 
