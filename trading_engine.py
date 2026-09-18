@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from models import (
     User, Position, MarketState, LimitOrder, ProductType,
     OrderType, OrderStatus, BankruptcyApplication, BankruptcyStatus,
-    DonationRecord, UserEquipment, EquipmentListing
+    DonationRecord, UserEquipment, EquipmentListing, ItemListing
 )
 
 PRODUCT_MULTIPLIERS: Dict[ProductType, float] = {
@@ -301,14 +301,14 @@ def parse_product_type(text: str) -> Optional[ProductType]:
 STARTING_POINTS: int = 50000
 DEFAULT_TREASURY_POOL: float = 500000.0
 TRADING_FEE_RATE: float = 0.01  # 1% 거래 수수료 -> 국고 채굴풀 자동 적립
-MAX_LOAN_LIMIT: int = 50000     # 최대 50,000P 신용 대출 한도
+MAX_LOAN_LIMIT: int = 50000000    # 최대 50,000,000P 신용 대출 한도 (1,000배 대폭 상향)
 LOAN_INTEREST_RATE: float = 0.02 # 경기당 2% 대출 이자 (국고 환수)
 
-# 계좌이체 세금 정책: 1만P 이상 5%, 10만P 이상 10% (1만P 미만 면세)
-TRANSFER_TAX_THRESHOLD: int = 10000       # 1만P 이상 이체 시 세금 부과
-TRANSFER_TAX_RATE: float = 0.05           # 1만P 이상 기본 5% 이체세
-TRANSFER_HIGH_TAX_THRESHOLD: int = 100000 # 10만P 이상 초고액 이체 시
-TRANSFER_HIGH_TAX_RATE: float = 0.10      # 10만P 이상 10% 증여세
+# 계좌이체 수수료 정책: 1만P 미만 면세, 1만P 이상 0.1%(1만P당 10P), 10만P 이상 0.2%(10만P당 200P)의 미미한 수수료
+TRANSFER_TAX_THRESHOLD: int = 10000       # 1만P 이상 이체 시 미미한 수수료 부과
+TRANSFER_TAX_RATE: float = 0.001          # 1만P 이상 미미한 0.1% 이체 수수료
+TRANSFER_HIGH_TAX_THRESHOLD: int = 100000 # 10만P 이상 이체 시
+TRANSFER_HIGH_TAX_RATE: float = 0.002     # 10만P 이상 0.2% 이체 수수료
 
 # ==========================================
 # MapleStory Equipment Potential & Cube System (메이플 큐브 잠재능력)
@@ -393,9 +393,9 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "unit": "%",
         "icon": "🎰",
         "tiers": {
-            "EPIC": (5.0, "슬롯머신 최종 당첨금 +5%"),
-            "UNIQUE": (10.0, "슬롯머신 최종 당첨금 +10%"),
-            "LEGENDARY": (20.0, "슬롯머신 최종 당첨금 +20%"),
+            "EPIC": (5.0, "슬롯 당첨 시 당첨금 +5% 보너스"),
+            "UNIQUE": (9.0, "슬롯 당첨 시 당첨금 +9% 보너스"),
+            "LEGENDARY": (14.0, "슬롯 당첨 시 당첨금 +14% 보너스"),
         }
     },
     "CASINO_DICE_PAYBACK": {
@@ -403,9 +403,29 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "unit": "%",
         "icon": "🎲",
         "tiers": {
-            "EPIC": (5.0, "주사위 패배 시 베팅금 5% 페이백"),
-            "UNIQUE": (10.0, "주사위 패배 시 베팅금 10% 페이백"),
-            "LEGENDARY": (15.0, "주사위 패배 시 베팅금 15% 페이백"),
+            "EPIC": (8.0, "주사위 패배 시 베팅금 8% 페이백"),
+            "UNIQUE": (14.0, "주사위 패배 시 베팅금 14% 페이백"),
+            "LEGENDARY": (20.0, "주사위 패배 시 베팅금 20% 페이백"),
+        }
+    },
+    "MAHJONG_TILE_BOOST": {
+        "name": "마작패 화료 배당 보너스",
+        "unit": "%",
+        "icon": "🀄",
+        "tiers": {
+            "EPIC": (4.0, "마작패 맞추기 적중 시 당첨금 +4.0% 보너스"),
+            "UNIQUE": (7.5, "마작패 맞추기 적중 시 당첨금 +7.5% 보너스"),
+            "LEGENDARY": (11.1, "마작패 맞추기 적중 시 당첨금 +11.1% 보너스"),
+        }
+    },
+    "RACE_SAFETY_PAYBACK": {
+        "name": "역만 레이스 2등 세이프티",
+        "unit": "%",
+        "icon": "🏇",
+        "tiers": {
+            "EPIC": (15.0, "역만 경마 2등(준우승) 시 베팅금 15% 세이프티 환급"),
+            "UNIQUE": (25.0, "역만 경마 2등(준우승) 시 베팅금 25% 세이프티 환급"),
+            "LEGENDARY": (40.0, "역만 경마 2등(준우승) 시 베팅금 40% 세이프티 환급"),
         }
     },
     "STARFORCE_DISCOUNT": {
@@ -488,14 +508,26 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
             "LEGENDARY": (100.0, "마작 경기 배당금 수령액 +100% (2배!) 증폭"),
         }
     },
+    "HEAVY_MINING": {
+        "name": "과충전 집중 채굴",
+        "unit": "분",
+        "icon": "🌋",
+        "tiers": {
+            "RARE": (1, "쿨타임 +1분 증가하는 대신 채굴 보상(주식/현금) +50% 증폭"),
+            "EPIC": (2, "쿨타임 +2분 증가하는 대신 채굴 보상(주식/현금) +100% 증폭 (2.0배)"),
+            "UNIQUE": (4, "쿨타임 +4분 증가하는 대신 채굴 보상(주식/현금) +200% 증폭 (3.0배)"),
+            "LEGENDARY": (7, "쿨타임 +7분 증가하는 대신 채굴 보상(주식/현금) +400% 증폭 (5.0배 초대박 한방!)"),
+        }
+    },
     "GOBLIN_JACKPOT_CHANCE": {
         "name": "황금 고블린 잭팟",
         "unit": "%",
         "icon": "👹",
         "tiers": {
-            "EPIC": (1.0, "채굴 시 1% 확률로 황금 고블린 토벌 (+50,000P 잭팟)"),
-            "UNIQUE": (2.0, "채굴 시 2% 확률로 황금 고블린 토벌 (+150,000P 잭팟)"),
-            "LEGENDARY": (3.0, "채굴 시 3% 확률로 황금 고블린 토벌 (+300,000P 잭팟)"),
+            "RARE": (1.5, "채굴 시 1.5% 확률로 황금 고블린 토벌 (+200,000P 잭팟)"),
+            "EPIC": (4.0, "채굴 시 4.0% 확률로 황금 고블린 토벌 (+600,000P 잭팟)"),
+            "UNIQUE": (8.0, "채굴 시 8.0% 확률로 황금 고블린 토벌 (+1,500,000P 잭팟)"),
+            "LEGENDARY": (15.0, "채굴 시 15.0% 확률로 황금 고블린 토벌 (+3,500,000P 초대형 잭팟!!)"),
         }
     },
     "LEVERAGE_20X_UNLOCK": {
@@ -508,6 +540,74 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
     }
 }
 
+def match_potential_target(target_str: Optional[str]) -> Tuple[Optional[str], Optional[List[str]]]:
+    """Matches user input keyword to target potential codes and a friendly label."""
+    if not target_str:
+        return None, None
+    raw = target_str.strip().lower().replace(" ", "").replace("_", "")
+
+    # Specific options
+    if any(k in raw for k in ["고블린", "황금고블린", "goblin"]):
+        return "👹 황금 고블린 잭팟", ["GOBLIN_JACKPOT_CHANCE"]
+    if any(k in raw for k in ["과충전", "묵직", "heavy", "오버차지"]):
+        return "🌋 과충전 집중 채굴", ["HEAVY_MINING"]
+    if any(k in raw for k in ["쿨초", "초기화", "reset"]):
+        return "⚡ 쿨타임 즉시 초기화", ["MINING_CD_RESET"]
+    if any(k in raw for k in ["쿨감", "단축", "reduction"]):
+        return "⌛ 채굴 쿨타임 단축", ["MINING_CD_REDUCTION"]
+    if any(k in raw for k in ["크리", "치명", "crit"]):
+        return "💥 채굴 크리티컬 확률", ["MINING_CRIT_BOOST"]
+    if any(k in raw for k in ["채굴량", "배율", "yield"]):
+        return "⛏️ 주식 채굴량 배율", ["MINING_YIELD_BOOST"]
+    if any(k in raw for k in ["현금", "캐시", "cash"]):
+        return "🪙 채굴 확정 현금", ["MINING_BONUS_CASH"]
+    if any(k in raw for k in ["국고", "갈취", "loot"]):
+        return "🏛️ 국고 풀 갈취", ["TREASURY_LOOT_PCT"]
+    if any(k in raw for k in ["자동", "지속", "auto"]):
+        return "⏰ 자동채굴 시간 연장", ["AUTO_MINING_DURATION"]
+    if any(k in raw for k in ["슬롯", "slot"]):
+        return "🎰 슬롯 당첨금 보너스", ["CASINO_SLOT_BOOST"]
+    if any(k in raw for k in ["주사위", "dice"]):
+        return "🎲 주사위 패배 페이백", ["CASINO_DICE_PAYBACK"]
+    if any(k in raw for k in ["마작", "화료", "mahjong"]):
+        return "🀄 마작패 화료 배당 보너스", ["MAHJONG_TILE_BOOST"]
+    if any(k in raw for k in ["경마", "레이스", "race"]):
+        return "🏇 역만 레이스 2등 세이프티", ["RACE_SAFETY_PAYBACK"]
+    if any(k in raw for k in ["파괴방지", "세이프가드", "safeguard"]):
+        return "🛡️ 15성+ 파괴 방지", ["STARFORCE_SAFEGUARD"]
+    if any(k in raw for k in ["성공률", "성공확률"]):
+        return "⭐ 강화 성공률 증가 & 실패율 감소", ["STARFORCE_SUCCESS_BOOST"]
+    if any(k in raw for k in ["할인", "강화비"]):
+        return "🔨 스타포스 강화비 할인", ["STARFORCE_DISCOUNT"]
+    if any(k in raw for k in ["배당", "dividend"]):
+        return "📈 배당금 수령 증폭", ["DIVIDEND_BOOST_PCT"]
+    if any(k in raw for k in ["수수료", "fee"]):
+        return "📉 거래 수수료 감면", ["FEE_DISCOUNT"]
+    if any(k in raw for k in ["야수", "레버리지", "beast"]):
+        return "🦁 야수의 심장", ["LEVERAGE_20X_UNLOCK"]
+
+    # Broad Categories
+    if any(k in raw for k in ["채굴", "광부", "mining"]):
+        return "⛏️ 채굴 계열 전체", [
+            "MINING_CD_RESET", "MINING_BONUS_CASH", "MINING_CRIT_BOOST",
+            "MINING_YIELD_BOOST", "HEAVY_MINING", "MINING_CD_REDUCTION",
+            "AUTO_MINING_DURATION", "TREASURY_LOOT_PCT"
+        ]
+    if any(k in raw for k in ["카지노", "도박", "casino"]):
+        return "🎰 카지노 계열 전체", [
+            "CASINO_SLOT_BOOST", "CASINO_DICE_PAYBACK", "MAHJONG_TILE_BOOST", "RACE_SAFETY_PAYBACK"
+        ]
+    if any(k in raw for k in ["강화", "스타포스", "starforce"]):
+        return "⭐ 스타포스 계열 전체", [
+            "STARFORCE_DISCOUNT", "STARFORCE_SAFEGUARD", "STARFORCE_SUCCESS_BOOST"
+        ]
+    if any(k in raw for k in ["주식", "stock"]):
+        return "📈 주식/배당 계열 전체", [
+            "DIVIDEND_BOOST_PCT", "FEE_DISCOUNT", "LEVERAGE_20X_UNLOCK"
+        ]
+
+    return None, None
+
 def get_lower_potential_tier(tier: str) -> str:
     """Returns the tier directly below the given tier (minimum RARE)."""
     order = ["RARE", "EPIC", "UNIQUE", "LEGENDARY"]
@@ -517,7 +617,11 @@ def get_lower_potential_tier(tier: str) -> str:
             return order[idx - 1]
     return "RARE"
 
-def roll_single_potential_line(tier: str) -> Dict[str, Any]:
+def roll_single_potential_line(
+    tier: str,
+    target_codes: Optional[List[str]] = None,
+    target_chance_pct: float = 0.0
+) -> Dict[str, Any]:
     """Rolls a single potential line option for the specified tier."""
     valid_keys = [
         code for code, data in POTENTIAL_OPTIONS.items()
@@ -527,7 +631,17 @@ def roll_single_potential_line(tier: str) -> Dict[str, Any]:
         valid_keys = ["MINING_BONUS_CASH"]
         tier = "RARE"
 
-    code = random.choice(valid_keys)
+    target_match = [c for c in (target_codes or []) if c in valid_keys]
+    # Strictly non-100% targeted chance (e.g. 35%)
+    if target_match and target_chance_pct > 0 and random.uniform(0, 100) < target_chance_pct:
+        code = random.choice(target_match)
+    elif target_match:
+        # 3.5x weighted probability for targeted potential codes
+        weights = [3.5 if k in target_match else 1.0 for k in valid_keys]
+        code = random.choices(valid_keys, weights=weights, k=1)[0]
+    else:
+        code = random.choice(valid_keys)
+
     opt = POTENTIAL_OPTIONS[code]
     val, desc = opt["tiers"][tier]
     return {
@@ -540,32 +654,41 @@ def roll_single_potential_line(tier: str) -> Dict[str, Any]:
         "text": f"{opt['icon']} {opt['name']} {desc}"
     }
 
-def roll_cube_potential(tier: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def roll_cube_potential(
+    tier: str,
+    target_codes: Optional[List[str]] = None
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Rolls 3 lines of potential options based on MapleStory distribution rules:
-    - Line 1: Current tier (100%)
-    - Line 2: Current tier (50%) / 1 tier lower (50%)
-    - Line 3: Current tier (20%) / 1 tier lower (80%)
+    - Line 1: Current tier (100%), 35% targeted snipe chance if targeted (strictly not 100%)
+    - Line 2: Current tier (50%) / 1 tier lower (50%), 3.5x weight for target
+    - Line 3: Current tier (20%) / 1 tier lower (80%), 3.5x weight for target
     """
     tier = (tier or "RARE").upper()
     lower_tier = get_lower_potential_tier(tier)
 
-    # Line 1: 100% Current tier
-    line1 = roll_single_potential_line(tier)
+    # Line 1: 100% Current tier (35% targeted snipe chance if target_codes provided)
+    line1 = roll_single_potential_line(tier, target_codes=target_codes, target_chance_pct=35.0 if target_codes else 0.0)
 
     # Line 2: 50% Current / 50% Lower (RARE is always RARE)
     if tier == "RARE":
         l2_tier = "RARE"
     else:
         l2_tier = tier if random.random() < 0.50 else lower_tier
-    line2 = roll_single_potential_line(l2_tier)
+    line2 = roll_single_potential_line(l2_tier, target_codes=target_codes, target_chance_pct=0.0)
 
     # Line 3: 20% Current / 80% Lower
     if tier == "RARE":
         l3_tier = "RARE"
     else:
         l3_tier = tier if random.random() < 0.20 else lower_tier
-    line3 = roll_single_potential_line(l3_tier)
+    line3 = roll_single_potential_line(l3_tier, target_codes=target_codes, target_chance_pct=0.0)
+
+    # Strict Guarantee: If tier is LEGENDARY, at least 1 line is 100% guaranteed to be a LEGENDARY option!
+    if tier == "LEGENDARY":
+        lines = [line1, line2, line3]
+        if not any(l.get("tier") == "LEGENDARY" for l in lines):
+            line1 = roll_single_potential_line("LEGENDARY", target_codes=target_codes, target_chance_pct=35.0 if target_codes else 0.0)
 
     return line1, line2, line3
 
@@ -578,8 +701,13 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
         "bonus_cash": 0,
         "crit_boost": 0.0,
         "yield_boost": 0.0,
+        "heavy_mining_cd_add": 0,
+        "heavy_mining_reward_pct": 0.0,
+        "slot_payback_pct": 0.0,
         "slot_boost_pct": 0.0,
         "dice_payback_pct": 0.0,
+        "mahjong_boost_pct": 0.0,
+        "race_safety_pct": 0.0,
         "starforce_discount_pct": 0.0,
         "safeguard_pct": 0.0,
         "auto_duration_pct": 0.0,
@@ -613,10 +741,20 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
                 effects["crit_boost"] += val
             elif code == "MINING_YIELD_BOOST":
                 effects["yield_boost"] += val
-            elif code == "CASINO_SLOT_BOOST":
+            elif code == "HEAVY_MINING":
+                effects["heavy_mining_cd_add"] += int(val)
+                line_tier = data.get("tier", "RARE")
+                pct_map = {"RARE": 50.0, "EPIC": 100.0, "UNIQUE": 200.0, "LEGENDARY": 400.0}
+                effects["heavy_mining_reward_pct"] += pct_map.get(line_tier, 50.0)
+            elif code in ["CASINO_SLOT_PAYBACK", "CASINO_SLOT_BOOST"]:
+                effects["slot_payback_pct"] += val
                 effects["slot_boost_pct"] += val
             elif code == "CASINO_DICE_PAYBACK":
                 effects["dice_payback_pct"] += val
+            elif code == "MAHJONG_TILE_BOOST":
+                effects["mahjong_boost_pct"] += val
+            elif code == "RACE_SAFETY_PAYBACK":
+                effects["race_safety_pct"] += val
             elif code == "STARFORCE_DISCOUNT":
                 effects["starforce_discount_pct"] += val
             elif code == "STARFORCE_SAFEGUARD":
@@ -636,7 +774,14 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
             elif code == "GOBLIN_JACKPOT_CHANCE":
                 effects["goblin_chance"] += val
                 line_tier = data.get("tier", "EPIC")
-                reward = 50000 if line_tier == "EPIC" else (150000 if line_tier == "UNIQUE" else 300000)
+                if line_tier == "RARE":
+                    reward = 200000
+                elif line_tier == "EPIC":
+                    reward = 600000
+                elif line_tier == "UNIQUE":
+                    reward = 1500000
+                else:  # LEGENDARY
+                    reward = 3500000
                 effects["goblin_reward"] += reward
             elif code == "LEVERAGE_20X_UNLOCK":
                 effects["leverage_20x_unlocked"] = True
@@ -647,8 +792,13 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
     # Balance caps
     effects["cd_reset_pct"] = min(70.0, effects["cd_reset_pct"])
     effects["crit_boost"] = min(100.0, effects["crit_boost"])
-    effects["slot_boost_pct"] = min(150.0, effects["slot_boost_pct"])
-    effects["dice_payback_pct"] = min(80.0, effects["dice_payback_pct"])
+    effects["heavy_mining_cd_add"] = min(20, effects["heavy_mining_cd_add"])
+    effects["heavy_mining_reward_pct"] = min(1200.0, effects["heavy_mining_reward_pct"])
+    effects["slot_payback_pct"] = min(30.0, effects["slot_payback_pct"])
+    effects["slot_boost_pct"] = min(35.0, effects["slot_boost_pct"])
+    effects["dice_payback_pct"] = min(30.0, effects["dice_payback_pct"])
+    effects["mahjong_boost_pct"] = min(30.0, effects["mahjong_boost_pct"])
+    effects["race_safety_pct"] = min(60.0, effects["race_safety_pct"])
     effects["starforce_discount_pct"] = min(50.0, effects["starforce_discount_pct"])
     effects["safeguard_pct"] = min(90.0, effects["safeguard_pct"])
     effects["auto_duration_pct"] = min(200.0, effects["auto_duration_pct"])
@@ -657,7 +807,7 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
     effects["mining_cd_reduction"] = min(8, effects["mining_cd_reduction"])
     effects["treasury_loot_pct"] = min(1.0, effects["treasury_loot_pct"])
     effects["dividend_boost_pct"] = min(300.0, effects["dividend_boost_pct"])
-    effects["goblin_chance"] = min(15.0, effects["goblin_chance"])
+    effects["goblin_chance"] = min(35.0, effects["goblin_chance"])
 
     # Calculate maximum leverage multiplier based on Beast Heart (야수의 심장) line count
     cnt = effects["leverage_unlock_count"]
@@ -789,16 +939,16 @@ def calculate_transfer_tax(amount: int) -> Tuple[int, float, str]:
     """
     Calculate transfer tax based on amount:
     - < 10,000P: 0% (면세)
-    - 10,000P ~ 99,999P: 5% (고액 이체세)
-    - >= 100,000P: 10% (초고액 증여세)
+    - 10,000P ~ 99,999P: 0.1% (미미한 이체 수수료)
+    - >= 100,000P: 0.2% (이체 수수료)
     Returns: (tax_amount, tax_rate, tax_label)
     """
     if amount >= TRANSFER_HIGH_TAX_THRESHOLD:
         tax = max(1, int(round(amount * TRANSFER_HIGH_TAX_RATE)))
-        return tax, TRANSFER_HIGH_TAX_RATE, "초고액 증여세"
+        return tax, TRANSFER_HIGH_TAX_RATE, "이체 수수료"
     elif amount >= TRANSFER_TAX_THRESHOLD:
         tax = max(1, int(round(amount * TRANSFER_TAX_RATE)))
-        return tax, TRANSFER_TAX_RATE, "고액 이체세"
+        return tax, TRANSFER_TAX_RATE, "이체 수수료"
     else:
         return 0, 0.0, "면세"
 
@@ -824,6 +974,7 @@ def get_market_state(db: Session) -> MarketState:
         initial_price = calculate_stock_price(initial_rank)
         state = MarketState(
             id=1,
+            current_rank_name="작성3",
             current_rank_point=initial_rank,
             current_price=initial_price,
             previous_price=initial_price,
@@ -837,6 +988,9 @@ def get_market_state(db: Session) -> MarketState:
         db.refresh(state)
     else:
         updated = False
+        if not getattr(state, "current_rank_name", None):
+            state.current_rank_name = "작성3"
+            updated = True
         if getattr(state, "treasury_pool", None) is None or state.treasury_pool < 50000.0:
             state.treasury_pool = DEFAULT_TREASURY_POOL
             updated = True
@@ -855,6 +1009,15 @@ def get_market_state(db: Session) -> MarketState:
             except Exception:
                 pass
     return state
+
+def set_day_open_price(db: Session, price: Optional[int] = None) -> int:
+    """Set today's opening rank point / stock price baseline."""
+    state = get_market_state(db)
+    target_price = int(price) if price is not None and int(price) > 0 else state.current_price
+    state.day_open_price = target_price
+    db.commit()
+    db.refresh(state)
+    return target_price
 
 def is_market_locked(db: Session, state: Optional[MarketState] = None) -> bool:
     """
@@ -1565,16 +1728,148 @@ def register_limit_order(
             msg = f"📌 [지정가 매도 예약] #{order.id} {product_type.value} {qty_display}주 @ 목표가 {target_price:g}P 예약 완료"
             return True, msg, {"order_id": order.id, "status": "PENDING"}
 
+def execute_delisting_and_relist(
+    db: Session,
+    old_rank: str = "작성3",
+    new_rank: str = "작성2",
+    starting_points: int = 3000
+) -> Dict[str, Any]:
+    """
+    Execute delisting (상장폐지) of the old rank stock and launch a new rank stock:
+    1. All existing stock positions are wiped out (휴짓조각: quantity=0, invested_cash=0, entry_price=0).
+    2. Pending BUY limit orders are refunded to users (reserved cash + fee) and cancelled.
+    3. Pending SELL limit orders are cancelled.
+    4. MarketState is updated to new rank, starting points (3,000P for 작성2 3000/6000), and new price.
+    """
+    state = get_market_state(db)
+
+    # 1. Wipe all existing positions to 0 (휴짓조각)
+    positions = db.query(Position).filter(
+        (Position.quantity > 0) | (Position.invested_cash > 0)
+    ).all()
+    wiped_positions_count = 0
+    total_wiped_shares = 0.0
+    total_wiped_cash = 0.0
+    affected_users = set()
+
+    for pos in positions:
+        if pos.quantity > 0 or pos.invested_cash > 0:
+            wiped_positions_count += 1
+            total_wiped_shares += pos.quantity
+            total_wiped_cash += pos.invested_cash
+            affected_users.add(pos.user_id)
+            pos.quantity = 0.0
+            pos.invested_cash = 0.0
+            pos.entry_price = 0.0
+
+    # 2. Cancel and refund pending limit orders
+    pending_orders = db.query(LimitOrder).filter_by(status=OrderStatus.PENDING).all()
+    cancelled_orders_count = 0
+    refunded_buy_points = 0
+
+    for order in pending_orders:
+        if order.order_type == OrderType.BUY:
+            cost_reserved = int(round(order.target_price * order.quantity))
+            fee_reserved = max(1, int(round(cost_reserved * TRADING_FEE_RATE))) if cost_reserved > 0 else 0
+            total_reserved = cost_reserved + fee_reserved
+            if order.user:
+                order.user.points += total_reserved
+            refunded_buy_points += total_reserved
+        order.status = OrderStatus.CANCELLED
+        cancelled_orders_count += 1
+
+    # 3. Update market state to new stock
+    state.current_rank_name = new_rank
+    state.current_rank_point = starting_points
+    new_p = calculate_stock_price(starting_points)
+    state.current_price = new_p
+    state.previous_price = new_p
+    state.day_open_price = new_p
+    state.last_settlement_delta = 0
+    state.is_trading_locked = False
+
+    db.commit()
+    db.refresh(state)
+
+    return {
+        "old_rank": old_rank,
+        "new_rank": new_rank,
+        "starting_points": starting_points,
+        "new_price": new_p,
+        "wiped_positions_count": wiped_positions_count,
+        "total_wiped_shares": total_wiped_shares,
+        "total_wiped_cash": total_wiped_cash,
+        "affected_users_count": len(affected_users),
+        "cancelled_orders_count": cancelled_orders_count,
+        "refunded_buy_points": refunded_buy_points,
+    }
+
 def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
     """
     Admin match settlement:
-    1. Updates rank points and recalculates base stock price
-    2. Rebalances positions and runs liquidation (margin call) checks
-    3. Triggers pending limit orders matching new price
-    4. Unlocks trading market
+    1. Checks demotion condition (points drop <= 0):
+       If demoting from 작성3 to 작성2, triggers delisting (상장폐지)!
+    2. Updates rank points and recalculates base stock price
+    3. Rebalances positions and runs liquidation (margin call) checks
+    4. Triggers pending limit orders matching new price
+    5. Unlocks trading market
     """
     state = get_market_state(db)
     old_price = state.current_price
+    curr_rank_name = getattr(state, "current_rank_name", "작성3") or "작성3"
+
+    # Demotion & Delisting trigger check:
+    # If rank points drop to 0 or below, demotion to 작성2 triggers delisting!
+    if state.current_rank_point + point_delta <= 0:
+        delist_info = execute_delisting_and_relist(
+            db,
+            old_rank=curr_rank_name,
+            new_rank="작성2",
+            starting_points=3000
+        )
+
+        # Collect loan interest on debtors
+        total_interest_collected = 0
+        debtors = db.query(User).filter(User.debt > 0).all()
+        for debtor in debtors:
+            interest = int(math.ceil(debtor.debt * LOAN_INTEREST_RATE))
+            if interest > 0:
+                if debtor.points >= interest:
+                    debtor.points -= interest
+                    total_interest_collected += interest
+                else:
+                    paid = debtor.points
+                    unpaid = interest - paid
+                    debtor.points = 0
+                    debtor.debt += unpaid
+                    total_interest_collected += paid
+
+        if getattr(state, "treasury_pool", None) is None:
+            state.treasury_pool = DEFAULT_TREASURY_POOL
+        state.treasury_pool += total_interest_collected
+
+        state.is_trading_locked = False
+        db.commit()
+        db.refresh(state)
+
+        return {
+            "rank": rank,
+            "point_delta": point_delta,
+            "delisted": True,
+            "delisting_info": delist_info,
+            "current_rank_name": state.current_rank_name,
+            "new_rank_points": state.current_rank_point,
+            "old_price": old_price,
+            "new_price": state.current_price,
+            "return_pct": -1.0,
+            "is_trading_locked": state.is_trading_locked,
+            "treasury_pool": state.treasury_pool,
+            "liquidations": [],
+            "dividends": [],
+            "filled_orders": [],
+            "interest_collected": total_interest_collected
+        }
+
     state.current_rank_point += point_delta
     new_price = calculate_stock_price(state.current_rank_point)
     return_pct = (new_price - old_price) / old_price if old_price > 0 else 0.0
@@ -1767,6 +2062,8 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
     return {
         "rank": rank,
         "point_delta": point_delta,
+        "delisted": False,
+        "current_rank_name": getattr(state, "current_rank_name", "작성3") or "작성3",
         "new_rank_points": state.current_rank_point,
         "old_price": old_price,
         "new_price": new_price,
@@ -2044,6 +2341,861 @@ def get_starforce_event_guide(db: Session) -> str:
             f"💡 피버는 약 15~30분 주기로 5~10분간 랜덤 돌발 발생합니다! (스트리머 명령어: !피버 [분] [종류])"
         )
 
+# ==========================================
+# State Welfare Lottery Event (국가 복지 복권 이벤트)
+# ==========================================
+LOTTERY_TICKET_PRICE: int = 1000          # 기본 동 복권 1장당 1,000P
+MAX_LOTTERY_PURCHASE: int = 10            # 1회 최대 10장 구매
+LOTTERY_DEFAULT_DURATION_MIN: int = 10    # 1회 10분 오픈
+LOTTERY_MIN_INTERVAL_MINUTES: float = 20.0 # 최소 20분 간격
+LOTTERY_MAX_INTERVAL_MINUTES: float = 40.0 # 최대 40분 간격
+
+LOTTERY_SPECS: Dict[str, Dict[str, Any]] = {
+    "basic": {
+        "id": "basic",
+        "name": "동 복권(일반)",
+        "icon": "🥉",
+        "price": 1000,
+        "aliases": ["동", "일반", "동복권", "일반복권", "싼거", "1", "basic", "bronze", "1000"],
+        "tiers": [
+            {
+                "tier": 1,
+                "name": "🥇 1등 (국고 잭팟)",
+                "icon": "👑",
+                "prize": 50000,
+                "prob": 0.004,  # 0.4% (50배 잭팟)
+                "badge": "1등(5만)",
+                "is_jackpot": True
+            },
+            {
+                "tier": 2,
+                "name": "🥈 2등 (국가 특별 지원금)",
+                "icon": "✨",
+                "prize": 10000,
+                "prob": 0.020,  # 2.0% (10배 대박)
+                "badge": "2등(1만)",
+                "is_jackpot": True
+            },
+            {
+                "tier": 3,
+                "name": "🥉 3등 (행운 복지금)",
+                "icon": "💎",
+                "prize": 4000,
+                "prob": 0.050,  # 5.0% (4배)
+                "badge": "3등(4천)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 4,
+                "name": "🌟 4등 (복지 장려금)",
+                "icon": "🍀",
+                "prize": 2000,
+                "prob": 0.100,  # 10.0% (2배)
+                "badge": "4등(2천)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 5,
+                "name": "🎁 5등 (구매금액 환급)",
+                "icon": "🎁",
+                "prize": 1000,
+                "prob": 0.180,  # 18.0% (1배 환급)
+                "badge": "5등(1천)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 6,
+                "name": "💀 꽝 (국고 기부)",
+                "icon": "💀",
+                "prize": 0,
+                "prob": 0.646,  # 64.6% (손실 꽝)
+                "badge": "꽝",
+                "is_jackpot": False
+            }
+        ]
+    },
+    "silver": {
+        "id": "silver",
+        "name": "은 복권(고급)",
+        "icon": "🥈",
+        "price": 5000,
+        "aliases": ["은", "고급", "은복권", "고급복권", "중간", "중간거", "2", "silver", "5000"],
+        "tiers": [
+            {
+                "tier": 1,
+                "name": "🥇 1등 (50만 대박 잭팟!)",
+                "icon": "👑",
+                "prize": 500000,
+                "prob": 0.002,  # 0.2% (100배 대박)
+                "badge": "1등(50만)",
+                "is_jackpot": True
+            },
+            {
+                "tier": 2,
+                "name": "🥈 2등 (10만 특별금)",
+                "icon": "✨",
+                "prize": 100000,
+                "prob": 0.015,  # 1.5% (20배)
+                "badge": "2등(10만)",
+                "is_jackpot": True
+            },
+            {
+                "tier": 3,
+                "name": "🥉 3등 (행운 복지금)",
+                "icon": "💎",
+                "prize": 30000,
+                "prob": 0.040,  # 4.0% (6배)
+                "badge": "3등(3만)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 4,
+                "name": "🌟 4등 (복지 장려금)",
+                "icon": "🍀",
+                "prize": 10000,
+                "prob": 0.060,  # 6.0% (2배)
+                "badge": "4등(1만)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 5,
+                "name": "🎁 5등 (구매금액 환급)",
+                "icon": "🎁",
+                "prize": 5000,
+                "prob": 0.120,  # 12.0% (1배 환급)
+                "badge": "5등(5천)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 6,
+                "name": "💀 꽝 (국고 기부)",
+                "icon": "💀",
+                "prize": 0,
+                "prob": 0.763,  # 76.3% (손실 꽝)
+                "badge": "꽝",
+                "is_jackpot": False
+            }
+        ]
+    },
+    "gold": {
+        "id": "gold",
+        "name": "금 복권(초대박 VIP)",
+        "icon": "🥇",
+        "price": 20000,
+        "aliases": ["금", "대박", "금복권", "대박복권", "비싼거", "초대박", "3", "gold", "20000", "vip"],
+        "tiers": [
+            {
+                "tier": 1,
+                "name": "👑 1등 (300만 초대박 잭팟!!)",
+                "icon": "👑",
+                "prize": 3000000,
+                "prob": 0.0005,  # 0.05% (150배 초대박)
+                "badge": "1등(300만)",
+                "is_jackpot": True
+            },
+            {
+                "tier": 2,
+                "name": "🥈 2등 (60만 대박금)",
+                "icon": "✨",
+                "prize": 600000,
+                "prob": 0.009,  # 0.9% (30배)
+                "badge": "2등(60만)",
+                "is_jackpot": True
+            },
+            {
+                "tier": 3,
+                "name": "🥉 3등 (15만 특별금)",
+                "icon": "💎",
+                "prize": 150000,
+                "prob": 0.020,  # 2.0% (7.5배)
+                "badge": "3등(15만)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 4,
+                "name": "🌟 4등 (6만 장려금)",
+                "icon": "🍀",
+                "prize": 60000,
+                "prob": 0.080,  # 8.0% (3배)
+                "badge": "4등(6만)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 5,
+                "name": "🎁 5등 (구매금액 환급)",
+                "icon": "🎁",
+                "prize": 20000,
+                "prob": 0.160,  # 16.0% (1배 환급)
+                "badge": "5등(2만)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 6,
+                "name": "💀 꽝 (국고 기부)",
+                "icon": "💀",
+                "prize": 0,
+                "prob": 0.7305,  # 73.05% (손실 꽝)
+                "badge": "꽝",
+                "is_jackpot": False
+            }
+        ]
+    }
+}
+
+LOTTERY_TIERS = LOTTERY_SPECS["basic"]["tiers"]
+
+def resolve_lottery_spec(type_token: Optional[str] = None) -> Dict[str, Any]:
+    """Resolves lottery spec by id or alias. Defaults to 'basic'."""
+    if not type_token:
+        return LOTTERY_SPECS["basic"]
+    token = str(type_token).strip().lower()
+    for spec_key, spec in LOTTERY_SPECS.items():
+        if token == spec_key or token in spec.get("aliases", []):
+            return spec
+    return LOTTERY_SPECS["basic"]
+
+def get_lottery_event_state(
+    db: Session,
+    force_trigger: bool = False,
+    manual_duration: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Check and maintain the State Welfare Lottery Event status:
+    - Checks expiration when now >= end_time.
+    - Spontaneously opens lottery event every 20 ~ 40 minutes for 10 minutes.
+    """
+    state = get_market_state(db)
+    now = time.time()
+
+    is_open = bool(getattr(state, "lottery_is_open", False))
+    end_time = float(getattr(state, "lottery_end_time", 0.0) or 0.0)
+    title = getattr(state, "lottery_title", None) or "국가 복지 복권"
+    next_time = float(getattr(state, "lottery_next_event_time", 0.0) or 0.0)
+
+    # 1. Expiration check
+    if is_open and end_time > 0 and now >= end_time:
+        is_open = False
+        end_time = 0.0
+        next_time = now + random.uniform(LOTTERY_MIN_INTERVAL_MINUTES, LOTTERY_MAX_INTERVAL_MINUTES) * 60.0
+        state.lottery_is_open = False
+        state.lottery_end_time = 0.0
+        state.lottery_next_event_time = next_time
+        try:
+            db.commit()
+            db.refresh(state)
+        except Exception:
+            pass
+
+    # 2. Spontaneous Random Trigger or Force Trigger
+    if not is_open:
+        max_allowed_next = now + (LOTTERY_MAX_INTERVAL_MINUTES * 60.0) + 60.0
+        if not next_time or next_time <= 0 or next_time > max_allowed_next:
+            next_time = now + random.uniform(LOTTERY_MIN_INTERVAL_MINUTES, LOTTERY_MAX_INTERVAL_MINUTES) * 60.0
+            state.lottery_next_event_time = next_time
+            try:
+                db.commit()
+                db.refresh(state)
+            except Exception:
+                pass
+
+        if (next_time > 0 and now >= next_time) or force_trigger:
+            dur_m = float(manual_duration) if manual_duration and manual_duration > 0 else float(LOTTERY_DEFAULT_DURATION_MIN)
+            is_open = True
+            end_time = now + dur_m * 60.0
+            next_time = end_time + random.uniform(LOTTERY_MIN_INTERVAL_MINUTES, LOTTERY_MAX_INTERVAL_MINUTES) * 60.0
+
+            state.lottery_is_open = True
+            state.lottery_end_time = end_time
+            state.lottery_title = title
+            state.lottery_next_event_time = next_time
+            try:
+                db.commit()
+                db.refresh(state)
+            except Exception:
+                pass
+
+    active = bool(is_open and end_time > now)
+    rem_sec = max(0, int(end_time - now)) if active else 0
+    next_in_sec = max(0, int(next_time - now)) if (next_time and next_time > now) else 0
+
+    return {
+        "is_active": active,
+        "remaining_sec": rem_sec,
+        "end_time": end_time,
+        "title": title,
+        "next_event_in_sec": next_in_sec,
+        "ticket_price": LOTTERY_TICKET_PRICE
+    }
+
+def open_lottery_event(
+    db: Session,
+    duration_minutes: int = 10,
+    title: str = "국가 복지 복권"
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """Open State Welfare Lottery Event manually (streamer/admin)."""
+    state = get_market_state(db)
+    now = time.time()
+    dur_m = max(1, min(120, int(duration_minutes)))
+    end_time = now + (dur_m * 60.0)
+    next_time = end_time + random.uniform(LOTTERY_MIN_INTERVAL_MINUTES, LOTTERY_MAX_INTERVAL_MINUTES) * 60.0
+
+    state.lottery_is_open = True
+    state.lottery_end_time = end_time
+    state.lottery_title = title
+    state.lottery_next_event_time = next_time
+
+    db.commit()
+    db.refresh(state)
+
+    msg = f"🎉🏛️ [국가 복지 복권 오픈] '{title}' 이벤트가 {dur_m}분간 시작되었습니다! (당첨률 85%! 1등 50,000P 국고 대박 | 명령어: !복권)"
+    details = {
+        "is_active": True,
+        "duration_minutes": dur_m,
+        "remaining_sec": dur_m * 60,
+        "end_time": end_time,
+        "title": title
+    }
+    return True, msg, details
+
+def close_lottery_event(db: Session) -> Tuple[bool, str, Dict[str, Any]]:
+    """Close active State Welfare Lottery Event manually."""
+    state = get_market_state(db)
+    now = time.time()
+    title = getattr(state, "lottery_title", "국가 복지 복권") or "국가 복지 복권"
+
+    state.lottery_is_open = False
+    state.lottery_end_time = 0.0
+    state.lottery_next_event_time = now + random.uniform(LOTTERY_MIN_INTERVAL_MINUTES, LOTTERY_MAX_INTERVAL_MINUTES) * 60.0
+
+    db.commit()
+    db.refresh(state)
+
+    msg = f"🔒 [복권 이벤트 마감] '{title}' 복권 판매가 마감되었습니다. 잠시 후 다음 복지 시간에 다시 열립니다!"
+    details = {
+        "is_active": False,
+        "remaining_sec": 0,
+        "title": title
+    }
+    return True, msg, details
+
+def execute_buy_lottery(
+    db: Session,
+    user_id: str,
+    username: str,
+    count: int = 1,
+    lottery_type: Optional[str] = "basic"
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Buy and scratch State Welfare Lottery tickets (!복권 / !복권 [종류] [수량]):
+    - Available only during active lottery event
+    - 3 Tiers:
+      * basic (동 복권): 1,000P / 1등 50,000P (50배) / RTP 98.0%
+      * silver (은 복권): 5,000P / 1등 500,000P (100배 대박) / RTP 98.0%
+      * gold (금 복권): 20,000P / 1등 5,000,000P (250배 초대박 잭팟) / RTP 97.5%
+    """
+    ev_state = get_lottery_event_state(db)
+    if not ev_state["is_active"]:
+        next_m = max(1, ev_state["next_event_in_sec"] // 60)
+        return False, f"🔒 지금은 복권 이벤트 기간이 아닙니다! (약 {next_m}분 후 다음 국가 복지 복권이 자동으로 열립니다. 스트리머 전용: !복권오픈 [분])", None
+
+    spec = resolve_lottery_spec(lottery_type)
+    ticket_price = spec.get("price", LOTTERY_TICKET_PRICE)
+    spec_tiers = spec.get("tiers", LOTTERY_TIERS)
+    spec_name = spec.get("name", "동 복권(일반)")
+    spec_icon = spec.get("icon", "🎫")
+
+    try:
+        qty = int(count)
+    except (ValueError, TypeError):
+        qty = 1
+    if qty <= 0:
+        qty = 1
+    if qty > MAX_LOTTERY_PURCHASE:
+        return False, f"⚠️ 복권은 1회 최대 {MAX_LOTTERY_PURCHASE}장까지만 구매할 수 있습니다.", None
+
+    total_cost = qty * ticket_price
+    user = get_or_create_user(db, user_id, username)
+    if user.points < total_cost:
+        return False, f"⚠️ 보유 현금이 부족합니다! (필요: {total_cost:,}P | 보유: {user.points:,}P | [{spec_name}] 장당 {ticket_price:,}P)", None
+
+    state = get_market_state(db)
+
+    tickets_results = []
+    total_prize = 0
+    jackpot_hits = []
+
+    for _ in range(qty):
+        roll = random.random()
+        cum = 0.0
+        chosen_tier = spec_tiers[-1]
+        for t in spec_tiers:
+            cum += t["prob"]
+            if roll < cum:
+                chosen_tier = t
+                break
+
+        prize = chosen_tier["prize"]
+        total_prize += prize
+        tickets_results.append({
+            "tier": chosen_tier["tier"],
+            "name": chosen_tier["name"],
+            "icon": chosen_tier["icon"],
+            "prize": prize,
+            "badge": chosen_tier["badge"],
+            "is_jackpot": chosen_tier["is_jackpot"]
+        })
+        if chosen_tier["is_jackpot"]:
+            jackpot_hits.append(chosen_tier)
+
+    net_profit = total_prize - total_cost
+
+    user.points -= total_cost
+    user.points += total_prize
+
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    if net_profit > 0:
+        state.treasury_pool = max(100000.0, state.treasury_pool - net_profit)
+    else:
+        state.treasury_pool += abs(net_profit)
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    sign = "+" if net_profit >= 0 else ""
+    if qty == 1:
+        res = tickets_results[0]
+        profit_str = f"{sign}{net_profit:,}P" if net_profit != 0 else "0P"
+        if res["prize"] == 0:
+            reply = (
+                f"🎫 [{spec_icon} {spec_name}] {user.username}님 긁기 결과: {res['icon']} {res['name']}! "
+                f"아쉽게도 꽝입니다... (손실: {profit_str} | 보유 현금: {user.points:,}P)"
+            )
+        else:
+            reply = (
+                f"🎫 [{spec_icon} {spec_name}] {user.username}님 긁기 결과: {res['icon']} {res['name']}! "
+                f"당첨금 +{res['prize']:,}P 지급! (수익: {profit_str} | 보유 현금: {user.points:,}P)"
+            )
+    else:
+        from collections import Counter
+        tier_counts = Counter(r["badge"] for r in tickets_results)
+        summary_items = [f"{badge} {cnt}장" for badge, cnt in tier_counts.items()]
+        summary_str = ", ".join(summary_items)
+        reply = (
+            f"🎫 [{spec_icon} {spec_name} {qty}장 일괄 긁기] {user.username}님 결과: [{summary_str}]! "
+            f"총 당첨금: +{total_prize:,}P (총 비용: {total_cost:,}P | 순수익: {sign}{net_profit:,}P | 잔액: {user.points:,}P)"
+        )
+
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "lottery_type": spec.get("id", "basic"),
+        "lottery_name": spec_name,
+        "ticket_price": ticket_price,
+        "ticket_count": qty,
+        "total_cost": total_cost,
+        "total_prize": total_prize,
+        "net_profit": net_profit,
+        "has_jackpot": len(jackpot_hits) > 0,
+        "jackpots": jackpot_hits,
+        "user_points": user.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+def get_lottery_guide() -> str:
+    """Returns guide & prize probabilities for State Welfare Lottery (3 tiers)."""
+    return (
+        "🎫✨ [국가 복지 복권 3종 안내] (상식적인 플마제로 ~98% 밸런스 복권!)\n"
+        "1️⃣ 🥉 동 복권(일반) [1,000P] (명령어: !복권 동 [수량])\n"
+        "  • 🥇 1등 (0.4%): 50,000P (50배 국고 잭팟)\n"
+        "  • 🥈 2등 (2.0%): 10,000P | 🥉 3등 (5.0%): 4,000P | 4등 2,000P | 5등 1,000P | 💀 꽝 0P (64.6%)\n"
+        "2️⃣ 🥈 은 복권(고급) [5,000P] (명령어: !복권 은 [수량])\n"
+        "  • 🥇 1등 (0.2%): 500,000P (100배 대박 잭팟!)\n"
+        "  • 🥈 2등 (1.5%): 100,000P | 🥉 3등 (4.0%): 30,000P | 4등 10,000P | 5등 5,000P | 💀 꽝 0P (76.3%)\n"
+        "3️⃣ 🥇 금 복권(초대박) [20,000P] (명령어: !복권 금 [수량])\n"
+        "  • 👑 1등 (0.05%): 5,000,000P (250배 초대형 잭팟!!)\n"
+        "  • 🥈 2등 (0.4%): 1,000,000P (50배 대박) | 🥉 3등 (2.5%): 200,000P | 4등 60,000P | 5등 20,000P | 💀 꽝 0P (73.05%)\n"
+        "💡 1회 최대 10장 구매 가능 | 이벤트 시간 동안만 판매 (!복권오픈 [분], !복권마감)"
+    )
+
+MERCHANT_DEFAULT_DURATION_MIN = 10
+MERCHANT_MIN_INTERVAL_MINUTES = 25
+MERCHANT_MAX_INTERVAL_MINUTES = 50
+
+MERCHANT_ITEMS = {
+    "shield": {
+        "id": 1,
+        "name": "🛡️ 파괴방어권",
+        "aliases": ["1", "파괴방어권", "파괴방지권", "파괴방어", "파방", "파방권", "shield", "protect"],
+        "field": "shield_scroll_count",
+        "desc": "15성+ 스타포스 강화 실패 시 폭발 파괴 100% 방어",
+        "min_price": 350000,
+        "max_price": 700000,
+        "min_stock": 2,
+        "max_stock": 6
+    },
+    "boost": {
+        "id": 2,
+        "name": "⚡ 강화확률상승권",
+        "aliases": ["2", "강화확률상승권", "확률상승권", "상승권", "확률상승", "boost"],
+        "field": "boost_scroll_count",
+        "desc": "스타포스 강화 성공률 +25% 곱연산 증폭 (실패/하락률 차감)",
+        "min_price": 250000,
+        "max_price": 450000,
+        "min_stock": 5,
+        "max_stock": 12
+    },
+    "downgrade": {
+        "id": 3,
+        "name": "📉 하강방지권",
+        "aliases": ["3", "하강방지권", "하강방어권", "하강권", "하강방지", "downgrade", "safe"],
+        "field": "downgrade_scroll_count",
+        "desc": "스타포스 강화 실패 시 등급(성수) 하락 100% 방어",
+        "min_price": 300000,
+        "max_price": 550000,
+        "min_stock": 3,
+        "max_stock": 8
+    },
+    "snipe": {
+        "id": 4,
+        "name": "🎯 잠재저격주문서",
+        "aliases": ["4", "잠재저격주문서", "저격주문서", "저격권", "저격", "snipe", "target", "큐브주문서"],
+        "field": "snipe_scroll_count",
+        "desc": "큐브 사용 시 원하는 잠재 옵션 확률 대폭 증가 (1줄 35% 저격 + 전체 3.5배 가중치)",
+        "min_price": 350000,
+        "max_price": 650000,
+        "min_stock": 2,
+        "max_stock": 5
+    }
+}
+
+
+def get_merchant_state(
+    db: Session,
+    force_trigger: bool = False,
+    manual_duration: Optional[int] = None
+) -> Dict[str, Any]:
+    """Check and maintain Mysterious Merchant (신비상인) status."""
+    state = get_market_state(db)
+    now = time.time()
+
+    is_open = bool(getattr(state, "merchant_is_open", False))
+    end_time = float(getattr(state, "merchant_end_time", 0.0) or 0.0)
+    name = getattr(state, "merchant_name", None) or "신비상인"
+    next_time = float(getattr(state, "merchant_next_time", 0.0) or 0.0)
+
+    # 1. Expiration check
+    if is_open and end_time > 0 and now >= end_time:
+        is_open = False
+        end_time = 0.0
+        next_time = now + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
+        state.merchant_is_open = False
+        state.merchant_end_time = 0.0
+        state.merchant_next_time = next_time
+        try:
+            db.commit()
+            db.refresh(state)
+        except Exception:
+            pass
+
+    # 2. Spontaneous Random Trigger or Force Trigger
+    if not is_open:
+        max_allowed_next = now + (MERCHANT_MAX_INTERVAL_MINUTES * 60.0) + 60.0
+        if not next_time or next_time <= 0 or next_time > max_allowed_next:
+            next_time = now + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
+            state.merchant_next_time = next_time
+            try:
+                db.commit()
+                db.refresh(state)
+            except Exception:
+                pass
+
+        if (next_time > 0 and now >= next_time) or force_trigger:
+            dur_m = float(manual_duration) if manual_duration and manual_duration > 0 else float(MERCHANT_DEFAULT_DURATION_MIN)
+            is_open = True
+            end_time = now + dur_m * 60.0
+            next_time = end_time + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
+
+            state.merchant_shield_price = random.randint(350000, 700000)
+            state.merchant_shield_stock = random.randint(2, 6)
+            state.merchant_boost_price = random.randint(250000, 450000)
+            state.merchant_boost_stock = random.randint(5, 12)
+            state.merchant_downgrade_price = random.randint(300000, 550000)
+            state.merchant_downgrade_stock = random.randint(3, 8)
+            state.merchant_snipe_price = random.randint(350000, 650000)
+            state.merchant_snipe_stock = random.randint(2, 5)
+
+            state.merchant_is_open = True
+            state.merchant_end_time = end_time
+            state.merchant_name = name
+            state.merchant_next_time = next_time
+            try:
+                db.commit()
+                db.refresh(state)
+            except Exception:
+                pass
+
+    active = bool(is_open and end_time > now)
+    rem_sec = max(0, int(end_time - now)) if active else 0
+    next_in_sec = max(0, int(next_time - now)) if (next_time and next_time > now) else 0
+
+    # Auto-upgrade legacy cheap prices if found in database
+    cur_shield_price = getattr(state, "merchant_shield_price", 0) or 0
+    cur_boost_price = getattr(state, "merchant_boost_price", 0) or 0
+    cur_downgrade_price = getattr(state, "merchant_downgrade_price", 0) or 0
+    cur_snipe_price = getattr(state, "merchant_snipe_price", 0) or 0
+
+    updated_m_price = False
+    if cur_shield_price < 350000:
+        state.merchant_shield_price = random.randint(350000, 700000)
+        updated_m_price = True
+    if cur_boost_price < 250000:
+        state.merchant_boost_price = random.randint(250000, 450000)
+        updated_m_price = True
+    if cur_downgrade_price < 300000:
+        state.merchant_downgrade_price = random.randint(300000, 550000)
+        updated_m_price = True
+    if cur_snipe_price < 350000:
+        state.merchant_snipe_price = random.randint(350000, 650000)
+        updated_m_price = True
+
+    if updated_m_price:
+        try:
+            db.commit()
+            db.refresh(state)
+        except Exception:
+            pass
+
+    return {
+        "is_active": active,
+        "remaining_sec": rem_sec,
+        "end_time": end_time,
+        "merchant_name": name,
+        "next_event_in_sec": next_in_sec,
+        "items": {
+            "shield": {
+                "id": 1,
+                "name": "🛡️ 파괴방어권",
+                "price": getattr(state, "merchant_shield_price", 500000) or 500000,
+                "stock": getattr(state, "merchant_shield_stock", 5) or 0,
+                "desc": "15성+ 스타포스 강화 실패 시 폭발 파괴 100% 방어"
+            },
+            "boost": {
+                "id": 2,
+                "name": "⚡ 강화확률상승권",
+                "price": getattr(state, "merchant_boost_price", 350000) or 350000,
+                "stock": getattr(state, "merchant_boost_stock", 10) or 0,
+                "desc": "스타포스 강화 성공률 +25% 곱연산 증폭"
+            },
+            "downgrade": {
+                "id": 3,
+                "name": "📉 하강방지권",
+                "price": getattr(state, "merchant_downgrade_price", 400000) or 400000,
+                "stock": getattr(state, "merchant_downgrade_stock", 8) or 0,
+                "desc": "스타포스 강화 실패 시 등급(성수) 하락 100% 방어"
+            },
+            "snipe": {
+                "id": 4,
+                "name": "🎯 잠재저격주문서",
+                "price": getattr(state, "merchant_snipe_price", 500000) or 500000,
+                "stock": getattr(state, "merchant_snipe_stock", 4) or 0,
+                "desc": "큐브 사용 시 원하는 잠재 옵션 확률 대폭 증가 (1줄 35% 저격 + 전체 3.5배 가중치)"
+            }
+        }
+    }
+
+def open_merchant(
+    db: Session,
+    duration_minutes: int = 10,
+    name: str = "신비상인"
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """Streamer/Admin manual spawn for Mysterious Merchant."""
+    state = get_market_state(db)
+    now = time.time()
+    dur_m = max(1, min(120, int(duration_minutes)))
+    end_time = now + (dur_m * 60.0)
+    next_time = end_time + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
+
+    state.merchant_is_open = True
+    state.merchant_end_time = end_time
+    state.merchant_name = name
+    state.merchant_next_time = next_time
+
+    # Generate random prices and stocks
+    state.merchant_shield_price = random.randint(350000, 700000)
+    state.merchant_shield_stock = random.randint(2, 6)
+    state.merchant_boost_price = random.randint(250000, 450000)
+    state.merchant_boost_stock = random.randint(5, 12)
+    state.merchant_downgrade_price = random.randint(300000, 550000)
+    state.merchant_downgrade_stock = random.randint(3, 8)
+    state.merchant_snipe_price = random.randint(350000, 650000)
+    state.merchant_snipe_stock = random.randint(2, 5)
+
+    db.commit()
+    db.refresh(state)
+
+    ev_state = get_merchant_state(db)
+    msg = f"🧞‍♂️🛒 [신비상인 등장] 방랑 {name}이(가) 마을에 나타났습니다! ({dur_m}분간 영업 | 특수 주문서 한정 판매! 명령어: !신비상인, !상인구매)"
+    return True, msg, ev_state
+
+def close_merchant(db: Session) -> Tuple[bool, str, Dict[str, Any]]:
+    """Close Mysterious Merchant."""
+    state = get_market_state(db)
+    now = time.time()
+    name = getattr(state, "merchant_name", "신비상인") or "신비상인"
+
+    state.merchant_is_open = False
+    state.merchant_end_time = 0.0
+    state.merchant_next_time = now + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
+
+    db.commit()
+    db.refresh(state)
+
+    msg = f"🔒 [신비상인 퇴장] {name}이(가) 보따리를 싸고 마을을 떠났습니다. 다음 방문을 기다려주세요!"
+    details = {
+        "is_active": False,
+        "remaining_sec": 0,
+        "merchant_name": name
+    }
+    return True, msg, details
+
+def execute_buy_merchant_item(
+    db: Session,
+    user_id: str,
+    username: str,
+    item_key_str: str,
+    quantity_str: str = "1"
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Buy item from Mysterious Merchant (!상인구매 [1/2/3/4] [수량])."""
+    m_state = get_merchant_state(db)
+    if not m_state["is_active"]:
+        next_m = max(1, m_state["next_event_in_sec"] // 60)
+        return False, f"🔒 지금은 신비상인이 마을에 없습니다! (약 {next_m}분 후 다음 방문 예정. 스트리머 전용: !신비상인오픈 [분])", None
+
+    clean_key = (item_key_str or "").strip().lower()
+    matched_item_type = None
+    for k, info in MERCHANT_ITEMS.items():
+        if clean_key in [str(info["id"])] + [a.lower() for a in info["aliases"]]:
+            matched_item_type = k
+            break
+
+    if not matched_item_type:
+        return False, "⚠️ 구매할 아이템을 지정해주세요: 1(파괴방어권), 2(강화확률상승권), 3(하강방지권), 4(잠재저격주문서) (예: !상인구매 4 1, !상인구매 저격 1)", None
+
+    state = get_market_state(db)
+    user = get_or_create_user(db, user_id, username)
+
+    item_def = MERCHANT_ITEMS[matched_item_type]
+    if matched_item_type == "shield":
+        unit_price = getattr(state, "merchant_shield_price", 500000) or 500000
+        avail_stock = getattr(state, "merchant_shield_stock", 0) or 0
+    elif matched_item_type == "boost":
+        unit_price = getattr(state, "merchant_boost_price", 350000) or 350000
+        avail_stock = getattr(state, "merchant_boost_stock", 0) or 0
+    elif matched_item_type == "downgrade":
+        unit_price = getattr(state, "merchant_downgrade_price", 400000) or 400000
+        avail_stock = getattr(state, "merchant_downgrade_stock", 0) or 0
+    else:  # snipe
+        unit_price = getattr(state, "merchant_snipe_price", 500000) or 500000
+        avail_stock = getattr(state, "merchant_snipe_stock", 0) or 0
+
+    if avail_stock <= 0:
+        return False, f"⚠️ [{item_def['name']}]은(는) 오늘 준비된 수량이 모두 매진되었습니다!", None
+
+    try:
+        clean_q = quantity_str.strip().lower()
+        if clean_q in ["올인", "최대", "max", "다", "전부"]:
+            qty = min(avail_stock, max(1, user.points // unit_price if unit_price > 0 else 1))
+        else:
+            qty = int(clean_q.replace("개", "").replace("장", "").strip())
+    except (ValueError, TypeError):
+        qty = 1
+
+    if qty <= 0:
+        qty = 1
+
+    if qty > avail_stock:
+        return False, f"⚠️ 신비상인의 남은 재고가 부족합니다! (남은 재고: {avail_stock}개 | 요청: {qty}개)", None
+
+    total_cost = qty * unit_price
+    if user.points < total_cost:
+        return False, f"⚠️ 보유 현금이 부족합니다! (필요: {total_cost:,}P | 보유: {user.points:,}P | 단가: {unit_price:,}P)", None
+
+    # Deduct funds and grant consumable item
+    user.points -= total_cost
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += total_cost
+
+    # Update stock in state
+    if matched_item_type == "shield":
+        state.merchant_shield_stock = max(0, avail_stock - qty)
+        user.shield_scroll_count = (getattr(user, "shield_scroll_count", 0) or 0) + qty
+        user_stock = user.shield_scroll_count
+    elif matched_item_type == "boost":
+        state.merchant_boost_stock = max(0, avail_stock - qty)
+        user.boost_scroll_count = (getattr(user, "boost_scroll_count", 0) or 0) + qty
+        user_stock = user.boost_scroll_count
+    elif matched_item_type == "downgrade":
+        state.merchant_downgrade_stock = max(0, avail_stock - qty)
+        user.downgrade_scroll_count = (getattr(user, "downgrade_scroll_count", 0) or 0) + qty
+        user_stock = user.downgrade_scroll_count
+    else:  # snipe
+        state.merchant_snipe_stock = max(0, avail_stock - qty)
+        user.snipe_scroll_count = (getattr(user, "snipe_scroll_count", 0) or 0) + qty
+        user_stock = user.snipe_scroll_count
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    reply = (
+        f"🛒✨ [신비상인 구매 완료] {user.username}님이 [{item_def['name']}] {qty}장을 {total_cost:,}P에 구매했습니다! "
+        f"(보유 수량: {user_stock}장 | 잔여 현금: {user.points:,}P | 상인 남은 재고: {max(0, avail_stock - qty)}개)"
+    )
+    details = {
+        "item_type": matched_item_type,
+        "item_name": item_def["name"],
+        "quantity": qty,
+        "unit_price": unit_price,
+        "total_cost": total_cost,
+        "user_stock": user_stock,
+        "remaining_merchant_stock": max(0, avail_stock - qty),
+        "user_points": user.points
+    }
+    return True, reply, details
+
+def get_merchant_guide(db: Session) -> str:
+    m_state = get_merchant_state(db)
+    if not m_state["is_active"]:
+        next_m = max(1, m_state["next_event_in_sec"] // 60)
+        return f"🔒 [신비상인: 부재중] 신비상인이 여행 중입니다. 약 {next_m}분 후에 다시 마을에 나타납니다! (명령어: !신비상인)"
+
+    items = m_state["items"]
+    rem = m_state["remaining_sec"]
+    m = rem // 60
+    s = rem % 60
+    return (
+        f"🧞‍♂️✨ [신비상인의 비밀 보따리 상점] (남은 시간: {m}분 {s:02d}초)\n"
+        f"1. 🛡️ 파괴방어권 : {items['shield']['price']:,}P (재고 {items['shield']['stock']}개) - 15성+ 폭발 파괴 100% 방어\n"
+        f"2. ⚡ 강화확률상승권 : {items['boost']['price']:,}P (재고 {items['boost']['stock']}개) - 강화 성공률 +25% 곱연산 증폭\n"
+        f"3. 📉 하강방지권 : {items['downgrade']['price']:,}P (재고 {items['downgrade']['stock']}개) - 실패 시 성수 하락 100% 방어\n"
+        f"4. 🎯 잠재저격주문서 : {items['snipe']['price']:,}P (재고 {items['snipe']['stock']}개) - 큐브 사용 시 원하는 옵션 확률 대폭 증가 (1줄 35% 저격 + 전체 3.5배 가중치)\n"
+        f"💡 구매 명령어: !상인구매 [1/2/3/4] [수량] (예: !상인구매 4 1, !상인구매 저격 1)"
+    )
+
+def get_user_item_inventory(db: Session, user: User) -> Dict[str, Any]:
+    return {
+        "cube_count": getattr(user, "cube_count", 0) or 0,
+        "cube_fragments": getattr(user, "cube_fragments", 0) or 0,
+        "shield_scroll_count": getattr(user, "shield_scroll_count", 0) or 0,
+        "boost_scroll_count": getattr(user, "boost_scroll_count", 0) or 0,
+        "downgrade_scroll_count": getattr(user, "downgrade_scroll_count", 0) or 0,
+        "snipe_scroll_count": getattr(user, "snipe_scroll_count", 0) or 0,
+    }
+
 def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     lvl = max(0, min(25, int(level or 0)))
 
@@ -2278,43 +3430,43 @@ def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[st
         code = tier["code"]
         base_prob = tier["prob"]
         if is_golden_or_above:
-            # ★ 15성(황금 곡괭이) 이상 여유롭고 풍성한 고등급 채굴 보정
+            # ★ 15성(황금 곡괭이) 이상 여유롭고 풍성한 고등급 채굴 곱연산 비례 보정
             if code == "EX":
-                w = base_prob + cb * 0.048      # 천화 신화 잭팟 (~2.3% ~ 4.0%)
+                w = base_prob * (1.0 + cb * 0.240)      # 천화 신화 잭팟 곱연산 증폭
             elif code == "UR+":
-                w = base_prob + cb * 0.115      # 구련보등 더블역만 (~5.9% ~ 9.8%)
+                w = base_prob * (1.0 + cb * 0.115)      # 구련보등 더블역만 곱연산 증폭
             elif code == "UR":
-                w = base_prob + cb * 0.190      # 국사무쌍 역만 (~10.4% ~ 16.5%)
+                w = base_prob * (1.0 + cb * 0.055)      # 국사무쌍 역만 곱연산 증폭
             elif code == "SSR":
-                w = base_prob + cb * 0.270      # 다이아몬드 광맥 (~16.9% ~ 24.6%)
+                w = base_prob * (1.0 + cb * 0.038)      # 다이아몬드 광맥 곱연산 증폭
             elif code == "SR":
-                w = base_prob + cb * 0.260      # 황금 광맥 (~25.3% ~ 28.7%)
+                w = base_prob * (1.0 + cb * 0.018)      # 황금 광맥 곱연산 증폭
             elif code == "R":
-                w = base_prob + cb * 0.050      # 은 광맥
+                w = base_prob * (1.0 + cb * 0.002)      # 은 광맥 곱연산 증폭
             elif code == "N":
-                w = max(0.0, base_prob - cb * 0.500)  # 일반 구리 광맥 빠른 소멸
+                w = max(0.0, base_prob / (1.0 + cb * 0.030))  # 일반 구리 광맥 감소
             elif code == "C":
                 w = 0.0  # ★15성(황금 곡괭이) 이상 석탄 광맥 0% 완전 면제
             else:
                 w = base_prob
         else:
-            # 15성 미만 일반 성장 보정
+            # 15성 미만 일반 성장 곱연산 비례 보정
             if code == "EX":
-                w = base_prob + cb * 0.028      # 천화 신화 잭팟
+                w = base_prob * (1.0 + cb * 0.140)      # 천화 신화 잭팟
             elif code == "UR+":
-                w = base_prob + cb * 0.070      # 구련보등 더블역만
+                w = base_prob * (1.0 + cb * 0.070)      # 구련보등 더블역만
             elif code == "UR":
-                w = base_prob + cb * 0.120      # 국사무쌍 역만
+                w = base_prob * (1.0 + cb * 0.035)      # 국사무쌍 역만
             elif code == "SSR":
-                w = base_prob + cb * 0.180      # 다이아몬드 광맥
+                w = base_prob * (1.0 + cb * 0.026)      # 다이아몬드 광맥
             elif code == "SR":
-                w = base_prob + cb * 0.180      # 황금 광맥
+                w = base_prob * (1.0 + cb * 0.012)      # 황금 광맥
             elif code == "R":
-                w = base_prob + cb * 0.100      # 은 광맥
+                w = base_prob * (1.0 + cb * 0.004)      # 은 광맥
             elif code == "N":
-                w = max(0.0, base_prob - cb * 0.250)  # 일반 구리 광맥 감소율
+                w = max(0.0, base_prob / (1.0 + cb * 0.015))  # 일반 구리 광맥 감소율
             elif code == "C":
-                w = max(0.0, base_prob - cb * 0.200)  # 석탄 꽝 감소율
+                w = max(0.0, base_prob / (1.0 + cb * 0.015))  # 석탄 꽝 감소율
             else:
                 w = base_prob
         weights.append(max(0.0, w))
@@ -2468,7 +3620,11 @@ def execute_auto_mining_tick(
     star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
     star = max(0, min(25, int(star or 0)))
     pickaxe = get_pickaxe_info(star)
-    cooldown_sec = pickaxe["cooldown_seconds"]
+    pot_eff = get_equipment_potential_effects(equipped_item) if equipped_item else {}
+    pot_cd_red = pot_eff.get("mining_cd_reduction", 0)
+    heavy_cd_add = pot_eff.get("heavy_mining_cd_add", 0)
+    effective_cd_min = max(2, pickaxe["cooldown_minutes"] - pot_cd_red + heavy_cd_add)
+    cooldown_sec = effective_cd_min * 60
     pickaxe_bonus_cash = pickaxe.get("bonus_points", 0)
 
     if user.last_mined_at:
@@ -2496,6 +3652,13 @@ def execute_auto_mining_tick(
     shares_awarded = round(base_shares * multiplier, 2)
     if shares_awarded <= 0.05:
         shares_awarded = 0.05
+
+    heavy_reward_pct = pot_eff.get("heavy_mining_reward_pct", 0.0)
+    if heavy_reward_pct > 0:
+        heavy_mult = 1.0 + (heavy_reward_pct / 100.0)
+        shares_awarded = round(shares_awarded * heavy_mult, 2)
+        total_bonus_cash = int(round(total_bonus_cash * heavy_mult))
+
     actual_cost = int(round(shares_awarded * current_price))
     total_mined_cost = actual_cost + total_bonus_cash
 
@@ -2846,10 +4009,16 @@ def get_user_cooldown_status(db: Session, user_id: str, username: str) -> str:
     cd_min = pick_info["cooldown_minutes"]
     pot_eff = get_equipment_potential_effects(equipped_item) if equipped_item else {}
     pot_cd_red = pot_eff.get("mining_cd_reduction", 0)
-    effective_cd_min = max(2, cd_min - pot_cd_red)
+    heavy_cd_add = pot_eff.get("heavy_mining_cd_add", 0)
+    effective_cd_min = max(2, cd_min - pot_cd_red + heavy_cd_add)
     cd_sec = effective_cd_min * 60
 
-    cd_tip = f"쿨 {effective_cd_min}분" if pot_cd_red == 0 else f"쿨 {effective_cd_min}분(⚡잠재 -{pot_cd_red}분)"
+    cd_tip_parts = []
+    if pot_cd_red > 0:
+        cd_tip_parts.append(f"⚡단축 -{pot_cd_red}분")
+    if heavy_cd_add > 0:
+        cd_tip_parts.append(f"🌋과충전 +{heavy_cd_add}분(보상+{int(pot_eff.get('heavy_mining_reward_pct', 0))}%)")
+    cd_tip = f"쿨 {effective_cd_min}분" if not cd_tip_parts else f"쿨 {effective_cd_min}분({'/'.join(cd_tip_parts)})"
     eq_name = equipped_item.name if equipped_item else pick_info["name"]
 
     if user.last_mined_at:
@@ -2959,7 +4128,8 @@ def execute_mining(
     pot_bonus_cash = pot_effects.get("bonus_cash", 0)
     pot_cd_reset_pct = pot_effects.get("cd_reset_pct", 0.0)
     pot_cd_red = pot_effects.get("mining_cd_reduction", 0)
-    effective_cd_min = max(2, cooldown_min - pot_cd_red)
+    heavy_cd_add = pot_effects.get("heavy_mining_cd_add", 0)
+    effective_cd_min = max(2, cooldown_min - pot_cd_red + heavy_cd_add)
     cooldown_sec = effective_cd_min * 60
 
     # 2. Cooldown check based on pickaxe cooldown
@@ -3031,6 +4201,15 @@ def execute_mining(
     shares_awarded = round(base_shares * multiplier, 2)
     if shares_awarded <= 0.05:
         shares_awarded = 0.05
+
+    heavy_reward_pct = pot_effects.get("heavy_mining_reward_pct", 0.0)
+    heavy_mult = 1.0 + (heavy_reward_pct / 100.0)
+    if heavy_reward_pct > 0:
+        shares_awarded = round(shares_awarded * heavy_mult, 2)
+        total_bonus_cash = int(round(total_bonus_cash * heavy_mult))
+        if bonus_10x > 0:
+            bonus_10x = round(bonus_10x * heavy_mult, 2)
+
     actual_cost = int(round(shares_awarded * current_price))
     bonus_10x_cost = int(round(bonus_10x * current_price))
 
@@ -3100,8 +4279,9 @@ def execute_mining(
         bonus_10x_str = f" + 10X {format_quantity(bonus_10x)}주 획득!" if bonus_10x > 0 else ""
         excess_str = f" (빚 완제 후 잔여 {excess:,}P 현금 입금)" if excess > 0 else ""
         jackpot_tag = "🌟🎰 [탄광 노역 일확천금 대탈출!!] " if tier_code in ["EX", "UR+"] else ""
+        crit_flair = f" 💥[CRITICAL! 크리티컬 {int(total_crit)}% 폭발!]" if total_crit >= 20.0 and tier_code in ["EX", "UR+", "UR", "SSR", "SR"] else ""
         msg = (
-            f"{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}] [탄광 노역 채굴] {tier_name} {user.username}님 탄광 노역으로 총 {total_payout:,}P 상당 채굴! "
+            f"{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}]{crit_flair} [탄광 노역 채굴] {tier_name} {user.username}님 탄광 노역으로 총 {total_payout:,}P 상당 채굴! "
             f"수익 {repay_amt:,}P가 국고 빚 상환에 즉시 충당되었습니다!{bonus_10x_str}{excess_str} "
             f"(남은 빚: {user.debt:,}P | 다음 채굴: {next_cd_msg})"
         )
@@ -3190,6 +4370,8 @@ def execute_mining(
         extras.append(f"🏛️국고 털이 +{treasury_looted_cash:,}P")
     if goblin_triggered:
         extras.append(f"👹황금고블린 잭팟 +{pot_goblin_reward:,}P")
+    if heavy_reward_pct > 0:
+        extras.append(f"🌋과충전({heavy_mult:.1f}배)")
     if bonus_10x > 0:
         extras.append(f"🔥 10X 레버리지 +{format_quantity(bonus_10x)}주")
     if cd_reset_triggered:
@@ -3199,8 +4381,9 @@ def execute_mining(
     qty_str = format_quantity(shares_awarded)
     jackpot_tag = "🌟🎰 [일확천금 신화 탄생!!] " if tier_code in ["EX", "UR+"] else ""
     goblin_banner = f"🎉👹💰 [황금 고블린 토벌 잭팟!!] +{pot_goblin_reward:,}P 초대형 보너스!\n" if goblin_triggered else ""
+    crit_flair = f" 💥[CRITICAL! 크리티컬 {int(total_crit)}% 폭발!]" if total_crit >= 20.0 and tier_code in ["EX", "UR+", "UR", "SSR", "SR"] else ""
     msg = (
-        f"{goblin_banner}{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}] {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
+        f"{goblin_banner}{jackpot_tag}⛏️ [채굴 완료] [{pickaxe['name']}]{crit_flair} {tier_name} {user.username}님 1X {qty_str}주가 1X 보유에 합산되었습니다! "
         f"(+{actual_cost:,}P 상당{extras_str} | 보유 현금: {user.points:,}P | 국고 잔여: {int(state.treasury_pool):,}P | 다음 채굴: {next_cd_msg})"
     )
     return True, msg, {
@@ -3223,6 +4406,9 @@ def execute_mining(
         "bonus_10x_shares": bonus_10x,
         "cooldown_reduction_minutes": cd_reduction,
         "cd_reset_triggered": cd_reset_triggered,
+        "heavy_mult": heavy_mult,
+        "heavy_reward_pct": heavy_reward_pct,
+        "heavy_cd_add": heavy_cd_add,
         "treasury_pool": state.treasury_pool,
         "total_mined": user.total_mined,
         "is_forced_labor": False
@@ -3255,7 +4441,10 @@ def execute_pickaxe_upgrade(
     db: Session,
     user_id: str,
     username: str,
-    item_id_or_index: Optional[str] = None
+    item_id_or_index: Optional[str] = None,
+    use_shield: Optional[bool] = None,
+    use_boost: Optional[bool] = None,
+    use_downgrade: Optional[bool] = None
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !강화 / !업그레이드 [장비번호/슬롯] (MapleStory Star Force pickaxe enhancement).
@@ -3263,6 +4452,7 @@ def execute_pickaxe_upgrade(
     - 15성 ~ 24성: 파괴 확률 존재 (파괴 시 메이플 룰에 따라 12성 장비의 흔적으로 복원)
     - 10성, 15성, 20성: 실패 시 하락 없는 안전 방지턱
     - 강화 비용은 성공/실패/파괴 무관 100% 국고 채굴풀로 환원
+    - 주문서는 유저가 지정(!강화 파방/하강/상승/풀)하거나 상시 설정(!주문서)했을 때만 사용
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
@@ -3293,13 +4483,24 @@ def execute_pickaxe_upgrade(
     if pot_discount_pct > 0:
         cost = max(100, int(round(cost * (1.0 - pot_discount_pct / 100.0))))
 
-    # Debt protection: Cannot spend borrowed money on luxury upgrades before repaying debt
-    user_debt = getattr(user, "debt", 0) or 0
-    if user_debt > 0 and (user.points - cost) < user_debt:
-        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여 현금을 남기는 강화를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
-
     if user.points < cost:
         return False, f"⚠️ 포인트가 부족합니다! (필요: {cost:,}P | 보유: {user.points:,}P | 부족: {cost - user.points:,}P)", None
+
+    # Scroll confirmed auto-use check: default to True if user holds scrolls, unless explicitly disabled
+    arm_s = getattr(user, "arm_shield", None)
+    effective_use_shield = use_shield if use_shield is not None else (True if arm_s is None or arm_s is True else False)
+    arm_d = getattr(user, "arm_downgrade", None)
+    effective_use_downgrade = use_downgrade if use_downgrade is not None else (True if arm_d is None or arm_d is True else False)
+    effective_use_boost = use_boost if use_boost is not None else bool(getattr(user, "arm_boost", False))
+
+    if use_shield is True and (getattr(user, "shield_scroll_count", 0) or 0) <= 0:
+        return False, "⚠️ [파괴방어권]을 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
+
+    if use_boost is True and (getattr(user, "boost_scroll_count", 0) or 0) <= 0:
+        return False, "⚠️ [강화확률상승권]을 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
+
+    if use_downgrade is True and (getattr(user, "downgrade_scroll_count", 0) or 0) <= 0:
+        return False, "⚠️ [하강방지권]을 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
 
     # Deduct cost and credit 100% to Treasury regardless of result
     user.points -= cost
@@ -3313,9 +4514,10 @@ def execute_pickaxe_upgrade(
     m_rate = current_item["maintain_rate"]
     d_rate = current_item["drop_rate"]
 
-    pot_success_boost = min(20.0, float(pot_effects.get("starforce_success_boost", 0.0)))
+    # Multiplicative potential success boost (기존 확률에 대한 곱연산 비례 버프)
+    pot_success_boost = min(30.0, float(pot_effects.get("starforce_success_boost", 0.0)))
     if pot_success_boost > 0 and s_rate < 100.0:
-        boost = min(pot_success_boost, 99.0 - s_rate)
+        boost = min(s_rate * (pot_success_boost / 100.0), 99.0 - s_rate)
         s_rate += boost
         if d_rate >= boost:
             d_rate -= boost
@@ -3324,16 +4526,35 @@ def execute_pickaxe_upgrade(
             d_rate = 0.0
             m_rate = max(0.0, m_rate - rem)
 
+    # Check and consume enhancement success boost scroll (강화확률상승권) - Multiplicative +25% boost
+    used_boost_scroll = False
+    if effective_use_boost and (getattr(user, "boost_scroll_count", 0) or 0) > 0 and s_rate < 100.0:
+        user.boost_scroll_count -= 1
+        boost_scroll_val = min(s_rate * 0.25, 99.0 - s_rate)
+        s_rate += boost_scroll_val
+        if d_rate >= boost_scroll_val:
+            d_rate -= boost_scroll_val
+        else:
+            rem = boost_scroll_val - d_rate
+            d_rate = 0.0
+            m_rate = max(0.0, m_rate - rem)
+        used_boost_scroll = True
+
     pot_suffix = ""
     if pot_discount_pct > 0:
         pot_suffix += f" (🔨잠재 {int(pot_discount_pct)}%할인)"
     if pot_success_boost > 0:
-        pot_suffix += f" (⭐성공률 +{pot_success_boost:.1f}% / 실패율 -{pot_success_boost:.1f}%)"
+        pot_suffix += f" (⭐성공률 곱연산 +{pot_success_boost:.0f}% 증폭)"
+    if used_boost_scroll:
+        pot_suffix += f" (⚡확률상승권 +25% 곱연산 증폭 | 잔여 {user.boost_scroll_count}장)"
 
     fever_suffix = ""
     if current_item.get("is_discounted"):
         fever_suffix = " (🔥30% 할인 피버 적용)"
     fever_suffix += pot_suffix
+
+    used_downgrade_scroll = False
+    used_shield_scroll = False
 
     if roll < s_rate:
         outcome = "success"
@@ -3364,18 +4585,41 @@ def execute_pickaxe_upgrade(
             f"(현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     elif roll < (s_rate + m_rate + d_rate):
-        outcome = "drop"
-        new_level = max(0, curr_level - 1)
-        target_item.starforce = new_level
-        new_item = get_pickaxe_info(new_level, event_state=sf_state)
-        target_item.name = new_item["name"]
-        reply = (
-            f"🔨📉 [강화 실패 (등급 하락!){fever_suffix}] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화 실패로 1성 하락했습니다! ㅠㅠ "
-            f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
-        )
+        if effective_use_downgrade and (getattr(user, "downgrade_scroll_count", 0) or 0) > 0:
+            user.downgrade_scroll_count -= 1
+            used_downgrade_scroll = True
+            outcome = "downgrade_prevented"
+            new_level = curr_level
+            target_item.starforce = new_level
+            new_item = current_item
+            reply = (
+                f"🛡️📉 [하강방지권 발동! (등급 하락 방어){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화에 실패했으나, "
+                f"하강방지권을 소모하여 1성 하락을 막고 성수를 보존했습니다! (남은 하강방지권: {user.downgrade_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+            )
+        else:
+            outcome = "drop"
+            new_level = max(0, curr_level - 1)
+            target_item.starforce = new_level
+            new_item = get_pickaxe_info(new_level, event_state=sf_state)
+            target_item.name = new_item["name"]
+            reply = (
+                f"🔨📉 [강화 실패 (등급 하락!){fever_suffix}] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화 실패로 1성 하락했습니다! ㅠㅠ "
+                f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+            )
     else:
         # Destroyed / Blown up! (Only possible at 15성+)
-        if safeguard_pct > 0 and random.uniform(0, 100) < safeguard_pct:
+        if effective_use_shield and (getattr(user, "shield_scroll_count", 0) or 0) > 0:
+            user.shield_scroll_count -= 1
+            used_shield_scroll = True
+            outcome = "destruction_prevented"
+            new_level = curr_level
+            target_item.starforce = new_level
+            new_item = current_item
+            reply = (
+                f"🛡️✨ [파괴방어권 발동! (장비 파괴 완벽 방어!){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴될 위기였으나, "
+                f"파괴방어권을 소모하여 장비 폭발을 완벽히 막아내고 성수를 지켜냈습니다! (남은 파괴방어권: {user.shield_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+            )
+        elif safeguard_pct > 0 and random.uniform(0, 100) < safeguard_pct:
             # Safeguarded! Drop 1 star instead of falling to 12
             outcome = "safeguarded_drop"
             new_level = max(0, curr_level - 1)
@@ -3424,6 +4668,12 @@ def execute_pickaxe_upgrade(
         "pot_success_boost": pot_success_boost,
         "pot_discount_pct": pot_discount_pct,
         "safeguard_pct": safeguard_pct,
+        "used_boost_scroll": used_boost_scroll,
+        "used_downgrade_scroll": used_downgrade_scroll,
+        "used_shield_scroll": used_shield_scroll,
+        "remaining_boost_scrolls": getattr(user, "boost_scroll_count", 0) or 0,
+        "remaining_downgrade_scrolls": getattr(user, "downgrade_scroll_count", 0) or 0,
+        "remaining_shield_scrolls": getattr(user, "shield_scroll_count", 0) or 0
     }
     return True, reply, details
 
@@ -3437,8 +4687,8 @@ def execute_buy_equipment(
     Buy a new equipment/pickaxe from the store for points.
     Available options:
     - 0성 나무 곡괭이 (10,000P)
-    - 5성 돌 곡괭이 (60,000P)
-    - 10성 철 곡괭이 (250,000P)
+    - 5성 돌 곡괭이 (80,000P)
+    - 10성 철 곡괭이 (350,000P)
     """
     user = get_or_create_user(db, user_id, username)
     state = get_market_state(db)
@@ -3446,23 +4696,19 @@ def execute_buy_equipment(
     clean_tier = str(tier_token).strip().lower()
     shop_options = {
         "0": (0, 10000), "나무": (0, 10000), "기본": (0, 10000), "wood": (0, 10000), "": (0, 10000),
-        "5": (5, 60000), "돌": (5, 60000), "stone": (5, 60000),
-        "10": (10, 250000), "철": (10, 250000), "iron": (10, 250000)
+        "5": (5, 80000), "돌": (5, 80000), "stone": (5, 80000),
+        "10": (10, 350000), "철": (10, 350000), "iron": (10, 350000)
     }
 
     if clean_tier not in shop_options:
         return False, (
             "⛏️ [장비 상점 안내] 구매할 곡괭이 종류를 입력해주세요: '!곡괭이구매 [종류]'\n"
             "• 🪵 0성 나무 곡괭이: 10,000P (!곡괭이구매 0 또는 !곡괭이구매 나무)\n"
-            "• 🪨 5성 돌 곡괭이: 60,000P (!곡괭이구매 5 또는 !곡괭이구매 돌)\n"
-            "• ⛓️ 10성 철 곡괭이: 250,000P (!곡괭이구매 10 또는 !곡괭이구매 철)"
+            "• 🪨 5성 돌 곡괭이: 80,000P (!곡괭이구매 5 또는 !곡괭이구매 돌)\n"
+            "• ⛓️ 10성 철 곡괭이: 350,000P (!곡괭이구매 10 또는 !곡괭이구매 철)"
         ), None
 
     target_star, cost = shop_options[clean_tier]
-
-    user_debt = getattr(user, "debt", 0) or 0
-    if user_debt > 0 and (user.points - cost) < user_debt:
-        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여 현금을 남기는 장비 구매를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
 
     if user.points < cost:
         return False, f"⚠️ 포인트가 부족합니다! (필요: {cost:,}P | 보유: {user.points:,}P | 부족: {cost - user.points:,}P)", None
@@ -3826,6 +5072,407 @@ def execute_cancel_equipment_listing(
         reply += f" (장착: !장착 {eq.id if eq else ''})"
     return True, reply, {"listing_id": listing.id, "equipment_id": eq.id if eq else None}
 
+
+def toggle_user_scroll_arm(
+    db: Session,
+    user_id: str,
+    username: str,
+    scroll_type: Optional[str] = None,
+    state_str: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Toggle user designated scroll auto-use setting or use snipe scroll directly (!주문서 [파방/하강/상승/저격/전체] [on/off/옵션])."""
+    user = get_or_create_user(db, user_id, username)
+
+    # If no argument, show current arming status
+    if not scroll_type:
+        s_cnt = getattr(user, "shield_scroll_count", 0) or 0
+        d_cnt = getattr(user, "downgrade_scroll_count", 0) or 0
+        b_cnt = getattr(user, "boost_scroll_count", 0) or 0
+        snipe_cnt = getattr(user, "snipe_scroll_count", 0) or 0
+        s_arm = "🟢확정(ON)" if getattr(user, "arm_shield", True) else "🔴OFF"
+        d_arm = "🟢확정(ON)" if getattr(user, "arm_downgrade", True) else "🔴OFF"
+        b_arm = "🟢ON" if getattr(user, "arm_boost", False) else "🔴OFF"
+        snipe_arm = "🟢ON" if getattr(user, "arm_snipe", False) else "🔴OFF"
+        reply = (
+            f"📜 [{user.username}님의 주문서 상시 사용 설정 및 보유 현황]\n"
+            f"• 🛡️ 파괴방어권: {s_arm} (보유: {s_cnt}장) [강화 시 자동 확정 사용 | 설정: !주문서 파방 on/off]\n"
+            f"• 📉 하강방지권: {d_arm} (보유: {d_cnt}장) [강화 시 자동 확정 사용 | 설정: !주문서 하강 on/off]\n"
+            f"• ⚡ 강화확률상승권: {b_arm} (보유: {b_cnt}장) [설정: !주문서 상승 on/off]\n"
+            f"• 🎯 잠재저격주문서: {snipe_arm} (보유: {snipe_cnt}장) [사용: !주문서 저격 [옵션명] | 설정: !주문서 저격 on/off]\n"
+            f"💡 저격 주문서 사용: `!주문서 저격 고블린`, `!주문서 저격 과충전`, `!주문서 저격 쿨초`, `!주문서 저격 크리`\n"
+            f"💡 강화 주문서 설정: `!주문서 파방 off`, `!주문서 하강 off`, `!주문서 상승 on`, `!주문서 전체 on`"
+        )
+        return True, reply, {
+            "arm_shield": bool(getattr(user, "arm_shield", True)),
+            "arm_downgrade": bool(getattr(user, "arm_downgrade", True)),
+            "arm_boost": bool(getattr(user, "arm_boost", False)),
+            "arm_snipe": bool(getattr(user, "arm_snipe", False))
+        }
+
+    clean_target = scroll_type.strip().lower()
+    target_state = None
+    if state_str:
+        s_clean = state_str.strip().lower()
+        if s_clean in ["on", "켜기", "활성", "1", "true", "start"]:
+            target_state = True
+        elif s_clean in ["off", "끄기", "비활성", "0", "false", "stop"]:
+            target_state = False
+
+    if any(k in clean_target for k in ["파방", "방어", "shield"]):
+        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_shield", True))
+        user.arm_shield = new_val
+        db.commit()
+        stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
+        return True, f"🛡️ [파괴방어권 상시사용] 설정이 {stat}되었습니다. (보유: {user.shield_scroll_count}장)", {"arm_shield": new_val}
+    elif any(k in clean_target for k in ["하강", "방지", "downgrade"]):
+        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_downgrade", True))
+        user.arm_downgrade = new_val
+        db.commit()
+        stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
+        return True, f"📉 [하강방지권 상시사용] 설정이 {stat}되었습니다. (보유: {user.downgrade_scroll_count}장)", {"arm_downgrade": new_val}
+    elif any(k in clean_target for k in ["상승", "확률", "boost"]):
+        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_boost", False))
+        user.arm_boost = new_val
+        db.commit()
+        stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
+        return True, f"⚡ [강화확률상승권 상시사용] 설정이 {stat}되었습니다. (보유: {user.boost_scroll_count}장)", {"arm_boost": new_val}
+    elif any(k in clean_target for k in ["저격", "잠재저격", "snipe", "저격주문서", "4"]):
+        if target_state is not None:
+            user.arm_snipe = target_state
+            db.commit()
+            stat = "🟢활성화(ON)" if target_state else "🔴비활성화(OFF)"
+            return True, f"🎯 [잠재저격주문서 상시사용] 설정이 {stat}되었습니다. (보유: {getattr(user, 'snipe_scroll_count', 0)}장)", {"arm_snipe": target_state}
+        elif state_str:
+            # User passed a keyword e.g. !주문서 저격 고블린 -> Direct usage of snipe scroll!
+            return execute_cube_use(db, user_id, username, target_keyword=state_str, use_snipe=True)
+        else:
+            snipe_cnt = getattr(user, "snipe_scroll_count", 0) or 0
+            return False, (
+                f"💡 [잠재저격주문서 사용법] `!주문서 저격 [옵션명]` (예: `!주문서 저격 고블린`, `!주문서 저격 과충전`, `!주문서 저격 쿨초` | 보유: {snipe_cnt}장)\n"
+                f"• 지원 키워드: 고블린(황금고블린 잭팟), 과충전(과충전 채굴량), 쿨초(쿨타임 초기화), 채굴(채굴량 증가), 크리(크리티컬 확률), 배당(배당금 증폭), 할인(강화비용 할인)\n"
+                f"• 상시 설정 토글: `!주문서 저격 on` / `!주문서 저격 off`"
+            ), None
+    elif any(k in clean_target for k in ["전체", "all", "풀", "모두"]):
+        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_shield", True))
+        user.arm_shield = new_val
+        user.arm_downgrade = new_val
+        user.arm_boost = new_val
+        user.arm_snipe = new_val
+        db.commit()
+        stat = "🟢전체 활성화(ON)" if new_val else "🔴전체 비활성화(OFF)"
+        return True, f"📜 [주문서 전체 상시사용] 설정이 {stat}되었습니다.", {"arm_shield": new_val, "arm_downgrade": new_val, "arm_boost": new_val, "arm_snipe": new_val}
+    else:
+        # Check if clean_target matches a potential target directly (e.g. !주문서 고블린)
+        matched_label, matched_codes = match_potential_target(clean_target)
+        if matched_codes:
+            return execute_cube_use(db, user_id, username, target_keyword=clean_target, use_snipe=True)
+        return False, "⚠️ 올바른 주문서 종류를 입력해주세요: 파방, 하강, 상승, 저격, 전체 (예: !주문서 저격 고블린, !주문서 파방 on, !주문서 전체 off)", None
+
+
+CONSUMABLE_TRADE_ITEMS: Dict[str, Dict[str, Any]] = {
+    "shield": {
+        "field": "shield_scroll_count",
+        "name": "🛡️ 파괴방어권",
+        "unit": "장",
+        "aliases": ["파괴방어권", "파방", "파방권", "파괴방어", "방어권", "shield", "1"]
+    },
+    "boost": {
+        "field": "boost_scroll_count",
+        "name": "⚡ 강화확률상승권",
+        "unit": "장",
+        "aliases": ["강화확률상승권", "확률상승권", "상승권", "상승", "boost", "2"]
+    },
+    "downgrade": {
+        "field": "downgrade_scroll_count",
+        "name": "📉 하강방지권",
+        "unit": "장",
+        "aliases": ["하강방지권", "하강권", "하강방지", "방지권", "downgrade", "3"]
+    },
+    "cube": {
+        "field": "cube_count",
+        "name": "🔮 미라클 큐브",
+        "unit": "개",
+        "aliases": ["미라클큐브", "큐브", "cube"]
+    },
+    "snipe": {
+        "field": "snipe_scroll_count",
+        "name": "🎯 잠재저격주문서",
+        "unit": "장",
+        "aliases": ["잠재저격주문서", "저격주문서", "저격권", "저격", "snipe", "target", "4"]
+    }
+}
+
+
+def execute_list_item(
+    db: Session,
+    user_id: str,
+    username: str,
+    item_token: str,
+    quantity_token: str,
+    price_token: str,
+    target_buyer_token: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    List consumable items (scrolls/cubes) for sale on the exchange.
+    Items are safely escrowed from seller's inventory while listed.
+    5% transaction fee is charged upon sale and credited to Treasury.
+    """
+    user = get_or_create_user(db, user_id, username)
+    clean_item = item_token.strip().lower()
+
+    matched_type = None
+    for it_type, conf in CONSUMABLE_TRADE_ITEMS.items():
+        if clean_item in conf["aliases"]:
+            matched_type = it_type
+            break
+    if not matched_type:
+        valid_names = ", ".join([conf["name"] for conf in CONSUMABLE_TRADE_ITEMS.values()])
+        return False, f"⚠️ 판매 가능한 아이템이 아닙니다: '{item_token}'\n(판매 가능 아이템: {valid_names} | 예: !아이템판매 파방 1 350000)", None
+
+    conf = CONSUMABLE_TRADE_ITEMS[matched_type]
+    field = conf["field"]
+    user_stock = getattr(user, field, 0) or 0
+
+    clean_qty = re.sub(r"[^0-9]", "", str(quantity_token))
+    if not clean_qty or int(clean_qty) <= 0:
+        return False, f"⚠️ 올바른 판매 수량을 입력해주세요: '{quantity_token}' (예: !아이템판매 파방 1 350000)", None
+    qty = int(clean_qty)
+
+    if user_stock < qty:
+        return False, f"⚠️ 보유 수량이 부족합니다! (보유: {user_stock}{conf['unit']} | 요청: {qty}{conf['unit']})", None
+
+    clean_price = re.sub(r"[^0-9]", "", str(price_token))
+    if not clean_price:
+        return False, f"⚠️ 올바른 판매 가격을 입력해주세요: '{price_token}' (예: !아이템판매 파방 1 350000)", None
+    price = int(clean_price)
+    if price < 1000:
+        return False, "⚠️ 최소 판매 등록 가격은 1,000P입니다.", None
+    if price > 1000000000:
+        return False, "⚠️ 최대 판매 등록 가격은 1,000,000,000P입니다.", None
+
+    target_buyer_id = None
+    target_buyer_name = None
+    if target_buyer_token:
+        clean_buyer = str(target_buyer_token).strip().lstrip("@")
+        buyer_user = db.query(User).filter(func.lower(User.username) == clean_buyer.lower()).first()
+        if not buyer_user:
+            return False, f"⚠️ 구매 대상 유저 '{clean_buyer}'님을 찾을 수 없습니다.", None
+        if buyer_user.id == user.id:
+            return False, "⚠️ 본인에게는 직거래로 판매할 수 없습니다.", None
+        target_buyer_id = buyer_user.id
+        target_buyer_name = buyer_user.username
+
+    tax_fee = max(50, int(round(price * 0.05)))
+
+    # Deduct items from user inventory immediately (Escrow)
+    setattr(user, field, user_stock - qty)
+
+    listing = ItemListing(
+        seller_id=user.id,
+        seller_name=user.username,
+        buyer_id=target_buyer_id,
+        buyer_name=target_buyer_name,
+        item_type=matched_type,
+        item_name=conf["name"],
+        quantity=qty,
+        price=price,
+        tax_fee=tax_fee,
+        status="ACTIVE",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(listing)
+    db.commit()
+    db.refresh(listing)
+
+    target_tag = f"[{target_buyer_name} 전용 1:1 직거래]" if target_buyer_name else "[거래소 공개 등록]"
+    reply = (
+        f"🏪📦 {target_tag} {user.username}님이 [{conf['name']} x{qty}{conf['unit']}]을(를) "
+        f"총 {price:,}P (개당 {price // qty:,}P | 5% 수수료: {tax_fee:,}P)에 등록했습니다! (거래번호: #I{listing.id})\n"
+        f"👉 구매: '!거래소구매 I{listing.id}' | 취소: '!거래소취소 I{listing.id}'"
+    )
+    details = {
+        "listing_id": listing.id,
+        "item_type": matched_type,
+        "item_name": conf["name"],
+        "quantity": qty,
+        "price": price,
+        "tax_fee": tax_fee,
+        "seller_id": user.id,
+        "seller_name": user.username,
+        "buyer_id": target_buyer_id,
+        "buyer_name": target_buyer_name
+    }
+    return True, reply, details
+
+
+def execute_buy_item_listing(
+    db: Session,
+    buyer_id: str,
+    buyer_name: str,
+    listing_id_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Buy an item listing from the exchange."""
+    clean_id = re.sub(r"[^0-9]", "", str(listing_id_token))
+    if not clean_id:
+        return False, f"⚠️ 올바른 거래 번호를 입력해주세요: '{listing_id_token}' (예: !거래소구매 I1)", None
+
+    listing_id = int(clean_id)
+    listing = db.query(ItemListing).filter_by(id=listing_id).first()
+    if not listing or listing.status != "ACTIVE":
+        return False, f"⚠️ 해당 아이템 거래(#I{listing_id})가 존재하지 않거나 이미 판매 완료/취소되었습니다.", None
+
+    if buyer_id == listing.seller_id:
+        return False, f"⚠️ 본인이 등록한 물품은 직접 구매할 수 없습니다! (취소: !거래소취소 I{listing.id})", None
+
+    if listing.buyer_id and buyer_id != listing.buyer_id:
+        return False, f"⚠️ 이 거래는 {listing.buyer_name}님 전용 1:1 직거래입니다! 다른 유저는 구매할 수 없습니다.", None
+
+    buyer = get_or_create_user(db, buyer_id, buyer_name)
+    state = get_market_state(db)
+
+    buyer_debt = getattr(buyer, "debt", 0) or 0
+    if buyer_debt > 0 and (buyer.points - listing.price) < buyer_debt:
+        return False, f"⚠️ 채무(빚: {buyer_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여금을 남기는 구매를 할 수 없습니다! 먼저 !상환을 진행해주세요.", None
+
+    if buyer.points < listing.price:
+        return False, f"⚠️ 포인트가 부족합니다! (필요: {listing.price:,}P | 보유: {buyer.points:,}P | 부족: {listing.price - buyer.points:,}P)", None
+
+    seller = db.query(User).filter_by(id=listing.seller_id).first()
+    tax_fee = listing.tax_fee
+    seller_payout = listing.price - tax_fee
+
+    # Financial transfers
+    buyer.points -= listing.price
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += tax_fee
+    if seller:
+        seller.points += seller_payout
+
+    # Transfer items to buyer
+    conf = CONSUMABLE_TRADE_ITEMS.get(listing.item_type)
+    if conf:
+        field = conf["field"]
+        setattr(buyer, field, (getattr(buyer, field, 0) or 0) + listing.quantity)
+
+    listing.status = "SOLD"
+    listing.resolved_at = datetime.now(timezone.utc)
+    db.commit()
+
+    reply = (
+        f"🎉🤝 [거래소 아이템 구매 완료!] {buyer.username}님이 {listing.seller_name}님의 [{listing.item_name} x{listing.quantity}개]을(를) {listing.price:,}P에 구매했습니다! "
+        f"(국고 거래세: +{tax_fee:,}P | 판매자 정산: +{seller_payout:,}P | 내 잔여: {buyer.points:,}P | 인벤토리: !아이템)"
+    )
+    details = {
+        "listing_id": listing.id,
+        "item_type": listing.item_type,
+        "item_name": listing.item_name,
+        "quantity": listing.quantity,
+        "price": listing.price,
+        "tax_fee": tax_fee,
+        "seller_payout": seller_payout,
+        "buyer_id": buyer.id,
+        "buyer_name": buyer.username,
+        "remaining_points": buyer.points
+    }
+    return True, reply, details
+
+
+def execute_cancel_item_listing(
+    db: Session,
+    user_id: str,
+    username: str,
+    listing_id_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Cancel an item listing and return items from escrow to seller."""
+    clean_id = re.sub(r"[^0-9]", "", str(listing_id_token))
+    if not clean_id:
+        return False, f"⚠️ 올바른 거래 번호를 입력해주세요: '{listing_id_token}' (예: !거래소취소 I1)", None
+
+    listing_id = int(clean_id)
+    listing = db.query(ItemListing).filter_by(id=listing_id).first()
+    if not listing or listing.status != "ACTIVE":
+        return False, f"⚠️ 거래 #I{listing_id}는 존재하지 않거나 이미 마감/취소된 거래입니다.", None
+
+    if listing.seller_id != user_id:
+        return False, "⚠️ 본인이 등록한 거래만 취소할 수 있습니다!", None
+
+    user = get_or_create_user(db, user_id, username)
+    conf = CONSUMABLE_TRADE_ITEMS.get(listing.item_type)
+    if conf:
+        field = conf["field"]
+        setattr(user, field, (getattr(user, field, 0) or 0) + listing.quantity)
+
+    listing.status = "CANCELLED"
+    listing.resolved_at = datetime.now(timezone.utc)
+    db.commit()
+
+    reply = f"📦↩️ [아이템 등록 취소] 거래 #I{listing.id}의 [{listing.item_name} x{listing.quantity}개] 판매가 취소되어 인벤토리로 안전하게 반환되었습니다!"
+    return True, reply, {"listing_id": listing.id, "item_type": listing.item_type, "quantity": listing.quantity}
+
+
+def execute_buy_exchange(
+    db: Session,
+    buyer_id: str,
+    buyer_name: str,
+    listing_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Unified buy function for !거래소구매 [E1/I1/1]. Handles both Equipment and Item listings."""
+    raw = str(listing_token).strip().lstrip("#")
+    upper = raw.upper()
+    if upper.startswith("E") or upper.startswith("EQ") or upper.startswith("장비"):
+        clean_num = re.sub(r"[^0-9]", "", raw)
+        return execute_buy_equipment_listing(db, buyer_id, buyer_name, clean_num)
+    elif upper.startswith("I") or upper.startswith("ITEM") or upper.startswith("아이템"):
+        clean_num = re.sub(r"[^0-9]", "", raw)
+        return execute_buy_item_listing(db, buyer_id, buyer_name, clean_num)
+    elif raw.isdigit():
+        lid = int(raw)
+        it_listing = db.query(ItemListing).filter_by(id=lid, status="ACTIVE").first()
+        eq_listing = db.query(EquipmentListing).filter_by(id=lid, status="ACTIVE").first()
+        if eq_listing and it_listing:
+            return False, f"⚠️ 거래 번호 #{lid}번에 장비(E{lid})와 아이템(I{lid}) 매물이 모두 존재합니다! '!거래소구매 E{lid}' 또는 '!거래소구매 I{lid}'로 지정해주세요.", None
+        elif it_listing:
+            return execute_buy_item_listing(db, buyer_id, buyer_name, str(lid))
+        elif eq_listing:
+            return execute_buy_equipment_listing(db, buyer_id, buyer_name, str(lid))
+        else:
+            return False, f"⚠️ 거래 번호 #{lid}의 활성화된 매물을 찾을 수 없습니다! (목록 확인: !거래소)", None
+    else:
+        return False, f"⚠️ 올바른 거래 번호를 입력해주세요: '{listing_token}' (예: !거래소구매 I1 또는 !거래소구매 E1)", None
+
+
+def execute_cancel_exchange(
+    db: Session,
+    user_id: str,
+    username: str,
+    listing_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Unified cancel function for !거래소취소 [E1/I1/1]. Handles both Equipment and Item listings."""
+    raw = str(listing_token).strip().lstrip("#")
+    upper = raw.upper()
+    if upper.startswith("E") or upper.startswith("EQ") or upper.startswith("장비"):
+        clean_num = re.sub(r"[^0-9]", "", raw)
+        return execute_cancel_equipment_listing(db, user_id, username, clean_num)
+    elif upper.startswith("I") or upper.startswith("ITEM") or upper.startswith("아이템"):
+        clean_num = re.sub(r"[^0-9]", "", raw)
+        return execute_cancel_item_listing(db, user_id, username, clean_num)
+    elif raw.isdigit():
+        lid = int(raw)
+        it_listing = db.query(ItemListing).filter_by(id=lid, status="ACTIVE", seller_id=user_id).first()
+        eq_listing = db.query(EquipmentListing).filter_by(id=lid, status="ACTIVE", seller_id=user_id).first()
+        if it_listing and eq_listing:
+            return False, f"⚠️ 내 등록 거래 #{lid}번에 장비(E{lid})와 아이템(I{lid})이 모두 존재합니다! '!거래소취소 E{lid}' 또는 '!거래소취소 I{lid}'로 지정해주세요.", None
+        elif it_listing:
+            return execute_cancel_item_listing(db, user_id, username, str(lid))
+        elif eq_listing:
+            return execute_cancel_equipment_listing(db, user_id, username, str(lid))
+        else:
+            return False, f"⚠️ 취소 가능한 내 활성 거래 #{lid}를 찾을 수 없습니다.", None
+    else:
+        return False, f"⚠️ 올바른 거래 번호를 입력해주세요: '{listing_token}' (예: !거래소취소 I1 또는 !거래소취소 E1)", None
+
+
 def execute_buy_cubes(
     db: Session,
     user_id: str,
@@ -3841,14 +5488,10 @@ def execute_buy_cubes(
     user = get_or_create_user(db, user_id, username)
 
     raw = (quantity_str or "1").strip().lower()
-    user_debt = getattr(user, "debt", 0) or 0
-    spendable_points = max(0, user.points - user_debt) if user_debt > 0 else user.points
 
     if raw in ["최대", "올인", "max", "all", "전액", "전부"]:
-        qty = spendable_points // CUBE_COST
+        qty = user.points // CUBE_COST
         if qty <= 0:
-            if user_debt > 0 and user.points < CUBE_COST + user_debt:
-                return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있어 큐브를 구매할 수 없습니다! (보유: {user.points:,}P | 1개당 {CUBE_COST:,}P)", None
             return False, f"⚠️ 포인트가 부족하여 큐브를 구매할 수 없습니다! (보유: {user.points:,}P | 1개당 {CUBE_COST:,}P)", None
     else:
         try:
@@ -3860,10 +5503,6 @@ def execute_buy_cubes(
         return False, "⚠️ 구매 수량은 1개 이상의 양수여야 합니다.", None
 
     total_cost = qty * CUBE_COST
-
-    if user_debt > 0 and (user.points - total_cost) < user_debt:
-        max_possible = spendable_points // CUBE_COST
-        return False, f"⚠️ 채무(빚: {user_debt:,}P)가 있는 상태에서는 빚보다 적은 잔여금을 남기는 큐브 구매를 할 수 없습니다! (현재 구매 가능: {max_possible}개)", None
 
     if user.points < total_cost:
         max_possible = user.points // CUBE_COST
@@ -3904,11 +5543,15 @@ def execute_cube_use(
     db: Session,
     user_id: str,
     username: str,
-    item_id_or_index: Optional[str] = None
+    item_id_or_index: Optional[str] = None,
+    target_keyword: Optional[str] = None,
+    use_snipe: bool = False
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Execute !큐브 [장비번호/슬롯] (MapleStory Miracle/Black Cube potential reset).
+    Execute !큐브 [장비번호/슬롯] [저격 옵션] (MapleStory Miracle Cube potential reset).
     - Requires pre-purchased cube (!큐브구매). Consumes 1 cube from user.cube_count.
+    - If target_keyword is specified or use_snipe=True, consumes 1 snipe scroll (!상인구매 4)
+      and provides 35% targeted snipe chance on Line 1 + 3.5x weight across all lines (strictly not 100%).
     - Tier order: NONE -> RARE -> EPIC -> UNIQUE -> LEGENDARY
     - Promotion rates: NONE->RARE 100%, RARE->EPIC 15%, EPIC->UNIQUE 3.5%, UNIQUE->LEGENDARY 1.4%
     - Pity guarantees: RARE->EPIC 10 cubes, EPIC->UNIQUE 42 cubes, UNIQUE->LEGENDARY 107 cubes
@@ -3933,8 +5576,31 @@ def execute_cube_use(
             f"💡 구매 명령어: !큐브구매 [수량] (1개당 {CUBE_COST:,}P | 내 포인트: {user.points:,}P)"
         ), None
 
+    # Snipe scroll verification
+    if not use_snipe and not target_keyword and getattr(user, "arm_snipe", False):
+        if (getattr(user, "snipe_scroll_count", 0) or 0) > 0:
+            use_snipe = True
+
+    target_label = None
+    target_codes = None
+    used_snipe = False
+    if target_keyword or use_snipe:
+        snipe_stock = getattr(user, "snipe_scroll_count", 0) or 0
+        if snipe_stock <= 0:
+            return False, "⚠️ [잠재저격주문서]를 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
+
+        if target_keyword:
+            target_label, target_codes = match_potential_target(target_keyword)
+            if not target_codes:
+                return False, f"⚠️ 지정한 저격 키워드('{target_keyword}')를 찾을 수 없습니다! (지원: 고블린, 과충전, 쿨초, 크리, 채굴량, 채굴, 카지노, 마작, 강화, 배당 등)", None
+        else:
+            return False, "⚠️ 저격할 잠재 옵션을 입력해주세요! (예: !주문서 저격 고블린, !큐브 저격 고블린, !큐브 1 저격 과충전)", None
+
+        user.snipe_scroll_count = snipe_stock - 1
+        used_snipe = True
+
     # Consume 1 Cube from inventory
-    user.cube_count = user_cube_count - 1
+    user.cube_count = max(0, user_cube_count - 1)
 
     # Credit 1 Cube Fragment
     user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 1
@@ -4002,8 +5668,8 @@ def execute_cube_use(
 
     target_item.potential_tier = new_tier
 
-    # Roll 3 lines
-    line1, line2, line3 = roll_cube_potential(new_tier)
+    # Roll 3 lines (with snipe target if used)
+    line1, line2, line3 = roll_cube_potential(new_tier, target_codes=target_codes if used_snipe else None)
     target_item.potential_line_1 = json.dumps(line1, ensure_ascii=False)
     target_item.potential_line_2 = json.dumps(line2, ensure_ascii=False)
     target_item.potential_line_3 = json.dumps(line3, ensure_ascii=False)
@@ -4020,21 +5686,30 @@ def execute_cube_use(
         pity_tag = " (⭐등급 상승 보장 천장 발동!)" if pity_triggered else " (🌟승급 성공!)"
         promo_banner = f"\n🎉🎉 [잠재 등급 상승 대성공!!] [{old_disp} ➔ {new_disp}]{pity_tag}"
 
+    snipe_banner = ""
+    if used_snipe and target_label and target_codes:
+        hit_target = any(l.get("code") in target_codes for l in [line1, line2, line3])
+        if hit_target:
+            snipe_banner = f"\n🎯✨ [잠재 저격 주문서 발동!] [{target_label}] 저격 유도 성공! (남은 저격주문서: {user.snipe_scroll_count}장)"
+        else:
+            snipe_banner = f"\n🎯💨 [잠재 저격 주문서 발동] [{target_label}] 저격 유도 빗나감! 다음 기회에... (남은 저격주문서: {user.snipe_scroll_count}장)"
+
     if new_tier in CUBE_PITY_CEILINGS:
         ceil_val = CUBE_PITY_CEILINGS[new_tier]
         pity_info = f"• 등급 상승 보장 천장: {target_item.pity_count}/{ceil_val}회"
     else:
         pity_info = "• 🌟 최고 등급(레전드리) 도달 완료! (종결 옵션 3줄을 노려보세요)"
 
+    cube_tag = "🔮🎯 [잠재저격 미라클 큐브 사용]" if used_snipe else "🔮✨ [미라클 큐브 사용]"
     reply = (
-        f"🔮✨ [미라클 큐브 사용] {user.username}님이 [장비 #{target_item.id} {target_item.name}]에 큐브 1개를 사용했습니다! "
-        f"(남은 큐브: {user.cube_count:,}개){promo_banner}\n"
+        f"{cube_tag} {user.username}님이 [장비 #{target_item.id} {target_item.name}]에 큐브를 사용했습니다! "
+        f"(남은 큐브: {user.cube_count:,}개){promo_banner}{snipe_banner}\n"
         f"📋 [잠재 등급: {CUBE_TIER_DISPLAY.get(new_tier, new_tier)}]\n"
         f"  • 줄 1: {line1['text']}\n"
         f"  • 줄 2: {line2['text']}\n"
         f"  • 줄 3: {line3['text']}\n"
         f"{pity_info}\n"
-        f"🧩 큐브 조각: {user.cube_fragments}개 (!큐브조각 으로 10개당 15,000P 환급) | 📦 보유 큐브: {user.cube_count:,}개"
+        f"🧩 큐브 조각: {user.cube_fragments}개 (!큐브조각 으로 일괄 환급) | 📦 보유 큐브: {user.cube_count:,}개"
     )
 
     details = {
@@ -4066,32 +5741,83 @@ def execute_cube_fragment_exchange(
     """
     user = get_or_create_user(db, user_id, username)
     frags = getattr(user, "cube_fragments", 0) or 0
-    if frags < CUBE_FRAGMENT_EXCHANGE_COST:
+    sets = frags // CUBE_FRAGMENT_EXCHANGE_COST
+    if sets <= 0:
         return False, (
             f"⚠️ 보유하신 큐브 조각이 부족합니다! (보유: {frags}개 / 필요: {CUBE_FRAGMENT_EXCHANGE_COST}개)\n"
             f"💡 큐브를 1회 돌릴 때마다 큐브 조각 1개를 획득합니다. (!큐브)"
         ), None
 
-    user.cube_fragments = frags - CUBE_FRAGMENT_EXCHANGE_COST
-    user.points += CUBE_FRAGMENT_EXCHANGE_REWARD
+    used_frags = sets * CUBE_FRAGMENT_EXCHANGE_COST
+    total_reward = sets * CUBE_FRAGMENT_EXCHANGE_REWARD
+
+    user.cube_fragments = frags - used_frags
+    user.points += total_reward
 
     db.commit()
     db.refresh(user)
 
+    set_msg = f"{sets}세트({used_frags}개)" if sets > 1 else f"{CUBE_FRAGMENT_EXCHANGE_COST}개"
     reply = (
-        f"🧩✨ [큐브 조각 교환 완료] {user.username}님이 큐브 조각 {CUBE_FRAGMENT_EXCHANGE_COST}개를 교환하여 "
-        f"+{CUBE_FRAGMENT_EXCHANGE_REWARD:,}P를 페이백 환급받았습니다! "
+        f"🧩✨ [큐브 조각 교환 완료] {user.username}님이 큐브 조각 {set_msg}를 일괄 교환 완료하여 "
+        f"+{total_reward:,}P를 페이백 환급받았습니다! "
         f"(남은 큐브 조각: {user.cube_fragments}개 | 현재 보유 포인트: {user.points:,}P)"
     )
     details = {
         "user_id": user.id,
         "username": user.username,
-        "exchanged_fragments": CUBE_FRAGMENT_EXCHANGE_COST,
-        "reward_points": CUBE_FRAGMENT_EXCHANGE_REWARD,
+        "sets": sets,
+        "exchanged_fragments": used_frags,
+        "reward_points": total_reward,
         "remaining_fragments": user.cube_fragments,
         "remaining_points": user.points
     }
     return True, reply, details
+
+
+def get_unified_market_listings(db: Session, target_user_id: Optional[str] = None) -> str:
+    """Returns active marketplace listings for both equipment and consumable items."""
+    eq_query = db.query(EquipmentListing).filter_by(status="ACTIVE").order_by(EquipmentListing.id.desc()).limit(10).all()
+    it_query = db.query(ItemListing).filter_by(status="ACTIVE").order_by(ItemListing.id.desc()).limit(10).all()
+
+    if not eq_query and not it_query:
+        return (
+            "🏪 [나베 통합 거래소 (거래 수수료 5% 국고 환원)]\n"
+            "현재 거래소에 등록된 판매 매물이 없습니다!\n"
+            "💡 아이템 판매: !아이템판매 [파방/하강/상승/큐브] [수량] [가격]\n"
+            "💡 장비 판매: !장비등록 [내장비번호] [가격] | 1:1 직거래: !장비판매 [유저] [내장비번호] [가격]"
+        )
+
+    lines = ["🏪 [나베 통합 거래소 매물 목록 (수수료 5% 국고 환원)]"]
+    if eq_query:
+        lines.append("📦 [장비 매물]")
+        for l in eq_query:
+            eq = l.equipment
+            eq_name = eq.name if eq else "곡괭이"
+            star = eq.starforce if eq else 0
+            info = get_pickaxe_info(star)
+            target_tag = f"🔒 [{l.buyer_name} 전용]" if l.buyer_name else "🌐 [공개]"
+            pot_tag = ""
+            if eq and eq.potential_tier and eq.potential_tier != "NONE":
+                pot_tag = f" [{CUBE_TIER_DISPLAY.get(eq.potential_tier, eq.potential_tier)}]"
+            lines.append(
+                f"• [거래 #E{l.id}] {target_tag} 판매자: {l.seller_name} | {eq_name}{pot_tag} (★{star}성, {info['yield_multiplier']}배) | "
+                f"가격: {l.price:,}P 👉 구매: !거래소구매 E{l.id}"
+            )
+
+    if it_query:
+        lines.append("💎 [소비/주문서 아이템 매물]")
+        for l in it_query:
+            target_tag = f"🔒 [{l.buyer_name} 전용]" if l.buyer_name else "🌐 [공개]"
+            per_price = l.price // l.quantity if l.quantity > 0 else l.price
+            lines.append(
+                f"• [거래 #I{l.id}] {target_tag} 판매자: {l.seller_name} | {l.item_name} x{l.quantity}개 | "
+                f"총 {l.price:,}P (개당 {per_price:,}P) 👉 구매: !거래소구매 I{l.id}"
+            )
+
+    lines.append("💡 판매: `!아이템판매 [파방/하강/상승/큐브] [수량] [가격]` | `!장비등록 [장비번호] [가격]`")
+    lines.append("💡 구매: `!거래소구매 [거래번호]` (예: !거래소구매 I1, !거래소구매 E1) | 취소: `!거래소취소 [거래번호]`")
+    return "\n".join(lines)
 
 
 def get_equipment_market_listings(db: Session, target_user_id: Optional[str] = None) -> str:
@@ -4168,21 +5894,42 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
         lines.append(
             f"• #{it.id} {tag_str} {it.name}{pot_badge} | 채굴 {info['yield_multiplier']}배{bp_str}, 크리+{info['crit_bonus']}%, 쿨{info['cooldown_minutes']}분 ({next_str})"
         )
+        if it.potential_tier and it.potential_tier != "NONE":
+            sub_pot_lines = []
+            for raw in [it.potential_line_1, it.potential_line_2, it.potential_line_3]:
+                if raw:
+                    try:
+                        p_data = json.loads(raw) if isinstance(raw, str) else raw
+                        p_name = p_data.get("name") or p_data.get("text", "")
+                        p_val = p_data.get("val")
+                        p_unit = p_data.get("unit", "")
+                        p_icon = p_data.get("icon", "")
+                        sub_pot_lines.append(f"{p_icon}{p_name}({p_val}{p_unit})")
+                    except Exception:
+                        sub_pot_lines.append(str(raw)[:20])
+            if sub_pot_lines:
+                lines.append(f"  └ 🔮 [잠재] {' | '.join(sub_pot_lines)}")
+        else:
+            lines.append("  └ 🔮 [잠재: 없음] (!큐브 로 개방 가능)")
 
     cube_cnt = getattr(user, "cube_count", 0) or 0
     frag_cnt = getattr(user, "cube_fragments", 0) or 0
+    s_cnt = getattr(user, "shield_scroll_count", 0) or 0
+    b_cnt = getattr(user, "boost_scroll_count", 0) or 0
+    d_cnt = getattr(user, "downgrade_scroll_count", 0) or 0
+    snipe_cnt = getattr(user, "snipe_scroll_count", 0) or 0
     lines.append(
-        f"📦 [소비 인벤토리] 🔮 미라클 큐브: {cube_cnt:,}개 (구매: !큐브구매 [수량]) | 🧩 큐브 조각: {frag_cnt:,}개 (!큐브조각 으로 10개당 15,000P 환급)"
+        f"📦 [소비 인벤토리] 🔮 큐브: {cube_cnt:,}개 | 🧩 조각: {frag_cnt:,}개 | 🛡️ 파방: {s_cnt:,}장 | ⚡ 상승: {b_cnt:,}장 | 📉 하강: {d_cnt:,}장 | 🎯 저격: {snipe_cnt:,}장 (!아이템)"
     )
     lines.append(
         "💡 명령어 안내:\n"
+        "• 상세 스펙 확인: !곡괭이 [번호] (예: !곡괭이 1, !곡괭이 2)\n"
         "• 장비 교체: !장착 [장비번호]\n"
-        "• 큐브 구매: !큐브구매 [수량] (1개당 15,000P ➔ 국고 적립)\n"
-        "• 큐브 사용: !큐브 [장비번호] (보유 큐브 1개 소모하여 3줄 잠재 재설정)\n"
-        "• 큐브 조각: !큐브조각 (10개 모아 15,000P 환급)\n"
-        "• 선택 강화: !강화 [장비번호] (비어있으면 장착 장비 강화)\n"
+        "• 큐브 사용: !큐브 [장비번호] [저격 옵션] (예: !큐브 1, !큐브 저격 고블린, !큐브 저격 과충전)\n"
+        "• 소비 아이템 확인: !아이템 (상인구매: !상인구매 [1/2/3/4] [수량] | 거래소: !거래소)\n"
+        "• 선택 강화: !강화 [장비번호] [파방/하강/상승/풀]\n"
         "• 새 곡괭이 구매: !곡괭이구매 [0/5/10]\n"
-        "• 피버 확인: !피버 | 거래소: !장비장터, !장비등록 [번호] [가격]"
+        "• 피버 확인: !피버 | 거래소: !거래소, !아이템판매"
     )
     return "\n".join(lines)
 
@@ -4578,10 +6325,11 @@ def execute_transfer(
 
     # Calculate Tax
     tax, tax_rate, tax_label = calculate_transfer_tax(amount)
+    tax_rate_pct = round(tax_rate * 100, 2)
     fee_disc = get_user_fee_discount_pct(db, sender)
     if fee_disc > 0 and tax > 0:
         tax = int(round(tax * (1.0 - fee_disc / 100.0)))
-    tax_rate_pct = int(round(tax_rate * 100))
+    tax_rate_str = f"{tax_rate_pct:g}%"
     recipient_net = amount - tax
 
     # Execute transfer
@@ -4601,7 +6349,7 @@ def execute_transfer(
     if tax > 0:
         reply = (
             f"💸 [계좌이체 완료] {sender.username}님 ➡️ {recipient.username}님께 {amount:,}P 이체 완료! "
-            f"(실수령: {recipient_net:,}P | {tax_label}({tax_rate_pct}%){disc_str}: {tax:,}P 국고 적립 | "
+            f"(실수령: {recipient_net:,}P | {tax_label}({tax_rate_str}){disc_str}: {tax:,}P 국고 적립 | "
             f"보낸 분 잔액: {sender.points:,}P)"
         )
     else:
@@ -5080,16 +6828,16 @@ def get_current_buyers(db: Session, limit: int = 100) -> Dict[str, Any]:
     }
 
 # ---------------------------------------------------------
-# Chzzk Donation -> Point Charging (1 KRW : 100 Points)
+# Chzzk Donation -> Point Charging (1 KRW : 1000 Points)
 # ---------------------------------------------------------
-POINT_PER_KRW = 100  # 1 KRW = 100 Points
+POINT_PER_KRW = 1000  # 1 KRW = 1000 Points
 
 def validate_and_process_donation(
     db: Session,
     donation_data: Dict[str, Any]
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Validates a Chzzk Session DONATION event and credits points at 1:100 ratio.
+    Validates a Chzzk Session DONATION event and credits points at 1:1000 ratio.
     Ensures idempotency/deduplication, atomic transaction, and auto-backup.
     """
     if not isinstance(donation_data, dict):
@@ -5205,7 +6953,7 @@ def validate_and_process_donation(
 
         msg = (
             f"🎉 [후원 포인트 충전] {donator_nickname}님이 {pay_amount:,}원을 후원하셨습니다! "
-            f"(1:100 비율로 +{points_to_credit:,}P 충전 완료! 현재 잔고: {user.points:,}P)"
+            f"(1:1000 비율로 +{points_to_credit:,}P 충전 완료! 현재 잔고: {user.points:,}P)"
         )
         details = {
             "donation_id": donation_id,
@@ -5243,7 +6991,7 @@ def get_donation_history(db: Session, limit: int = 20) -> List[Dict[str, Any]]:
 # =========================================================
 # Community Treasury Casino & Gambling Engine (국고 카지노)
 # =========================================================
-DEFAULT_CASINO_MAX_BET: int = 100000
+DEFAULT_CASINO_MAX_BET: int = 10000000
 MIN_CASINO_BET: int = 100
 MAX_CASINO_PAYOUT: int = 100000  # 1회 주사위 도박 등 국고 최대 순지급액 상한선 (국고 보호)
 
@@ -5255,15 +7003,16 @@ def get_casino_state(db: Session) -> Dict[str, Any]:
     state = get_market_state(db)
     is_open = bool(getattr(state, "casino_is_open", False))
     end_time = float(getattr(state, "casino_end_time", 0.0) or 0.0)
-    raw_max = getattr(state, "casino_max_bet", DEFAULT_CASINO_MAX_BET)
-    max_bet = int(raw_max) if raw_max and int(raw_max) > 0 else DEFAULT_CASINO_MAX_BET
-    if max_bet <= 10000:
-        max_bet = 100000
-        state.casino_max_bet = 100000
+    raw_max = getattr(state, "casino_max_bet", None)
+    if raw_max is None or int(raw_max) <= 0 or int(raw_max) <= 10000:
+        max_bet = DEFAULT_CASINO_MAX_BET
+        state.casino_max_bet = DEFAULT_CASINO_MAX_BET
         try:
             db.commit()
         except Exception:
             pass
+    else:
+        max_bet = int(raw_max)
 
     now = time.time()
     if is_open and end_time > 0 and now >= end_time:
@@ -5287,13 +7036,13 @@ def get_casino_state(db: Session) -> Dict[str, Any]:
         "treasury_pool": getattr(state, "treasury_pool", DEFAULT_TREASURY_POOL)
     }
 
-def open_casino(db: Session, duration_minutes: float = 3.0, max_bet: int = 100000) -> Tuple[bool, str, Dict[str, Any]]:
+def open_casino(db: Session, duration_minutes: float = 3.0, max_bet: int = 10000000) -> Tuple[bool, str, Dict[str, Any]]:
     """Open community treasury casino for specified minutes (0 = unlimited)."""
     state = get_market_state(db)
     now = time.time()
     end_time = (now + duration_minutes * 60.0) if duration_minutes > 0 else 0.0
-    if not max_bet or max_bet <= 10000:
-        max_bet = 100000
+    if max_bet is None or max_bet <= 0:
+        max_bet = DEFAULT_CASINO_MAX_BET
     max_bet = max(MIN_CASINO_BET, int(max_bet))
 
     state.casino_is_open = True
@@ -5305,7 +7054,7 @@ def open_casino(db: Session, duration_minutes: float = 3.0, max_bet: int = 10000
     duration_str = f"{int(duration_minutes)}분 동안" if duration_minutes > 0 else "무제한"
     msg = (
         f"🎰 [국고 카지노 OPEN] 스트리머가 국고 도박장을 열었습니다! ({duration_str}, 1회 최대: {max_bet:,}P) "
-        f"지금 채팅창에 '!슬롯 [베팅금]' 또는 '!주사위 [홀/짝] [베팅금]'으로 국고를 털어보세요! (현재 국고: {int(state.treasury_pool):,}P)"
+        f"지금 채팅창에 '!경마 [1~4/마명] [금액]' (1위 3.6배 배당), '!슬롯 [베팅금]', '!주사위 [홀/짝] [금액]', '!마작패 [패/역만] [금액]'으로 국고를 털어보세요! (현재 국고: {int(state.treasury_pool):,}P)"
     )
     details = {
         "is_open": True,
@@ -5339,16 +7088,16 @@ def execute_slot_gamble(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute 3-reel Jackpot Slot (Uncapped Payouts!):
-    Payouts (Debuffed for balanced economy):
-    - 7️⃣ 7️⃣ 7️⃣ : MEGA JACKPOT (10% of treasury pool, uncapped, min 10x bet)
-    - 🀄 🀄 🀄 : 7.0x Yakuman Jackpot (Net +6.0x, uncapped)
-    - 💎 💎 💎 : 4.5x Diamond Triple (Net +3.5x, uncapped)
-    - 🔔 🔔 🔔 : 3.0x Golden Bell (Net +2.0x, uncapped)
-    - 🍇 🍇 🍇 : 2.2x Grape Triple (Net +1.2x, uncapped)
-    - 🍒 🍒 🍒 : 1.6x Cherry Triple (Net +0.6x, uncapped)
-    - High 2-pair (7, 🀄, 💎): 1.6x payout (+0.6x net, uncapped)
-    - Standard 2-pair (🔔, 🍇, 🍒): 1.3x payout (+0.3x net, uncapped)
-    - Non-matched / 💣: Loss (100% absorbed into Treasury Pool)
+    Payouts (Rebalanced):
+    - 7️⃣ 7️⃣ 7️⃣ : MEGA JACKPOT (15% of treasury pool, uncapped, min 12x bet)
+    - 🀄 🀄 🀄 : 8.0x Yakuman Jackpot (Net +7.0x, uncapped)
+    - 💎 💎 💎 : 5.0x Diamond Triple (Net +4.0x, uncapped)
+    - 🔔 🔔 🔔 : 3.5x Golden Bell (Net +2.5x, uncapped)
+    - 🍇 🍇 🍇 : 2.5x Grape Triple (Net +1.5x, uncapped)
+    - 🍒 🍒 🍒 : 1.8x Cherry Triple (Net +0.8x, uncapped)
+    - High 2-pair (7, 🀄, 💎): 1.8x payout (+0.8x net, uncapped)
+    - Standard 2-pair (🔔, 🍇, 🍒): 1.4x payout (+0.4x net, uncapped)
+    - Non-matched / 💣: Loss (Absorbed into Treasury Pool, with potential payback if equipped)
     """
     c_state = get_casino_state(db)
     if not c_state["is_open"]:
@@ -5392,31 +7141,31 @@ def execute_slot_gamble(
         if s1 == "7️⃣":
             is_jackpot = True
             won = True
-            pool_share = int(round(state.treasury_pool * 0.10))
-            guaranteed = bet * 10
+            pool_share = int(round(state.treasury_pool * 0.15))
+            guaranteed = bet * 12
             net_payout = max(guaranteed, pool_share)
-            multiplier = round((net_payout + bet) / bet, 1) if bet > 0 else 10.0
+            multiplier = round((net_payout + bet) / bet, 1) if bet > 0 else 12.0
         elif s1 == "🀄":
             is_jackpot = True
             won = True
-            multiplier = 7.0
-            net_payout = int(round(bet * 6.0))
+            multiplier = 8.0
+            net_payout = int(round(bet * 7.0))
         elif s1 == "💎":
             won = True
-            multiplier = 4.5
-            net_payout = int(round(bet * 3.5))
+            multiplier = 5.0
+            net_payout = int(round(bet * 4.0))
         elif s1 == "🔔":
             won = True
-            multiplier = 3.0
-            net_payout = int(round(bet * 2.0))
+            multiplier = 3.5
+            net_payout = int(round(bet * 2.5))
         elif s1 == "🍇":
             won = True
-            multiplier = 2.2
-            net_payout = int(round(bet * 1.2))
+            multiplier = 2.5
+            net_payout = int(round(bet * 1.5))
         elif s1 == "🍒":
             won = True
-            multiplier = 1.6
-            net_payout = int(round(bet * 0.6))
+            multiplier = 1.8
+            net_payout = int(round(bet * 0.8))
         elif s1 == "💣":
             won = False
             net_payout = -bet
@@ -5425,50 +7174,54 @@ def execute_slot_gamble(
         won = True
         matched_sym = s1 if (s1 == s2 or s1 == s3) else s2
         if matched_sym in ["7️⃣", "🀄", "💎"]:
+            multiplier = 2.0
+            net_payout = max(10, int(round(bet * 1.0))) # Net gain +1.0x (2.0x total payout)
+        else: # 🔔, 🍇, 🍒
             multiplier = 1.6
             net_payout = max(10, int(round(bet * 0.6))) # Net gain +0.6x (1.6x total payout)
-        else: # 🔔, 🍇, 🍒
-            multiplier = 1.3
-            net_payout = max(10, int(round(bet * 0.3))) # Net gain +0.3x (1.3x total payout)
     else:
         won = False
         net_payout = -bet
 
     if won:
-        # Check potential effects from equipped pickaxe
+        # Check slot winning boost potential (Slot potential boosts winning payouts)
         equipped_item = get_user_equipped_item(db, user)
         pot_effects = get_equipment_potential_effects(equipped_item)
-        slot_boost = min(50.0, float(pot_effects.get("slot_boost_pct", 0.0)))
-        extra_slot_payout = 0
-        if slot_boost > 0 and net_payout > 0:
-            extra_slot_payout = int(round(net_payout * (slot_boost / 100.0)))
-            net_payout += extra_slot_payout
+        slot_boost_pct = min(35.0, float(pot_effects.get("slot_boost_pct", 0.0)))
+        boost_amt = 0
+        if slot_boost_pct > 0:
+            total_win_payout = net_payout + bet
+            boost_amt = int(round(total_win_payout * (slot_boost_pct / 100.0)))
+            net_payout += boost_amt
 
         user.points += net_payout
         state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
-        pot_slot_msg = f" (🎰잠재 배당 +{int(slot_boost)}%: +{extra_slot_payout:,}P 추가)" if extra_slot_payout > 0 else ""
+        boost_str = f" (🎰잠재 당첨 보너스 +{int(slot_boost_pct)}% 발동: +{boost_amt:,}P 추가 지급!)" if boost_amt > 0 else ""
         if is_jackpot and s1 == "7️⃣":
             msg = (
                 f"🚨🚨🚨 [MEGA 777 JACKPOT!] {user.username}님이 {display_reels} 대박 터짐! "
-                f"국고의 10%인 +{net_payout:,}P를 싹쓸이 강탈했습니다!{pot_slot_msg} (잔여: {user.points:,}P | 남은 국고: {int(state.treasury_pool):,}P)"
+                f"국고의 15%인 +{net_payout:,}P를 싹쓸이 강탈했습니다!{boost_str} (잔여: {user.points:,}P | 남은 국고: {int(state.treasury_pool):,}P)"
             )
         elif is_jackpot and s1 == "🀄":
             msg = (
                 f"🀄🔥 [역만 잭팟 당첨!] {user.username}님이 {display_reels} 적중! "
-                f"배팅금 7배인 +{net_payout:,}P를 국고에서 출금 지급!{pot_slot_msg} (잔여: {user.points:,}P)"
+                f"배팅금 8배인 +{net_payout:,}P를 국고에서 출금 지급!{boost_str} (잔여: {user.points:,}P)"
             )
         else:
             gain_label = f"{multiplier}배" if multiplier > 0 else "보너스"
             msg = (
                 f"🎉 [슬롯 당첨!] {user.username}님이 {display_reels} 적중! "
-                f"({gain_label} 당첨으로 +{net_payout:,}P 획득!{pot_slot_msg} 잔여: {user.points:,}P)"
+                f"({gain_label} 당첨으로 +{net_payout:,}P 획득!{boost_str} 잔여: {user.points:,}P)"
             )
     else:
-        user.points -= bet
-        state.treasury_pool += bet
+        # Slot failure: no payback (Slot potential is winning bonus; Dice potential is payback)
+        net_loss = bet
+        net_payout = -net_loss
+        user.points -= net_loss
+        state.treasury_pool += net_loss
         msg = (
             f"💣 [슬롯 꽝!] {user.username}님이 {display_reels} 꽝! "
-            f"베팅금 {bet:,}P는 국고로 압류되었습니다! 꺼~억 (잔여: {user.points:,}P | 현재 국고: {int(state.treasury_pool):,}P)"
+            f"베팅금 {bet:,}P는 국고로 압류되었습니다! (잔여: {user.points:,}P | 현재 국고: {int(state.treasury_pool):,}P)"
         )
 
     db.commit()
@@ -5498,7 +7251,7 @@ def execute_dice_gamble(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute 2-Dice High-Roller Gamble (Uncapped Payouts!):
-    Choices (Debuffed for balanced economy):
+    Choices (Rebalanced):
     - '홀' (Odd - 1.8x), '짝' (Even - 1.8x), '대' (8~12 High - 1.8x), '소' (2~6 Low - 1.8x).
     - Sum 7 on High/Low: PUSH (무승부 - 베팅금 100% 전액 환급, 원금 보존).
     - Special: Double 1-1 or 6-6 gives 2.2x CRITICAL JACKPOT!
@@ -5599,10 +7352,10 @@ def execute_dice_gamble(
             f"[ 🎲{d1} + 🎲{d2} = 7 ] 베팅금 {bet:,}P는 전액 환급됩니다! (잔여: {user.points:,}P)"
         )
     else:
-        # Check dice payback potential (capped at 40% to prevent exploit)
+        # Check dice payback potential (capped at 30%)
         equipped_item = get_user_equipped_item(db, user)
         pot_effects = get_equipment_potential_effects(equipped_item)
-        payback_pct = min(40.0, float(pot_effects.get("dice_payback_pct", 0.0)))
+        payback_pct = min(30.0, float(pot_effects.get("dice_payback_pct", 0.0)))
         payback_amt = 0
         if payback_pct > 0:
             payback_amt = int(round(bet * (payback_pct / 100.0)))
@@ -5612,7 +7365,7 @@ def execute_dice_gamble(
         user.points -= net_loss
         state.treasury_pool += net_loss
         odd_label = "홀" if is_odd else "짝"
-        payback_str = f" (🎲잠재 페이백 {int(payback_pct)}% 발동: {payback_amt:,}P 환급!)" if payback_amt > 0 else ""
+        payback_str = f" (🎲잠재 환급 {int(payback_pct)}% 발동: {payback_amt:,}P 환급!)" if payback_amt > 0 else ""
         msg = (
             f"🎲💀 [주사위 실패!] {user.username}님의 예측 빗나감! "
             f"[ 🎲{d1} + 🎲{d2} = {total} ({odd_label}) ] 베팅금 {bet:,}P 중 {net_loss:,}P가 국고로 귀속되었습니다!{payback_str} (잔여: {user.points:,}P)"
@@ -5633,6 +7386,330 @@ def execute_dice_gamble(
         "won": is_correct,
         "is_push": is_push,
         "is_critical": is_critical,
+        "net_payout": net_payout,
+        "remaining_points": user.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, msg, details
+
+
+MAHJONG_SUIT_ALIASES = {
+    "만": "만", "만수": "만", "m": "만", "man": "만",
+    "삭": "삭", "삭수": "삭", "s": "삭", "sou": "삭",
+    "통": "통", "통수": "통", "p": "통", "pin": "통",
+}
+
+MAHJONG_TILES = (
+    [f"{i}만" for i in range(1, 10)] +
+    [f"{i}삭" for i in range(1, 10)] +
+    [f"{i}통" for i in range(1, 10)]
+)
+
+def parse_mahjong_choice(raw_choice: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Parses user input into (bet_type, target, display_label).
+    Returns (None, None, None) if unrecognized.
+    bet_type is 'suit' or 'exact'.
+    """
+    token = (raw_choice or "").strip().lower().replace(" ", "")
+    if not token:
+        return None, None, None
+
+    if token in MAHJONG_SUIT_ALIASES:
+        suit = MAHJONG_SUIT_ALIASES[token]
+        return "suit", suit, f"{suit}수"
+
+    import re
+    m = re.match(r"^([1-9])([만삭통mpssoupin]+)$", token)
+    if m:
+        num = m.group(1)
+        suit_part = m.group(2)
+        suit = MAHJONG_SUIT_ALIASES.get(suit_part)
+        if suit:
+            exact_tile = f"{num}{suit}"
+            return "exact", exact_tile, exact_tile
+
+    return None, None, None
+
+
+def execute_mahjong_tile_gamble(
+    db: Session,
+    user_id: str,
+    username: str,
+    choice_token: str,
+    bet_token: Any
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute Mahjong Tile Guess Gamble (!마작 [만/삭/통 or 1만~9통] [베팅금]):
+    - 27 tiles (1~9만, 1~9삭, 1~9통 - no honors)
+    - Suit Guess (만/삭/통): 1/3 (33.33%) probability, 2.7x payout (RTP 90.0%)
+    - Exact Tile Guess (1만~9통): 1/27 (3.704%) probability, 24.3x payout (RTP 90.0%)
+    - Potential: MAHJONG_TILE_BOOST increases win payout (Legendary +11.1% achieves 100% RTP)
+    """
+    c_state = get_casino_state(db)
+    if not c_state["is_open"]:
+        return False, "⚠️ 현재 국고 카지노가 오픈되어 있지 않습니다! 스트리머가 열 때까지 기다려주세요.", None
+
+    user = get_or_create_user(db, user_id, username)
+    state = get_market_state(db)
+
+    bet_type, target, display_label = parse_mahjong_choice(choice_token)
+    if not bet_type:
+        return False, (
+            "💡 [마작패 맞추기 사용법] !마작 [선택] [베팅금]\n"
+            "• 종류 맞추기: 만 / 삭 / 통 (확률 1/3, 배당 2.7배)\n"
+            "• 1종 정확히 맞추기: 1만~9만, 1삭~9삭, 1통~9통 (확률 1/27, 배당 24.3배)\n"
+            "예시: !마작 만 10000, !마작 7통 5000, !마작 통 올인"
+        ), None
+
+    max_bet = c_state.get("max_bet", 100000)
+    if max_bet <= 10000:
+        max_bet = 100000
+
+    clean_bet = str(bet_token).strip().lower().replace(",", "")
+    if clean_bet in ["올인", "all", "풀베팅", "전액", "최대", "max"]:
+        bet = min(user.points, max_bet)
+    else:
+        # Check Korean units
+        if clean_bet.endswith("만"):
+            try:
+                bet = int(float(clean_bet[:-1]) * 10000)
+            except ValueError:
+                return False, f"⚠️ 올바른 베팅 금액을 입력해주세요: '{bet_token}'", None
+        elif clean_bet.endswith("천") or clean_bet.endswith("k"):
+            try:
+                bet = int(float(clean_bet[:-1]) * 1000)
+            except ValueError:
+                return False, f"⚠️ 올바른 베팅 금액을 입력해주세요: '{bet_token}'", None
+        else:
+            try:
+                bet = int(float(clean_bet))
+            except ValueError:
+                return False, f"⚠️ 올바른 베팅 금액을 입력해주세요: '{bet_token}' (예: !마작 만 1000, !마작 7통 올인)", None
+
+    if bet < MIN_CASINO_BET:
+        return False, f"⚠️ 최소 베팅 금액은 {MIN_CASINO_BET:,}P입니다.", None
+    if bet > max_bet:
+        return False, f"⚠️ 1회 최대 베팅 한도는 {max_bet:,}P입니다. (입력: {bet:,}P)", None
+    if user.points < bet:
+        return False, f"⚠️ 보유 포인트가 부족합니다! (보유: {user.points:,}P, 베팅: {bet:,}P)", None
+
+    # Draw 1 tile out of 27
+    drawn_tile = random.choice(MAHJONG_TILES)
+    drawn_suit = drawn_tile[-1]  # '만', '삭', '통'
+
+    won = False
+    multiplier = 0.0
+    if bet_type == "suit":
+        multiplier = 2.7
+        won = (target == drawn_suit)
+    else:  # exact
+        multiplier = 24.3
+        won = (target == drawn_tile)
+
+    if won:
+        gross_payout = int(round(bet * multiplier))
+        net_payout = gross_payout - bet
+
+        # Potential: MAHJONG_TILE_BOOST
+        equipped_item = get_user_equipped_item(db, user)
+        pot_effects = get_equipment_potential_effects(equipped_item)
+        boost_pct = min(30.0, float(pot_effects.get("mahjong_boost_pct", 0.0)))
+        boost_amt = 0
+        if boost_pct > 0:
+            boost_amt = int(round(gross_payout * (boost_pct / 100.0)))
+            net_payout += boost_amt
+
+        user.points += net_payout
+        state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
+        boost_str = f" (🀄잠재 배당 보너스 +{boost_pct}%: +{boost_amt:,}P 추가!)" if boost_amt > 0 else ""
+        if bet_type == "exact":
+            msg = (
+                f"🀄🌟 [마작패 단기 적중 대박!] {user.username}님이 1/{len(MAHJONG_TILES)} 확률의 [{drawn_tile}] 정확히 적중! "
+                f"24.3배 대박 당첨으로 +{net_payout:,}P 국고 획득!{boost_str} (잔여: {user.points:,}P)"
+            )
+        else:
+            msg = (
+                f"🀄🎉 [마작패 {display_label} 적중!] {user.username}님 예측 성공! "
+                f"나온 패: [{drawn_tile}] | 2.7배 배당으로 +{net_payout:,}P 획득!{boost_str} (잔여: {user.points:,}P)"
+            )
+    else:
+        net_loss = bet
+        net_payout = -net_loss
+        user.points -= net_loss
+        state.treasury_pool += net_loss
+        msg = (
+            f"🀄💀 [마작패 빗나감!] {user.username}님의 '{display_label}' 예측 실패! "
+            f"나온 패: [{drawn_tile}] | 베팅금 {bet:,}P는 국고로 귀속되었습니다! (잔여: {user.points:,}P)"
+        )
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    details = {
+        "game_type": "mahjong",
+        "user_id": user.id,
+        "username": user.username,
+        "bet": bet,
+        "bet_type": bet_type,
+        "choice": target,
+        "display_label": display_label,
+        "drawn_tile": drawn_tile,
+        "drawn_suit": drawn_suit,
+        "won": won,
+        "multiplier": multiplier,
+        "net_payout": net_payout,
+        "remaining_points": user.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, msg, details
+
+
+YAKUMAN_RUNNERS = [
+    {"num": 1, "name": "대삼원", "icon": "🐉", "title": "🐉 1번마 대삼원", "aliases": ["1", "대삼원", "용", "dragon", "daisangen"]},
+    {"num": 2, "name": "사안커", "icon": "🀄", "title": "🀄 2번마 사안커", "aliases": ["2", "사안커", "사암각", "anko", "suuankou"]},
+    {"num": 3, "name": "국사무쌍", "icon": "🌸", "title": "🌸 3번마 국사무쌍", "aliases": ["3", "국사무쌍", "국사", "kokushi"]},
+    {"num": 4, "name": "구련보등", "icon": "⚡", "title": "⚡ 4번마 구련보등", "aliases": ["4", "구련보등", "구련", "chuuren"]},
+]
+
+def parse_race_runner(raw_choice: str) -> Optional[Dict[str, Any]]:
+    token = (raw_choice or "").strip().lower().replace(" ", "")
+    for r in YAKUMAN_RUNNERS:
+        if token == str(r["num"]) or token == r["name"].lower() or token in r["aliases"]:
+            return r
+    return None
+
+def execute_yakuman_race_gamble(
+    db: Session,
+    user_id: str,
+    username: str,
+    choice_token: str,
+    bet_token: Any
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute Yakuman 4-Greats Race Gamble (!경마 / !레이스 [1~4 or 마명] [베팅금]):
+    - 4 runners: 🐉대삼원(1), 🀄사안커(2), 🌸국사무쌍(3), ⚡구련보등(4)
+    - 1st place (Win): 25% chance, 3.6x payout (Base RTP 90.0%)
+    - 2nd place (Safety): 25% chance, potential payback with RACE_SAFETY_PAYBACK (Legendary 40% gives 100% RTP)
+    - 3rd / 4th place: Loss
+    """
+    c_state = get_casino_state(db)
+    if not c_state["is_open"]:
+        return False, "⚠️ 현재 국고 카지노가 오픈되어 있지 않습니다! 스트리머가 열 때까지 기다려주세요.", None
+
+    user = get_or_create_user(db, user_id, username)
+    state = get_market_state(db)
+
+    runner = parse_race_runner(choice_token)
+    if not runner:
+        return False, (
+            "💡 [역만 4대 천왕 경마 사용법] !경마 [말이름/번호] [베팅금] (또는 !레이스)\n"
+            "• 1번마 🐉 대삼원 (배당 3.6배, 우승 확률 25%)\n"
+            "• 2번마 🀄 사안커 (배당 3.6배, 우승 확률 25%)\n"
+            "• 3번마 🌸 국사무쌍 (배당 3.6배, 우승 확률 25%)\n"
+            "• 4번마 ⚡ 구련보등 (배당 3.6배, 우승 확률 25%)\n"
+            "예시: !경마 대삼원 10000, !레이스 3 5000, !경마 사안커 올인"
+        ), None
+
+    max_bet = c_state.get("max_bet", 100000)
+    if max_bet <= 10000:
+        max_bet = 100000
+
+    clean_bet = str(bet_token).strip().lower().replace(",", "")
+    if clean_bet in ["올인", "all", "풀베팅", "전액", "최대", "max"]:
+        bet = min(user.points, max_bet)
+    else:
+        if clean_bet.endswith("만"):
+            try:
+                bet = int(float(clean_bet[:-1]) * 10000)
+            except ValueError:
+                return False, f"⚠️ 올바른 베팅 금액을 입력해주세요: '{bet_token}'", None
+        elif clean_bet.endswith("천") or clean_bet.endswith("k"):
+            try:
+                bet = int(float(clean_bet[:-1]) * 1000)
+            except ValueError:
+                return False, f"⚠️ 올바른 베팅 금액을 입력해주세요: '{bet_token}'", None
+        else:
+            try:
+                bet = int(float(clean_bet))
+            except ValueError:
+                return False, f"⚠️ 올바른 베팅 금액을 입력해주세요: '{bet_token}' (예: !경마 대삼원 1000, !레이스 1 올인)", None
+
+    if bet < MIN_CASINO_BET:
+        return False, f"⚠️ 최소 베팅 금액은 {MIN_CASINO_BET:,}P입니다.", None
+    if bet > max_bet:
+        return False, f"⚠️ 1회 최대 베팅 한도는 {max_bet:,}P입니다. (입력: {bet:,}P)", None
+    if user.points < bet:
+        return False, f"⚠️ 보유 포인트가 부족합니다! (보유: {user.points:,}P, 베팅: {bet:,}P)", None
+
+    # Run race: random permutation of 4 runners
+    race_results = random.sample(YAKUMAN_RUNNERS, len(YAKUMAN_RUNNERS))
+    p1 = race_results[0]
+    p2 = race_results[1]
+    p3 = race_results[2]
+    p4 = race_results[3]
+
+    order_str = f"🥇1위 {p1['icon']}{p1['name']} | 🥈2위 {p2['icon']}{p2['name']} | 🥉3위 {p3['icon']}{p3['name']} | 4위 {p4['icon']}{p4['name']}"
+
+    won = (runner["num"] == p1["num"])
+    is_second = (runner["num"] == p2["num"])
+
+    multiplier = 3.6
+    if won:
+        gross_payout = int(round(bet * multiplier))
+        net_payout = gross_payout - bet
+        user.points += net_payout
+        state.treasury_pool = max(10000.0, state.treasury_pool - net_payout)
+        msg = (
+            f"🏇🏁 [역만 레이스 1위 우승!!] {user.username}님의 '{runner['icon']} {runner['name']}' 폭풍 질주 1위 골인!\n"
+            f"[ {order_str} ] 3.6배 배당으로 +{net_payout:,}P 국고 획득! (잔여: {user.points:,}P)"
+        )
+    elif is_second:
+        # Check RACE_SAFETY_PAYBACK potential
+        equipped_item = get_user_equipped_item(db, user)
+        pot_effects = get_equipment_potential_effects(equipped_item)
+        safety_pct = min(60.0, float(pot_effects.get("race_safety_pct", 0.0)))
+        payback_amt = 0
+        if safety_pct > 0:
+            payback_amt = int(round(bet * (safety_pct / 100.0)))
+
+        net_loss = bet - payback_amt
+        net_payout = -net_loss
+        user.points -= net_loss
+        state.treasury_pool += net_loss
+        payback_str = f" (🏇잠재 세이프티 {int(safety_pct)}% 발동: {payback_amt:,}P 환급!)" if payback_amt > 0 else ""
+        msg = (
+            f"🏇🥈 [역만 레이스 아쉬운 2등!] {user.username}님의 '{runner['icon']} {runner['name']}' 간발의 차로 준우승!\n"
+            f"[ {order_str} ] 베팅금 {bet:,}P 중 {net_loss:,}P 국고 귀속{payback_str} (잔여: {user.points:,}P)"
+        )
+    else:
+        net_loss = bet
+        net_payout = -net_loss
+        user.points -= net_loss
+        state.treasury_pool += net_loss
+        msg = (
+            f"🏇💀 [역만 레이스 순위권 밖!] {user.username}님의 '{runner['icon']} {runner['name']}' 역전 실패 탈락!\n"
+            f"[ {order_str} ] 베팅금 {bet:,}P는 국고로 전액 귀속되었습니다! (잔여: {user.points:,}P)"
+        )
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    details = {
+        "game_type": "race",
+        "user_id": user.id,
+        "username": user.username,
+        "bet": bet,
+        "choice": runner["name"],
+        "choice_num": runner["num"],
+        "won": won,
+        "is_second": is_second,
+        "p1": p1["name"],
+        "p2": p2["name"],
+        "p3": p3["name"],
+        "p4": p4["name"],
         "net_payout": net_payout,
         "remaining_points": user.points,
         "treasury_pool": state.treasury_pool

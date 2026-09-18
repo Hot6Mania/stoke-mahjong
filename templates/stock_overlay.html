@@ -438,11 +438,46 @@
             }
         }
 
+        let ws = null;
+        let _lastRelayedKey = '';
+        let _lastRelayTime = 0;
+
+        function relayTrackerData(data) {
+            if (!data || !data.nickname || data.nickname === '정보 없음') return;
+            const now = Date.now();
+            const key = `${data.score || ''}|${data.record || ''}`;
+            if (key !== _lastRelayedKey || (now - _lastRelayTime > 4000)) {
+                _lastRelayedKey = key;
+                _lastRelayTime = now;
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(JSON.stringify({ action: 'tracker_push', data: data }));
+                    } catch (e) {}
+                }
+                fetch('/api/tracker/push', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                }).catch(() => {});
+            }
+        }
+
+        async function pollLocalTrackerRelay() {
+            try {
+                const res = await fetch('http://localhost:7500/data.json', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    relayTrackerData(data);
+                }
+            } catch (e) {}
+        }
+
         // 6. 실시간 웹소켓 연결
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
-            const ws = new WebSocket(wsUrl);
+            ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
                 console.log("[StockOverlay] 🔌 WebSocket connected");
@@ -508,6 +543,21 @@
                     }
                 }
                 if (data.leaderboard) renderLeaderboard(data.leaderboard);
+            }
+            else if (type === 'delisting') {
+                if (data.market_state) {
+                    if (data.market_state.day_open_price) dayOpenPrice = data.market_state.day_open_price;
+                    updateStockDisplay(data.market_state.current_price, data.market_state.previous_price, data.market_state.current_rank_point, dayOpenPrice);
+                    updateMarketLockBadge(false, data.free_trading_remaining || 300);
+                    if (data.market_state.treasury_pool !== undefined && treasuryValEl) {
+                        treasuryValEl.textContent = `${Math.floor(data.market_state.treasury_pool).toLocaleString()}P`;
+                    }
+                }
+                const info = data.delisting_info || {};
+                const oldR = info.old_rank || "작성3";
+                const newR = info.new_rank || "작성2";
+                const newP = (info.new_price || 3000).toLocaleString();
+                showTickerToast(`🚨🚨 [긴급: 상장폐지] 치즈나베 ${oldR} 강등으로 전격 상장폐지! 기존 주식 전량 휴짓조각(0주) | 신규 종목 [${newR}](${newP}P) 상장!`, 'liquidation', 15000);
             }
             else if (type === 'trade_buy' || type === 'trade_sell') {
                 const d = data.data;
@@ -589,7 +639,7 @@
                 const d = data.data;
                 if (d) {
                     const textPart = d.donation_text ? ` ("${d.donation_text}")` : '';
-                    showTickerToast(`🎉 [후원 1:100 충전] ${d.username}님이 ${Number(d.pay_amount).toLocaleString()}원 후원! (+${Number(d.points_credited).toLocaleString()}P 충전 완료)${textPart}`, 'settle', 9000);
+                    showTickerToast(`🎉 [후원 1:1000 충전] ${d.username}님이 ${Number(d.pay_amount).toLocaleString()}원 후원! (+${Number(d.points_credited).toLocaleString()}P 충전 완료)${textPart}`, 'settle', 9000);
                 }
                 if (data.leaderboard) renderLeaderboard(data.leaderboard);
             }
@@ -690,6 +740,50 @@
                 }
                 if (data.leaderboard) renderLeaderboard(data.leaderboard);
             }
+            else if (type === 'lottery_event_started') {
+                const d = data.data;
+                const durStr = d && d.duration_minutes > 0 ? `${d.duration_minutes}분간` : "10분간";
+                showTickerToast(`🎉🏛️ [국가 복지 복권 OPEN!] ${durStr} 진행! 당첨률 85%! 꽝도 500P 환급 (명령어: !복권, !복권 10)`, 'settle', 10000);
+            }
+            else if (type === 'lottery_event_ended') {
+                showTickerToast(`🔒 [복권 판매 마감] 국가 복지 복권 판매가 마감되었습니다. 잠시 후 다음 복지 시간에 다시 열립니다!`, 'liquidation', 7000);
+            }
+            else if (type === 'lottery_jackpot') {
+                const d = data.data;
+                if (d) {
+                    showTickerToast(`👑🎉 [복권 대박 잭팟!] ${d.username}님이 국가 복지 복권 1등 대박 당첨! (+${Number(d.total_prize).toLocaleString()}P 지급) 🎊`, 'settle', 12000);
+                    if (d.treasury_pool !== undefined && treasuryValEl) {
+                        treasuryValEl.textContent = `${Math.floor(d.treasury_pool).toLocaleString()}P`;
+                    }
+                }
+                if (data.leaderboard) renderLeaderboard(data.leaderboard);
+            }
+            else if (type === 'lottery_scratch') {
+                const d = data.data;
+                if (d && d.treasury_pool !== undefined && treasuryValEl) {
+                    treasuryValEl.textContent = `${Math.floor(d.treasury_pool).toLocaleString()}P`;
+                }
+            }
+            else if (type === 'merchant_appeared') {
+                const d = data.data;
+                const durStr = d && d.duration_minutes > 0 ? `${d.duration_minutes}분간` : "10분간";
+                const mName = d && d.merchant_name ? d.merchant_name : "신비상인";
+                showTickerToast(`🧞‍♂️🛒 [${mName} 마을 출현!] ${durStr} 영업! 파괴방어권/강화확률상승권/하강방지권 한정 판매! (!신비상인)`, 'settle', 10000);
+            }
+            else if (type === 'merchant_left') {
+                const d = data.data;
+                const mName = d && d.merchant_name ? d.merchant_name : "신비상인";
+                showTickerToast(`🔒 [${mName} 퇴장] 신비상인이 보따리를 싸고 마을을 떠났습니다.`, 'liquidation', 7000);
+            }
+            else if (type === 'merchant_bought') {
+                const d = data.data;
+                if (d) {
+                    showTickerToast(`🧞‍♂️📦 [신비상점] ${d.username}님이 ${d.item_name} ${d.quantity}개 구매! (-${Number(d.total_cost).toLocaleString()}P)`, 'trade', 6000);
+                    if (d.treasury_pool !== undefined && treasuryValEl) {
+                        treasuryValEl.textContent = `${Math.floor(d.treasury_pool).toLocaleString()}P`;
+                    }
+                }
+            }
             else if (type === 'leaderboard_update') {
                 if (data.leaderboard) renderLeaderboard(data.leaderboard);
             }
@@ -698,6 +792,8 @@
         // 실행
         fetchInitialData();
         connectWebSocket();
+        pollLocalTrackerRelay();
+        setInterval(pollLocalTrackerRelay, 2000);
         setInterval(fetchInitialData, 10000);
     </script>
 </body>

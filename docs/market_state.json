@@ -1,11 +1,12 @@
 {
-  "current_rank_point": 2136,
-  "current_price": 2136,
-  "previous_price": 1873,
-  "day_open_price": 3055,
-  "is_trading_locked": false,
+  "current_rank_name": "작성3",
+  "current_rank_point": 2796,
+  "current_price": 2796,
+  "previous_price": 2533,
+  "day_open_price": 2137,
+  "is_trading_locked": true,
   "last_settlement_delta": 263,
-  "treasury_pool": 32566708.0,
+  "treasury_pool": 21271006.0,
   "free_trading_remaining": 0,
   "free_trading_end_time": 0.0,
   "casino_is_open": false,
@@ -15,7 +16,30 @@
   "sf_event_title": null,
   "sf_is_active": false,
   "sf_remaining": 0,
-  "day_diff": -919,
-  "day_diff_pct": -30.08,
-  "updated_at": "2026-09-18 07:21:34"
+  "lottery_is_open": false,
+  "lottery_remaining": 0,
+  "lottery_title": "국가 복지 복권",
+  "merchant_is_open": false,
+  "merchant_remaining": 0,
+  "merchant_name": "신비상인",
+  "merchant_items": {
+    "shield": {
+      "name": "🛡️ 파괴방어권",
+      "price": 356902,
+      "stock": 0
+    },
+    "boost": {
+      "name": "⚡ 강화확률상승권",
+      "price": 350000,
+      "stock": 0
+    },
+    "downgrade": {
+      "name": "📉 하강방지권",
+      "price": 400000,
+      "stock": 0
+    }
+  },
+  "day_diff": 659,
+  "day_diff_pct": 30.84,
+  "updated_at": "2026-09-19 01:00:07"
 }

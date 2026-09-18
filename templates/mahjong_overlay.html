@@ -123,11 +123,39 @@
         const statsContainer = document.getElementById('stats-container');
         const scoreDiffEl = document.getElementById('score-diff');
 
+        let ws = null;
+        let _lastRelayedKey = '';
+        let _lastRelayTime = 0;
+
+        function relayTrackerData(data) {
+            if (!data || !data.nickname || data.nickname === '정보 없음') return;
+            const now = Date.now();
+            const key = `${data.score || ''}|${data.record || ''}`;
+            if (key !== _lastRelayedKey || (now - _lastRelayTime > 4000)) {
+                _lastRelayedKey = key;
+                _lastRelayTime = now;
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(JSON.stringify({ action: 'tracker_push', data: data }));
+                    } catch (e) {}
+                }
+                fetch('/api/tracker/push', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                }).catch(() => {});
+            }
+        }
+
         async function updateTrackerData() {
             let data = null;
             try {
                 const res7500 = await fetch('http://localhost:7500/data.json', { cache: 'no-store' });
-                if (res7500.ok) data = await res7500.json();
+                if (res7500.ok) {
+                    data = await res7500.json();
+                    relayTrackerData(data);
+                }
             } catch (e) {}
 
             if (!data) {
@@ -216,7 +244,7 @@
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
-            const ws = new WebSocket(wsUrl);
+            ws = new WebSocket(wsUrl);
 
             ws.onmessage = (event) => {
                 try {

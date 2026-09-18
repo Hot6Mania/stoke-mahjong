@@ -320,24 +320,51 @@
             stockContainer.style.display = 'none';
         }
 
-        // 점수 문자열에서 현재 랭크 점수 추출 함수 (예: "2340/9000 (3055)" -> 2340)
+        // 점수 문자열에서 현재 랭크 점수 추출 함수 (예: "2,137pt (2,137pt)" -> 2137)
         function extractRankPoints(scoreStr) {
             if (!scoreStr) return null;
-            const m = scoreStr.match(/(\d+)\s*\//);
-            if (m) return parseInt(m[1], 10);
-            const m2 = scoreStr.match(/(\d+)\s*(?:pt|점)/i);
-            if (m2) return parseInt(m2[1], 10);
-            const nums = scoreStr.match(/\b\d{3,5}\b/);
+            const m = scoreStr.match(/([\d,]+)\s*\//);
+            if (m) return parseInt(m[1].replace(/,/g, ''), 10);
+            const m2 = scoreStr.match(/([\d,]+)\s*(?:pt|점)/i);
+            if (m2) return parseInt(m2[1].replace(/,/g, ''), 10);
+            const m3 = scoreStr.trim().match(/^([\d,]+)/);
+            if (m3) return parseInt(m3[1].replace(/,/g, ''), 10);
+            const cleaned = scoreStr.replace(/,/g, '');
+            const nums = cleaned.match(/\b\d{3,5}\b/);
             if (nums) return parseInt(nums[0], 10);
             return null;
         }
 
-        // 점수 문자열에서 당일 시작 점수 추출 함수 (예: "2340/9000 (3055)" -> 3055)
+        // 점수 문자열에서 당일 시작 점수 추출 함수 (예: "2,137pt (2,137pt)" -> 2137)
         function extractDayStartPoints(scoreStr) {
             if (!scoreStr) return null;
-            const m = scoreStr.match(/\(\s*(\d+)\s*\)/);
-            if (m) return parseInt(m[1], 10);
+            const m = scoreStr.match(/\(\s*([\d,]+)\s*(?:pt|점)?\s*\)/i);
+            if (m) return parseInt(m[1].replace(/,/g, ''), 10);
             return null;
+        }
+
+        let _lastRelayedKey = '';
+        let _lastRelayTime = 0;
+
+        function relayTrackerData(data) {
+            if (!data || !data.nickname || data.nickname === '정보 없음') return;
+            const now = Date.now();
+            const key = `${data.score || ''}|${data.record || ''}`;
+            if (key !== _lastRelayedKey || (now - _lastRelayTime > 4000)) {
+                _lastRelayedKey = key;
+                _lastRelayTime = now;
+
+                if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(JSON.stringify({ action: 'tracker_push', data: data }));
+                    } catch (e) {}
+                }
+                fetch('/api/tracker/push', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                }).catch(() => {});
+            }
         }
 
         // 1. 실시간 작혼 전적 데이터 동기화 (http://localhost:7500/data.json 또는 /api/tracker/data)
@@ -349,6 +376,7 @@
                 const res7500 = await fetch('http://localhost:7500/data.json', { cache: 'no-store' });
                 if (res7500.ok) {
                     data = await res7500.json();
+                    relayTrackerData(data);
                 }
             } catch (e) {
                 // 직접 조회 실패 시 프록시 엔드포인트(/api/tracker/data) 사용
@@ -664,6 +692,24 @@
                         );
                     }
 
+                    if (msg.type === "delisting") {
+                        if (msg.market_state) {
+                            previousPrice = msg.market_state.previous_price;
+                            if (msg.market_state.day_open_price) dayOpenPrice = msg.market_state.day_open_price;
+                            updateStockDisplay(msg.market_state.current_price, msg.market_state.previous_price, msg.market_state.current_rank_point, dayOpenPrice);
+                            updateMarketLockBadge(false, msg.free_trading_remaining || 300);
+                            if (msg.market_state.treasury_pool !== undefined) updateTreasury(msg.market_state.treasury_pool);
+                            if (rankValueEl && msg.market_state.current_rank_name) {
+                                rankValueEl.textContent = msg.market_state.current_rank_name;
+                            }
+                        }
+                        const info = msg.delisting_info || {};
+                        const oldR = info.old_rank || "작성3";
+                        const newR = info.new_rank || "작성2";
+                        const newP = (info.new_price || 3000).toLocaleString();
+                        showTickerMessage("liquidation", `🚨🚨 [긴급: 상장폐지] 치즈나베 ${oldR} 강등으로 전격 상장폐지! 기존 주식 전량 휴짓조각(0주) | 신규 종목 [${newR}](${newP}P) 상장!`, 15000);
+                    }
+
                     if (msg.type === "settlement") {
                         previousPrice = msg.old_price;
                         if (msg.market_state && msg.market_state.day_open_price) dayOpenPrice = msg.market_state.day_open_price;
@@ -752,7 +798,7 @@
                     if (msg.type === "donation_charged" && msg.data) {
                         if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
                         const commentPart = msg.data.donation_text ? ` - "${msg.data.donation_text}"` : "";
-                        showTickerMessage("settle", `🎉 [후원 1:100 충전] <strong>${msg.data.username}</strong>님이 ${Number(msg.data.pay_amount).toLocaleString()}원 후원! (+${Number(msg.data.points_credited).toLocaleString()}P 충전 완료!)${commentPart}`, 9000);
+                        showTickerMessage("settle", `🎉 [후원 1:1000 충전] <strong>${msg.data.username}</strong>님이 ${Number(msg.data.pay_amount).toLocaleString()}원 후원! (+${Number(msg.data.points_credited).toLocaleString()}P 충전 완료!)${commentPart}`, 9000);
                     }
 
                     if (msg.type === "trade_sell" && msg.data) {
@@ -806,6 +852,40 @@
                         } else {
                             showTickerMessage("liquidation", `🎲 [주사위 실패] <strong>${msg.data.username}</strong>님 ${diceStr} (-${Number(msg.data.bet_amount).toLocaleString()}P 국고 적립)`, 6000);
                         }
+                    }
+
+                    if (msg.type === "lottery_event_started") {
+                        const dur = msg.data && msg.data.duration_minutes ? `${msg.data.duration_minutes}분간` : "10분간";
+                        showTickerMessage("settle", `🎉🏛️ [국가 복지 복권 OPEN!] ${dur} 진행! 당첨률 85%! 꽝도 500P 환급 (명령어: !복권, !복권 10)`, 10000);
+                    }
+
+                    if (msg.type === "lottery_event_ended") {
+                        showTickerMessage("liquidation", `🔒 [복권 판매 마감] 국가 복지 복권 판매가 마감되었습니다. 잠시 후 다음 복지 시간에 다시 열립니다!`, 7000);
+                    }
+
+                    if (msg.type === "lottery_jackpot" && msg.data) {
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        showTickerMessage("settle", `👑🎉 [복권 대박 잭팟!] <strong>${msg.data.username}</strong>님이 국가 복지 복권 1등 대박 당첨! (+${Number(msg.data.total_prize).toLocaleString()}P 지급) 🎊`, 12000);
+                    }
+
+                    if (msg.type === "lottery_scratch" && msg.data) {
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                    }
+
+                    if (msg.type === "merchant_appeared") {
+                        const dur = msg.data && msg.data.duration_minutes ? `${msg.data.duration_minutes}분간` : "10분간";
+                        const mName = msg.data && msg.data.merchant_name ? msg.data.merchant_name : "신비상인";
+                        showTickerMessage("settle", `🧞‍♂️🛒 [${mName} 마을 출현!] ${dur} 영업! 파괴방어권/강화확률상승권/하강방지권 한정 판매! (!신비상인)`, 10000);
+                    }
+
+                    if (msg.type === "merchant_left") {
+                        const mName = msg.data && msg.data.merchant_name ? msg.data.merchant_name : "신비상인";
+                        showTickerMessage("liquidation", `🔒 [${mName} 퇴장] 신비상인이 보따리를 싸고 마을을 떠났습니다.`, 7000);
+                    }
+
+                    if (msg.type === "merchant_bought" && msg.data) {
+                        if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
+                        showTickerMessage("trade", `🧞‍♂️📦 [신비상점] <strong>${msg.data.username}</strong>님이 ${msg.data.item_name} ${msg.data.quantity}개 구매! (-${Number(msg.data.total_cost).toLocaleString()}P)`, 6000);
                     }
 
                     if (msg.type === "leaderboard_update" && msg.leaderboard) {

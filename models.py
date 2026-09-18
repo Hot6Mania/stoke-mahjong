@@ -55,6 +55,14 @@ class User(Base):
     auto_mining_session_points = Column(Integer, default=0, nullable=False)
     cube_count = Column(Integer, default=0, nullable=False)
     cube_fragments = Column(Integer, default=0, nullable=False)
+    shield_scroll_count = Column(Integer, default=0, nullable=False)
+    boost_scroll_count = Column(Integer, default=0, nullable=False)
+    downgrade_scroll_count = Column(Integer, default=0, nullable=False)
+    snipe_scroll_count = Column(Integer, default=0, nullable=False)
+    arm_shield = Column(Boolean, default=True, nullable=False)
+    arm_boost = Column(Boolean, default=False, nullable=False)
+    arm_downgrade = Column(Boolean, default=True, nullable=False)
+    arm_snipe = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     positions = relationship("Position", back_populates="user", cascade="all, delete-orphan")
@@ -80,6 +88,7 @@ class MarketState(Base):
     __tablename__ = "market_state"
 
     id = Column(Integer, primary_key=True, default=1)
+    current_rank_name = Column(String, default="작성3", nullable=True)
     current_rank_point = Column(Integer, default=2340, nullable=False)
     current_price = Column(Integer, default=2340, nullable=False)
     previous_price = Column(Integer, default=2340, nullable=False)
@@ -90,11 +99,27 @@ class MarketState(Base):
     free_trading_end_time = Column(Float, default=0.0, nullable=True)
     casino_is_open = Column(Boolean, default=False, nullable=False)
     casino_end_time = Column(Float, default=0.0, nullable=True)
-    casino_max_bet = Column(Integer, default=100000, nullable=False)
+    casino_max_bet = Column(Integer, default=10000000, nullable=False)
     sf_event_type = Column(String, nullable=True) # None, "DISCOUNT_30", "FEVER_100", "SHINING"
     sf_event_end_time = Column(Float, default=0.0, nullable=True)
     sf_event_title = Column(String, nullable=True)
     sf_next_event_time = Column(Float, default=0.0, nullable=True)
+    lottery_is_open = Column(Boolean, default=False, nullable=False)
+    lottery_end_time = Column(Float, default=0.0, nullable=True)
+    lottery_title = Column(String, default="국가 복지 복권", nullable=True)
+    lottery_next_event_time = Column(Float, default=0.0, nullable=True)
+    merchant_is_open = Column(Boolean, default=False, nullable=False)
+    merchant_end_time = Column(Float, default=0.0, nullable=True)
+    merchant_name = Column(String, default="신비상인", nullable=True)
+    merchant_next_time = Column(Float, default=0.0, nullable=True)
+    merchant_shield_price = Column(Integer, default=500000, nullable=False)
+    merchant_shield_stock = Column(Integer, default=5, nullable=False)
+    merchant_boost_price = Column(Integer, default=350000, nullable=False)
+    merchant_boost_stock = Column(Integer, default=10, nullable=False)
+    merchant_downgrade_price = Column(Integer, default=400000, nullable=False)
+    merchant_downgrade_stock = Column(Integer, default=8, nullable=False)
+    merchant_snipe_price = Column(Integer, default=500000, nullable=False)
+    merchant_snipe_stock = Column(Integer, default=4, nullable=False)
 
 class LimitOrder(Base):
     __tablename__ = "orders_limit"
@@ -138,7 +163,7 @@ class DonationRecord(Base):
     donator_channel_id = Column(String, index=True, nullable=True)
     donator_nickname = Column(String, nullable=False)
     pay_amount = Column(Integer, nullable=False) # KRW donation amount (원)
-    points_credited = Column(Integer, nullable=False) # Charged points (1:100 ratio)
+    points_credited = Column(Integer, nullable=False) # Charged points (1:1000 ratio)
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     donation_type = Column(String, default="CHAT") # CHAT or VIDEO
     donation_text = Column(String, nullable=True)
@@ -183,4 +208,24 @@ class EquipmentListing(Base):
 
     equipment = relationship("UserEquipment", foreign_keys=[equipment_id], back_populates="listings")
     seller = relationship("User", foreign_keys=[seller_id], back_populates="equipment_listings")
+
+
+class ItemListing(Base):
+    __tablename__ = "item_listings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    seller_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    seller_name = Column(String, nullable=False)
+    buyer_id = Column(String, nullable=True, index=True)
+    buyer_name = Column(String, nullable=True)
+    item_type = Column(String, nullable=False)  # "shield", "boost", "downgrade"
+    item_name = Column(String, nullable=False)
+    quantity = Column(Integer, default=1, nullable=False)
+    price = Column(Integer, nullable=False)
+    tax_fee = Column(Integer, default=0, nullable=False)
+    status = Column(String, default="ACTIVE", nullable=False)  # ACTIVE, SOLD, CANCELLED
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+
+    seller = relationship("User", foreign_keys=[seller_id])
 

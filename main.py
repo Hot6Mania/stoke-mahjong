@@ -5,7 +5,7 @@ import asyncio
 from typing import Set, Optional, Dict, Any, List, Tuple
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 import uvicorn
 
 import re
+import socket
+import struct
 from database import init_db, get_db, SessionLocal
 from models import User, Position, MarketState, ProductType, DonationRecord
 import db_backup
@@ -36,8 +38,8 @@ NID_SES = os.getenv("NID_SES", "")
 DEFAULT_TRACKER_DATA = {
     "nickname": "ちぃず鍋",
     "rank": "작성3",
-    "score": "2340/9000 (3055)",
-    "score_diff": "▼715",
+    "score": "2137/9000 (2137)",
+    "score_diff": "0",
     "record": "32321 13212 21112 21111 11332 32222 31111 33123 23333 11333 22133 3221",
     "date": "2026년 09월 16일",
     "hule_rate": "30.3%",
@@ -73,27 +75,47 @@ DEFAULT_TRACKER_DATA = {
 latest_tracker_data: Dict[str, Any] = dict(DEFAULT_TRACKER_DATA)
 
 def extract_rank_points(score_str: str) -> Optional[int]:
-    """Extract current rank points from score string e.g. '2340/9000 (3055)' -> 2340."""
+    """Extract current rank points from score string e.g. '2,137pt (2,137pt)' or '2340/9000 (3055)' -> 2137 or 2340."""
     if not score_str:
         return None
-    m = re.search(r"(\d+)\s*/", score_str)
+    # 1. '2,137 / 9,000'
+    m = re.search(r"([\d,]+)\s*/", score_str)
     if m:
-        return int(m.group(1))
-    m = re.search(r"(\d+)\s*(?:pt|점)", score_str, re.IGNORECASE)
+        try:
+            return int(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    # 2. '2,137pt' or '2,137점'
+    m = re.search(r"([\d,]+)\s*(?:pt|점)", score_str, re.IGNORECASE)
     if m:
-        return int(m.group(1))
-    nums = re.findall(r"\b\d{3,5}\b", score_str)
+        try:
+            return int(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    # 3. Leading numbers before parenthesis e.g. '2,137 (2,137)'
+    m = re.search(r"^([\d,]+)", score_str.strip())
+    if m:
+        try:
+            return int(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    # 4. Fallback to any 3-5 digit sequence after stripping commas
+    cleaned = score_str.replace(",", "")
+    nums = re.findall(r"\b\d{3,5}\b", cleaned)
     if nums:
         return int(nums[0])
     return None
 
 def extract_day_start_points(score_str: str) -> Optional[int]:
-    """Extract today's starting rank points from score string e.g. '2340/9000 (3055)' -> 3055."""
+    """Extract today's starting rank points from score string e.g. '2,137pt (2,137pt)' or '(3055)' -> 2137 or 3055."""
     if not score_str:
         return None
-    m = re.search(r"\(\s*(\d+)\s*\)", score_str)
+    m = re.search(r"\(\s*([\d,]+)\s*(?:pt|점)?\s*\)", score_str, re.IGNORECASE)
     if m:
-        return int(m.group(1))
+        try:
+            return int(m.group(1).replace(",", ""))
+        except ValueError:
+            return None
     return None
 
 # ---------------------------------------------------------
@@ -137,7 +159,7 @@ def serialize_market_state(state) -> Dict[str, Any]:
     c_open = getattr(state, "casino_is_open", False) or False
     c_end = getattr(state, "casino_end_time", 0.0) or 0.0
     c_rem = max(0, int(c_end - time.time())) if c_end and c_end > 0 else (0 if not c_open else -1)
-    c_max_bet = getattr(state, "casino_max_bet", 100000) or 100000
+    c_max_bet = getattr(state, "casino_max_bet", 10000000) or 10000000
     if c_open and c_end and c_end > 0 and time.time() > c_end:
         c_open = False
         c_rem = 0
@@ -150,7 +172,22 @@ def serialize_market_state(state) -> Dict[str, Any]:
     sf_active = bool(sf_type and sf_end > now)
     sf_rem = max(0, int(sf_end - now)) if sf_active else 0
 
+    # State Welfare Lottery Event State
+    lottery_open = bool(getattr(state, "lottery_is_open", False))
+    lottery_end = float(getattr(state, "lottery_end_time", 0.0) or 0.0)
+    lottery_title = getattr(state, "lottery_title", "국가 복지 복권") or "국가 복지 복권"
+    lottery_active = bool(lottery_open and lottery_end > now)
+    lottery_rem = max(0, int(lottery_end - now)) if lottery_active else 0
+
+    # Mysterious Merchant State
+    merchant_open = bool(getattr(state, "merchant_is_open", False))
+    merchant_end = float(getattr(state, "merchant_end_time", 0.0) or 0.0)
+    merchant_name = getattr(state, "merchant_name", "신비상인") or "신비상인"
+    merchant_active = bool(merchant_open and merchant_end > now)
+    merchant_rem = max(0, int(merchant_end - now)) if merchant_active else 0
+
     res = {
+        "current_rank_name": getattr(state, "current_rank_name", "작성3") or "작성3",
         "current_rank_point": state.current_rank_point,
         "current_price": state.current_price,
         "previous_price": state.previous_price,
@@ -166,7 +203,30 @@ def serialize_market_state(state) -> Dict[str, Any]:
         "sf_event_type": sf_type if sf_active else None,
         "sf_event_title": sf_title if sf_active else None,
         "sf_is_active": sf_active,
-        "sf_remaining": sf_rem
+        "sf_remaining": sf_rem,
+        "lottery_is_open": lottery_active,
+        "lottery_remaining": lottery_rem,
+        "lottery_title": lottery_title,
+        "merchant_is_open": merchant_active,
+        "merchant_remaining": merchant_rem,
+        "merchant_name": merchant_name,
+        "merchant_items": {
+            "shield": {
+                "name": "🛡️ 파괴방어권",
+                "price": getattr(state, "merchant_shield_price", 60000) or 60000,
+                "stock": getattr(state, "merchant_shield_stock", 5) or 0,
+            },
+            "boost": {
+                "name": "⚡ 강화확률상승권",
+                "price": getattr(state, "merchant_boost_price", 25000) or 25000,
+                "stock": getattr(state, "merchant_boost_stock", 10) or 0,
+            },
+            "downgrade": {
+                "name": "📉 하강방지권",
+                "price": getattr(state, "merchant_downgrade_price", 35000) or 35000,
+                "stock": getattr(state, "merchant_downgrade_stock", 8) or 0,
+            }
+        }
     }
     return res
 
@@ -323,7 +383,7 @@ async def handle_donation_event(
             })
             if reply:
                 asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot))
-            print(f"[Donation] 🎉 [1:100 충전 성공] {details['username']} +{details['points_credited']:,}P (현재 잔고: {details['remaining_points']:,}P)")
+            print(f"[Donation] 🎉 [1:1000 충전 성공] {details['username']} +{details['points_credited']:,}P (현재 잔고: {details['remaining_points']:,}P)")
         elif not success:
             print(f"[Donation] ℹ️ 후원 처리 스킵/중복: {reply}")
         return success, reply, details
@@ -633,123 +693,260 @@ session_worker = ChzzkSessionWorker(
 # ---------------------------------------------------------
 last_synced_record: str = ""
 last_synced_pts: Optional[int] = None
+last_tracker_received_at: Optional[float] = None
+last_tracker_source: str = "none"
+tracker_sync_lock = asyncio.Lock()
+
+def get_tracker_candidate_urls() -> List[str]:
+    """Return list of possible local/host endpoints for the Mahjong Tracker."""
+    urls = [
+        "http://127.0.0.1:7500/data.json",
+        "http://localhost:7500/data.json",
+        "http://127.0.0.1:7500/",
+        "http://localhost:7500/",
+    ]
+    try:
+        with open("/proc/net/route") as f:
+            for line in f:
+                fields = line.strip().split()
+                if fields[1] == '00000000':
+                    host_ip = socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+                    if host_ip and host_ip not in ("127.0.0.1", "0.0.0.0"):
+                        urls.append(f"http://{host_ip}:7500/data.json")
+                        urls.append(f"http://{host_ip}:7500/")
+                    break
+    except Exception:
+        pass
+    return urls
+
+async def process_tracker_update(data: Dict[str, Any], source: str = "poll", force_settle: bool = False) -> Dict[str, Any]:
+    """
+    Core engine to process incoming real-time Mahjong tracker data.
+    Updates rank points, detects finished games, settles matches, triggers dividends/liquidations,
+    and opens the 5-minute free trading window.
+    Can be called by background sync loop or via client-side relay (/api/tracker/push or WebSocket).
+    """
+    global last_synced_record, last_synced_pts, last_tracker_received_at, last_tracker_source
+
+    if not isinstance(data, dict) or data.get("nickname") == "정보 없음":
+        return {"success": False, "reason": "invalid_data"}
+
+    async with tracker_sync_lock:
+        last_tracker_received_at = time.time()
+        last_tracker_source = source
+        latest_tracker_data.update(data)
+
+        score_str = data.get("score", "")
+        pts = extract_rank_points(score_str)
+        day_start = extract_day_start_points(score_str)
+        rec_str = str(data.get("record", "") or "").strip()
+
+        if pts is None or pts <= 0:
+            return {"success": True, "settled": False, "reason": "no_points"}
+
+        db = SessionLocal()
+        try:
+            state = te.get_market_state(db)
+            if day_start and getattr(state, "day_open_price", None) != day_start:
+                state.day_open_price = day_start
+                db.commit()
+
+            # Direct tracker demotion detection (e.g. tracker shows '작성2' while system was '작성3')
+            tracker_rank = str(data.get("rank", "") or "").replace(" ", "").strip()
+            curr_rank = getattr(state, "current_rank_name", "작성3") or "작성3"
+            if "작성3" in curr_rank and "작성2" in tracker_rank:
+                starting_pts = pts if (pts is not None and pts > 0) else 3000
+                delist_res = te.execute_delisting_and_relist(
+                    db,
+                    old_rank="작성3",
+                    new_rank="작성2",
+                    starting_points=starting_pts
+                )
+                last_synced_pts = starting_pts
+                last_synced_record = rec_str
+                latest_tracker_data["rank"] = "작성2"
+                sync_docs_market_state(state)
+                await start_free_trading_window(300)
+                await manager.broadcast({
+                    "type": "delisting",
+                    "delisting_info": delist_res,
+                    "tracker_data": latest_tracker_data,
+                    "market_state": serialize_market_state(state),
+                    "free_trading_remaining": 300
+                })
+                delist_chat = (
+                    f"🚨🚨 [긴급 속보: 상장폐지 & 신규 상장] 치즈나베의 '작성3' 강등으로 인해 작성3 종목이 전격 [상장폐지]되었습니다! "
+                    f"기존 주주 총 {delist_res['wiped_positions_count']}명의 주식이 전량 [휴짓조각(0주)] 처리되었습니다. "
+                    f"신규 종목 [작성2] (시작가 {state.current_price:,}P)가 새로 상장되어 거래가 시작됩니다!"
+                )
+                asyncio.create_task(dispatch_chat_notice(delist_chat, fallback_bot=bot_instance))
+                print(f"[Tracker] 💥 상장폐지 및 신규 상장 완료: 작성3 -> 작성2 (시작가 {state.current_price:,}P)")
+                return {
+                    "success": True,
+                    "settled": True,
+                    "delisted": True,
+                    "delisting_info": delist_res,
+                    "current_price": state.current_price,
+                    "day_open_price": state.day_open_price
+                }
+
+            # Baseline establishment on initial startup
+            is_initial = (last_synced_pts is None and not last_synced_record)
+            if is_initial and not force_settle:
+                last_synced_pts = pts
+                last_synced_record = rec_str
+                # If market state points differ from tracker on initial sync, align quietly
+                if state.current_rank_point != pts:
+                    state.current_rank_point = pts
+                    state.current_price = te.calculate_stock_price(pts)
+                    db.commit()
+                    sync_docs_market_state(state)
+                await manager.broadcast({
+                    "type": "tracker_update",
+                    "tracker_data": latest_tracker_data,
+                    "market_state": serialize_market_state(state)
+                })
+                print(f"[Tracker] 🔌 트래커 최초 기준점 동기화 완료: {pts:,}pt (시작가: {state.day_open_price:,}P, 전적: {rec_str})")
+                return {"success": True, "initial_sync": True, "current_pts": pts, "record": rec_str}
+
+            pts_changed = (state.current_rank_point != pts)
+            rec_changed = bool(last_synced_record and rec_str and rec_str != last_synced_record)
+
+            if pts_changed or rec_changed or force_settle:
+                delta = (pts - state.current_rank_point) if pts_changed else 0
+                if force_settle and delta == 0 and pts:
+                    delta = (pts - state.current_rank_point)
+
+                # Determine rank of the finished match
+                new_digits = [int(c) for c in rec_str if c in "1234"]
+                old_digits = [int(c) for c in last_synced_record if c in "1234"] if last_synced_record else []
+
+                rank = None
+                if old_digits and new_digits and len(new_digits) > len(old_digits):
+                    if new_digits[0] != old_digits[0]:
+                        rank = new_digits[0]
+                    elif new_digits[-1] != old_digits[-1]:
+                        rank = new_digits[-1]
+                    else:
+                        rank = new_digits[0]
+
+                if rank is None:
+                    if delta >= 40:
+                        rank = 1
+                    elif 0 <= delta < 40:
+                        rank = 2
+                    else:
+                        rank = 3
+
+                if 0 <= delta < 40 and rank in (3, 4):
+                    rank = 2
+                elif delta >= 40 and rank != 1:
+                    rank = 1
+                elif delta < 0 and rank in (1, 2):
+                    rank = 3
+
+                # For 3-player mahjong (Sanma), max rank is 3
+                if rank and rank > 3:
+                    rank = 3
+
+                last_synced_record = rec_str
+                last_synced_pts = pts
+
+                settle_res = te.settle_match(db, rank=rank, point_delta=delta)
+                leaderboard = te.get_leaderboard(db, top_n=3)
+
+                # 5-minute free trading window auto-open
+                await start_free_trading_window(300)
+
+                if settle_res.get("delisted"):
+                    delist_info = settle_res["delisting_info"]
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "delisting",
+                        "delisting_info": delist_info,
+                        "settlement": settle_res,
+                        "tracker_data": latest_tracker_data,
+                        "leaderboard": leaderboard,
+                        "free_trading_remaining": 300,
+                        "market_state": serialize_market_state(state)
+                    })
+                    delist_chat = (
+                        f"🚨🚨 [긴급 속보: 상장폐지 & 신규 상장] 경기 결과 점수 하락으로 작성2 강등 발생! "
+                        f"작성3 종목이 전격 [상장폐지]되고 기존 주식은 전량 [휴짓조각(0주)] 처리되었습니다! "
+                        f"신규 종목 [작성2] (시작가 {state.current_price:,}P) 신규 상장 및 거래 오픈!"
+                    )
+                    asyncio.create_task(dispatch_chat_notice(delist_chat, fallback_bot=bot_instance))
+                    print(f"[Tracker] 💥 경기 결과로 상장폐지 발생: 작성3 -> 작성2 (시작가 {state.current_price:,}P)")
+                    return {
+                        "success": True,
+                        "settled": True,
+                        "delisted": True,
+                        "delisting_info": delist_info,
+                        "rank": rank,
+                        "delta": delta,
+                        "current_price": state.current_price,
+                        "day_open_price": state.day_open_price
+                    }
+
+                if settle_res.get("dividends"):
+                    div_count = len(settle_res["dividends"])
+                    total_div = sum(d["payout"] for d in settle_res["dividends"])
+                    pct_label = "5%" if rank == 1 else ("1%" if rank == 2 else "")
+                    div_chat = f"🎁 [{rank}위 승리 배당] 1X(기본주) 주주 총 {div_count}명에게 {pct_label} 배당금(총 +{total_div:,}P) 지급 완료! (자유 거래 5분 오픈)"
+                    asyncio.create_task(dispatch_chat_notice(div_chat, fallback_bot=bot_instance))
+
+                if settle_res.get("liquidations"):
+                    liq_count = len(settle_res["liquidations"])
+                    liq_chat = f"🚨 [마진콜 경고] 총 {liq_count}건의 레버리지/인버스 포지션이 강제 청산되었습니다!"
+                    asyncio.create_task(dispatch_chat_notice(liq_chat, fallback_bot=bot_instance))
+
+                sync_docs_market_state(state)
+                await manager.broadcast({
+                    "type": "settlement",
+                    **settle_res,
+                    "tracker_data": latest_tracker_data,
+                    "leaderboard": leaderboard,
+                    "free_trading_remaining": 300,
+                    "market_state": serialize_market_state(state)
+                })
+                print(f"[Tracker] 🏁 경기 결과 자동 정산 완료! (순위: {rank}위, 변동: {delta:+d}pt, 신규 주가: {state.current_price:,}P)")
+                return {
+                    "success": True,
+                    "settled": True,
+                    "rank": rank,
+                    "delta": delta,
+                    "current_price": state.current_price,
+                    "day_open_price": state.day_open_price
+                }
+            else:
+                last_synced_record = rec_str
+                last_synced_pts = pts
+                await manager.broadcast({
+                    "type": "tracker_update",
+                    "tracker_data": latest_tracker_data,
+                    "market_state": serialize_market_state(state)
+                })
+                return {
+                    "success": True,
+                    "settled": False,
+                    "current_pts": pts,
+                    "record": rec_str
+                }
+        finally:
+            db.close()
 
 async def sync_tracker_loop():
-    """Background task to sync real mahjong stats from http://127.0.0.1:7500/data.json."""
-    global last_synced_record, last_synced_pts
+    """Background task to sync real mahjong stats from local/host tracker."""
     while True:
         try:
             async with httpx.AsyncClient(timeout=1.5) as client:
-                for url in ["http://127.0.0.1:7500/data.json", "http://localhost:7500/data.json"]:
+                for url in get_tracker_candidate_urls():
                     try:
                         res = await client.get(url)
                         if res.status_code == 200:
                             data = res.json()
                             if isinstance(data, dict) and data.get("nickname") != "정보 없음":
-                                latest_tracker_data.update(data)
-
-                                # Check if rank points or match record changed
-                                score_str = data.get("score", "")
-                                pts = extract_rank_points(score_str)
-                                day_start = extract_day_start_points(score_str)
-                                rec_str = str(data.get("record", "") or "").strip()
-
-                                if pts is not None and pts > 0:
-                                    db = SessionLocal()
-                                    try:
-                                        state = te.get_market_state(db)
-                                        if day_start and getattr(state, "day_open_price", None) != day_start:
-                                            state.day_open_price = day_start
-                                            db.commit()
-
-                                        # Detect if a match finished:
-                                        # 1. Rank points changed (pts != state.current_rank_point)
-                                        # 2. OR match record changed (new match added, even if point delta was 0)
-                                        pts_changed = (state.current_rank_point != pts)
-                                        rec_changed = bool(last_synced_record and rec_str and rec_str != last_synced_record)
-
-                                        if pts_changed or rec_changed:
-                                            delta = (pts - state.current_rank_point) if pts_changed else 0
-
-                                            # Determine rank of the finished match:
-                                            new_digits = [int(c) for c in rec_str if c in "1234"]
-                                            old_digits = [int(c) for c in last_synced_record if c in "1234"] if last_synced_record else []
-
-                                            rank = None
-                                            # Method A: Compare record differences if record updated
-                                            if old_digits and new_digits and len(new_digits) > len(old_digits):
-                                                if new_digits[0] != old_digits[0]:
-                                                    rank = new_digits[0]
-                                                elif new_digits[-1] != old_digits[-1]:
-                                                    rank = new_digits[-1]
-                                                else:
-                                                    rank = new_digits[0]
-
-                                            # Method B: Infer rank from point delta
-                                            if rank is None:
-                                                if delta >= 40:
-                                                    rank = 1  # 1위 (+40pt ~ +150pt+)
-                                                elif 0 <= delta < 40:
-                                                    rank = 2  # 2위 (0pt ~ +39pt, classic 2nd place in Mahjong Soul)
-                                                elif -40 < delta < 0:
-                                                    rank = 3  # 3위 (-1pt ~ -39pt)
-                                                else:
-                                                    rank = 4  # 4위 / 3위 in sanma (-40pt or worse)
-
-                                            # Method C: Sanity check for Mahjong Soul rank point rules
-                                            # In Saint 3 / Jade Room, any delta between 0 and +39pt is guaranteed 2nd place!
-                                            if 0 <= delta < 40 and rank in (3, 4):
-                                                rank = 2
-                                            elif delta >= 40 and rank != 1:
-                                                rank = 1
-                                            elif delta <= -40 and rank in (1, 2):
-                                                rank = 4
-
-                                            last_synced_record = rec_str
-                                            last_synced_pts = pts
-
-                                            settle_res = te.settle_match(db, rank=rank, point_delta=delta)
-                                            leaderboard = te.get_leaderboard(db, top_n=3)
-
-                                            # 5분 자유 거래 시간 자동 오픈 (300초 카운트다운 후 자동 마감)
-                                            await start_free_trading_window(300)
-
-                                            if settle_res.get("dividends"):
-                                                div_count = len(settle_res["dividends"])
-                                                total_div = sum(d["payout"] for d in settle_res["dividends"])
-                                                pct_label = "5%" if rank == 1 else ("1%" if rank == 2 else "")
-                                                div_chat = f"🎁 [{rank}위 승리 배당] 1X(기본주) 주주 총 {div_count}명에게 {pct_label} 배당금(총 +{total_div:,}P) 지급 완료! (자유 거래 5분 오픈)"
-                                                asyncio.create_task(dispatch_chat_notice(div_chat, fallback_bot=bot_instance))
-
-                                            if settle_res.get("liquidations"):
-                                                liq_count = len(settle_res["liquidations"])
-                                                liq_chat = f"🚨 [마진콜 경고] 총 {liq_count}건의 레버리지/인버스 포지션이 강제 청산되었습니다!"
-                                                asyncio.create_task(dispatch_chat_notice(liq_chat, fallback_bot=bot_instance))
-
-                                            sync_docs_market_state(state)
-                                            await manager.broadcast({
-                                                "type": "settlement",
-                                                **settle_res,
-                                                "tracker_data": latest_tracker_data,
-                                                "leaderboard": leaderboard,
-                                                "free_trading_remaining": 300,
-                                                "market_state": serialize_market_state(state)
-                                            })
-                                        else:
-                                            # Update baseline on first poll
-                                            if not last_synced_record and rec_str:
-                                                last_synced_record = rec_str
-                                            if last_synced_pts is None and pts:
-                                                last_synced_pts = pts
-
-                                            # Periodic tracker update broadcast
-                                            await manager.broadcast({
-                                                "type": "tracker_update",
-                                                "tracker_data": latest_tracker_data,
-                                                "market_state": serialize_market_state(state)
-                                            })
-                                    finally:
-                                        db.close()
+                                await process_tracker_update(data, source=f"backend_{url}")
                                 break
                     except Exception:
                         continue
@@ -814,6 +1011,94 @@ async def starforce_fever_loop():
         except Exception:
             await asyncio.sleep(5)
 
+async def lottery_event_loop():
+    """Background worker that periodically checks and triggers spontaneous State Welfare Lottery events."""
+    last_known_active = False
+    while True:
+        try:
+            await asyncio.sleep(10)
+            db = SessionLocal()
+            try:
+                lottery = te.get_lottery_event_state(db)
+                is_active = lottery.get("is_active", False)
+                if is_active and not last_known_active:
+                    title = lottery.get("title", "국가 복지 복권")
+                    dur_m = max(1, lottery.get("remaining_sec", 0) // 60)
+                    notice = (
+                        f"🎉🏛️ [국가 복지 복권 OPEN] '{title}' ({dur_m}분간 진행)! "
+                        f"국고 후원 당첨률 85%! 꽝이어도 500P 환급! 지금 채팅창에 '!복권' (또는 !복권 10)을 긁어보세요!"
+                    )
+                    asyncio.create_task(dispatch_chat_notice(notice, fallback_bot=bot_instance))
+                    state = te.get_market_state(db)
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "lottery_event_started",
+                        "market_state": serialize_market_state(state),
+                        "data": lottery
+                    })
+                elif not is_active and last_known_active:
+                    title = lottery.get("title", "국가 복지 복권")
+                    notice = f"🔒 [복권 이벤트 마감] '{title}' 판매가 마감되었습니다. 잠시 후 다음 복지 시간에 다시 열립니다!"
+                    asyncio.create_task(dispatch_chat_notice(notice, fallback_bot=bot_instance))
+                    state = te.get_market_state(db)
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "lottery_event_ended",
+                        "market_state": serialize_market_state(state),
+                        "data": lottery
+                    })
+                last_known_active = is_active
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            await asyncio.sleep(5)
+
+async def merchant_event_loop():
+    """Background worker that periodically checks and triggers spontaneous Mysterious Merchant visits."""
+    last_known_active = False
+    while True:
+        try:
+            await asyncio.sleep(10)
+            db = SessionLocal()
+            try:
+                merchant = te.get_merchant_state(db)
+                is_active = merchant.get("is_active", False)
+                if is_active and not last_known_active:
+                    name = merchant.get("merchant_name", "신비상인")
+                    dur_m = max(1, merchant.get("remaining_sec", 0) // 60)
+                    notice = (
+                        f"🧞‍♂️🛒 [신비상인 출현!] 방랑 {name}이(가) 마을에 나타났습니다 ({dur_m}분간 체류)! "
+                        f"파괴방어권/강화확률상승권/하강방지권 한정 수량 입고! 지금 채팅창에 '!신비상인' 또는 '!구매'를 확인하세요!"
+                    )
+                    asyncio.create_task(dispatch_chat_notice(notice, fallback_bot=bot_instance))
+                    state = te.get_market_state(db)
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "merchant_appeared",
+                        "market_state": serialize_market_state(state),
+                        "data": merchant
+                    })
+                elif not is_active and last_known_active:
+                    name = merchant.get("merchant_name", "신비상인")
+                    notice = f"🔒 [신비상인 퇴장] {name}이(가) 보따리를 싸고 마을을 떠났습니다. 다음 방문을 기다려주세요!"
+                    asyncio.create_task(dispatch_chat_notice(notice, fallback_bot=bot_instance))
+                    state = te.get_market_state(db)
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "merchant_left",
+                        "market_state": serialize_market_state(state),
+                        "data": merchant
+                    })
+                last_known_active = is_active
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            await asyncio.sleep(5)
+
 # ---------------------------------------------------------
 # FastAPI Lifespan & App Setup
 # ---------------------------------------------------------
@@ -829,6 +1114,8 @@ async def lifespan(app: FastAPI):
     tracker_task = asyncio.create_task(sync_tracker_loop())
     auto_mining_task = asyncio.create_task(auto_mining_loop())
     fever_task = asyncio.create_task(starforce_fever_loop())
+    lottery_task = asyncio.create_task(lottery_event_loop())
+    merchant_task = asyncio.create_task(merchant_event_loop())
 
     yield
 
@@ -837,6 +1124,8 @@ async def lifespan(app: FastAPI):
     tracker_task.cancel()
     auto_mining_task.cancel()
     fever_task.cancel()
+    lottery_task.cancel()
+    merchant_task.cancel()
 
 app = FastAPI(title="마작 주식 & 파생상품 거래 시스템", lifespan=lifespan)
 
@@ -854,9 +1143,17 @@ app.add_middleware(
 class LockMarketRequest(BaseModel):
     locked: Optional[bool] = None
 
+class SetDayOpenRequest(BaseModel):
+    price: Optional[int] = None
+
 class SettleMatchRequest(BaseModel):
     rank: int
     point_delta: int
+
+class DelistRequest(BaseModel):
+    old_rank: Optional[str] = "작성3"
+    new_rank: Optional[str] = "작성2"
+    starting_points: Optional[int] = 3000
 
 class GrantPointsRequest(BaseModel):
     user_id: str
@@ -882,7 +1179,15 @@ class BankruptcyJudgeRequest(BaseModel):
 
 class CasinoOpenRequest(BaseModel):
     duration_minutes: float = 3.0
-    max_bet: int = 100000
+    max_bet: int = 10000000
+
+class LotteryOpenRequest(BaseModel):
+    duration_minutes: Optional[int] = 10
+    title: Optional[str] = "국가 복지 복권"
+
+class MerchantOpenRequest(BaseModel):
+    duration_minutes: Optional[int] = 10
+    merchant_name: Optional[str] = "신비상인"
 
 # ---------------------------------------------------------
 # Web Views & OBS Overlay
@@ -1025,14 +1330,50 @@ async def get_tracker_data():
     """Returns the latest real-time Mahjong tracker data (from localhost:7500/data.json)."""
     try:
         async with httpx.AsyncClient(timeout=1.0) as client:
-            res = await client.get("http://127.0.0.1:7500/data.json")
-            if res.status_code == 200:
-                data = res.json()
-                if isinstance(data, dict) and data.get("nickname") != "정보 없음":
-                    latest_tracker_data.update(data)
+            for url in get_tracker_candidate_urls():
+                try:
+                    res = await client.get(url)
+                    if res.status_code == 200:
+                        data = res.json()
+                        if isinstance(data, dict) and data.get("nickname") != "정보 없음":
+                            latest_tracker_data.update(data)
+                            break
+                except Exception:
+                    continue
     except Exception:
         pass
     return latest_tracker_data
+
+@app.get("/api/tracker/status")
+async def get_tracker_status(db=Depends(get_db)):
+    """Returns the real-time status of the Mahjong 7500 tracker connection."""
+    now = time.time()
+    is_live = bool(last_tracker_received_at and (now - last_tracker_received_at < 15))
+    state = te.get_market_state(db)
+    return {
+        "connected": is_live,
+        "last_received_at": last_tracker_received_at,
+        "seconds_ago": round(now - last_tracker_received_at, 1) if last_tracker_received_at else None,
+        "source": last_tracker_source,
+        "current_price": state.current_price,
+        "current_rank_point": state.current_rank_point,
+        "day_open_price": state.day_open_price,
+        "last_synced_pts": last_synced_pts,
+        "last_synced_record": last_synced_record,
+        "tracker_data": latest_tracker_data,
+    }
+
+@app.post("/api/tracker/push")
+async def push_tracker_data(req: Dict[str, Any] = Body(...), force_settle: bool = Query(False)):
+    """
+    POST /api/tracker/push
+    Client-side relay endpoint (from OBS overlays or Admin browser on host) to push
+    http://localhost:7500/data.json directly into the backend engine.
+    """
+    force = force_settle or bool(req.get("force_settle"))
+    data = req.get("data") if ("data" in req and isinstance(req["data"], dict)) else req
+    res = await process_tracker_update(data, source="client_push", force_settle=force)
+    return res
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -1040,7 +1381,18 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            text = await websocket.receive_text()
+            try:
+                msg = json.loads(text)
+                if isinstance(msg, dict):
+                    action = msg.get("action") or msg.get("type")
+                    if action == "tracker_push":
+                        t_data = msg.get("data") or msg.get("tracker_data")
+                        force = bool(msg.get("force_settle"))
+                        if isinstance(t_data, dict):
+                            await process_tracker_update(t_data, source="ws_relay", force_settle=force)
+            except Exception:
+                pass
     except (WebSocketDisconnect, Exception):
         manager.disconnect(websocket)
 
@@ -1136,9 +1488,65 @@ async def api_settle_match(req: SettleMatchRequest, db=Depends(get_db)):
         liq_chat = f"🚨 [마진콜 경고] 총 {liq_count}건의 레버리지/인버스 포지션이 전액 강제 청산되었습니다!"
         asyncio.create_task(dispatch_chat_notice(liq_chat, fallback_bot=bot_instance))
 
+    if result.get("delisted"):
+        delist_info = result["delisting_info"]
+        sync_docs_market_state(state)
+        await manager.broadcast({
+            "type": "delisting",
+            "delisting_info": delist_info,
+            "settlement": result,
+            "leaderboard": leaderboard,
+            "free_trading_remaining": 300,
+            "market_state": serialize_market_state(state)
+        })
+        delist_chat = (
+            f"🚨🚨 [긴급 속보: 상장폐지 & 신규 상장] 경기 정산으로 작성2 강등! "
+            f"작성3 종목이 전격 [상장폐지]되고 기존 주식은 전량 [휴짓조각(0주)] 처리되었습니다! "
+            f"신규 종목 [작성2] (시작가 {state.current_price:,}P) 신규 상장 및 거래 오픈!"
+        )
+        asyncio.create_task(dispatch_chat_notice(delist_chat, fallback_bot=bot_instance))
+
     return {
         "success": True,
         **result,
+        "free_trading_remaining": 300
+    }
+
+@app.post("/api/admin/delist")
+async def api_delist(req: Optional[DelistRequest] = None, db=Depends(get_db)):
+    """
+    POST /api/admin/delist
+    Demote and execute delisting (상장폐지) of the old rank stock, wiping existing stock shares to 0,
+    and launching the new stock at starting points (e.g. 작성2 at 3,000P).
+    """
+    old_r = req.old_rank if req and req.old_rank else "작성3"
+    new_r = req.new_rank if req and req.new_rank else "작성2"
+    pts = req.starting_points if req and req.starting_points else 3000
+
+    delist_res = te.execute_delisting_and_relist(db, old_rank=old_r, new_rank=new_r, starting_points=pts)
+    state = te.get_market_state(db)
+    sync_docs_market_state(state)
+
+    await start_free_trading_window(300)
+
+    await manager.broadcast({
+        "type": "delisting",
+        "delisting_info": delist_res,
+        "market_state": serialize_market_state(state),
+        "free_trading_remaining": 300
+    })
+
+    delist_chat = (
+        f"🚨🚨 [긴급 속보: 상장폐지 & 신규 상장] 치즈나베의 '{old_r}' 강등으로 인해 {old_r} 종목이 전격 [상장폐지]되었습니다! "
+        f"기존 주주 총 {delist_res['wiped_positions_count']}명의 주식이 전량 [휴짓조각(0주)] 처리되었습니다. "
+        f"신규 종목 [{new_r}] (시작가 {state.current_price:,}P)가 새로 상장되어 거래가 시작됩니다!"
+    )
+    asyncio.create_task(dispatch_chat_notice(delist_chat, fallback_bot=bot_instance))
+
+    return {
+        "success": True,
+        "delisting_info": delist_res,
+        "market_state": serialize_market_state(state),
         "free_trading_remaining": 300
     }
 
@@ -1179,7 +1587,9 @@ async def api_grant_points(req: GrantPointsRequest, db=Depends(get_db)):
 
 @app.get("/api/admin/users")
 async def api_admin_users(db=Depends(get_db)):
-    """GET /api/admin/users - Returns list of all registered viewers with points and debt."""
+    """GET /api/admin/users - Returns list of all registered viewers with complete assets, equipment, and items."""
+    state = te.get_market_state(db)
+    now = time.time()
     users = db.query(User).all()
     res = []
     for u in users:
@@ -1192,20 +1602,99 @@ async def api_admin_users(db=Depends(get_db)):
             or uid_lower in ("user_temp_123", "u_매수_10x_올인")
         ):
             continue
+
+        # 1. Stock positions & valuation
+        positions = []
+        total_stock_value = 0.0
+        for p in (u.positions or []):
+            if p.quantity > 0:
+                val = te.calculate_position_valuation(p, state.current_price)
+                cur_val = round(val["current_value"], 1)
+                total_stock_value += cur_val
+                p_name = p.product_type.value if hasattr(p.product_type, "value") else str(p.product_type)
+                positions.append({
+                    "product_type": p_name,
+                    "quantity": p.quantity,
+                    "entry_price": p.entry_price,
+                    "invested_cash": p.invested_cash,
+                    "current_value": cur_val,
+                    "unit_price": round(val["unit_price"], 1),
+                    "unrealized_pnl": round(val["unrealized_pnl"], 1),
+                    "pnl_pct": round(val["pnl_pct"], 2)
+                })
+
+        cash = u.points
+        debt = getattr(u, "debt", 0) or 0
+        net_worth = int(round(cash + total_stock_value - debt))
+
+        # 2. Equipments & Potentials
+        equipments = []
+        equipped_item = None
+        for eq in (u.equipments or []):
+            pot_tier = (eq.potential_tier or "NONE").upper()
+            lines = []
+            for raw_l in [eq.potential_line_1, eq.potential_line_2, eq.potential_line_3]:
+                if raw_l:
+                    try:
+                        parsed = json.loads(raw_l) if isinstance(raw_l, str) else raw_l
+                        if isinstance(parsed, dict):
+                            lines.append(parsed.get("text", str(parsed)))
+                        else:
+                            lines.append(str(parsed))
+                    except Exception:
+                        lines.append(str(raw_l))
+                else:
+                    lines.append(None)
+
+            eq_dict = {
+                "id": eq.id,
+                "name": eq.name,
+                "starforce": eq.starforce,
+                "is_equipped": eq.is_equipped,
+                "potential_tier": pot_tier,
+                "potential_tier_display": te.CUBE_TIER_DISPLAY.get(pot_tier, pot_tier),
+                "potential_lines": lines,
+                "pity_count": getattr(eq, "pity_count", 0) or 0
+            }
+            equipments.append(eq_dict)
+            if eq.is_equipped:
+                equipped_item = eq_dict
+
+        # 3. Items & Consumables
+        auto_until = getattr(u, "auto_mining_until", 0.0) or 0.0
+        items = {
+            "shield_scroll_count": getattr(u, "shield_scroll_count", 0) or 0,
+            "boost_scroll_count": getattr(u, "boost_scroll_count", 0) or 0,
+            "downgrade_scroll_count": getattr(u, "downgrade_scroll_count", 0) or 0,
+            "cube_count": getattr(u, "cube_count", 0) or 0,
+            "cube_fragments": getattr(u, "cube_fragments", 0) or 0,
+            "auto_mining_active": bool(auto_until > now),
+            "auto_mining_remaining_sec": max(0, int(auto_until - now))
+        }
+
         res.append({
             "id": u.id,
             "username": u.username,
             "points": u.points,
-            "debt": getattr(u, "debt", 0) or 0,
-            "total_mined": getattr(u, "total_mined", 0.0) or 0.0
+            "cash": cash,
+            "debt": debt,
+            "net_worth": net_worth,
+            "stock_value": round(total_stock_value, 1),
+            "total_mined": getattr(u, "total_mined", 0.0) or 0.0,
+            "positions": positions,
+            "equipments": equipments,
+            "equipped_item": equipped_item,
+            "items": items
         })
-    res.sort(key=lambda x: x["points"], reverse=True)
+
+    res.sort(key=lambda x: x["net_worth"], reverse=True)
     return {"success": True, "users": res}
 
 @app.post("/api/admin/reset-market")
 async def api_reset_market(db=Depends(get_db)):
     """Reset market state to default values for testing."""
     state = te.get_market_state(db)
+    state.current_rank_name = "작성3"
     state.current_rank_point = 2340
     state.current_price = 2340
     state.previous_price = 2340
@@ -1220,6 +1709,28 @@ async def api_reset_market(db=Depends(get_db)):
         "leaderboard": leaderboard
     })
     return {"success": True, "message": "시장 상태가 기본값(2340pt, 2340P)으로 초기화되었습니다."}
+
+@app.post("/api/admin/set-day-open")
+async def api_set_day_open(req: Optional[SetDayOpenRequest] = None, db=Depends(get_db)):
+    """POST /api/admin/set-day-open - Set today's opening rank point / stock price baseline."""
+    price_val = req.price if req else None
+    target_price = te.set_day_open_price(db, price_val)
+    state = te.get_market_state(db)
+
+    sync_docs_market_state(state)
+    market_serialized = serialize_market_state(state)
+    leaderboard = te.get_leaderboard(db, top_n=3)
+
+    await manager.broadcast({
+        "type": "market_update",
+        "market_state": market_serialized,
+        "leaderboard": leaderboard
+    })
+    return {
+        "success": True,
+        "day_open_price": target_price,
+        "message": f"당일 시가가 {target_price:,}P로 설정되었습니다."
+    }
 
 # ---------------------------------------------------------
 # Chat Command Simulator & Public APIs
@@ -1331,7 +1842,7 @@ async def api_judge_bankruptcy(req: BankruptcyJudgeRequest, db=Depends(get_db)):
 async def api_casino_open(req: Optional[CasinoOpenRequest] = None, db=Depends(get_db)):
     """POST /api/casino/open - Streamer opens casino via Admin panel."""
     dur = req.duration_minutes if req else 3.0
-    max_b = req.max_bet if req else 100000
+    max_b = req.max_bet if req else 10000000
     success, reply, details = te.open_casino(db, duration_minutes=dur, max_bet=max_b)
     if not success:
         raise HTTPException(status_code=400, detail=reply)
@@ -1377,6 +1888,112 @@ async def api_casino_status(db=Depends(get_db)):
     return {
         "success": True,
         "casino": c_state,
+        "treasury": t_info
+    }
+
+@app.post("/api/lottery/open")
+@app.post("/api/admin/lottery/open")
+async def api_lottery_open(req: Optional[LotteryOpenRequest] = None, db=Depends(get_db)):
+    """POST /api/admin/lottery/open - Streamer opens State Welfare Lottery event via Admin panel."""
+    dur = req.duration_minutes if req and req.duration_minutes else 10
+    title = req.title if req and req.title else "국가 복지 복권"
+    success, reply, details = te.open_lottery_event(db, duration_minutes=dur, title=title)
+    if not success:
+        raise HTTPException(status_code=400, detail=reply)
+
+    if reply:
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+
+    state = te.get_market_state(db)
+    sync_docs_market_state(state)
+    await manager.broadcast({
+        "type": "lottery_event_started",
+        "data": details,
+        "market_state": serialize_market_state(state)
+    })
+    return {"success": True, "reply": reply, "data": details, "market_state": serialize_market_state(state)}
+
+@app.post("/api/lottery/close")
+@app.post("/api/admin/lottery/close")
+async def api_lottery_close(db=Depends(get_db)):
+    """POST /api/admin/lottery/close - Streamer closes State Welfare Lottery event via Admin panel."""
+    success, reply, details = te.close_lottery_event(db)
+    if not success:
+        raise HTTPException(status_code=400, detail=reply)
+
+    if reply:
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+
+    state = te.get_market_state(db)
+    sync_docs_market_state(state)
+    await manager.broadcast({
+        "type": "lottery_event_ended",
+        "data": details,
+        "market_state": serialize_market_state(state)
+    })
+    return {"success": True, "reply": reply, "data": details, "market_state": serialize_market_state(state)}
+
+@app.get("/api/lottery/status")
+async def api_lottery_status(db=Depends(get_db)):
+    """GET /api/lottery/status - Current lottery event and treasury status."""
+    l_state = te.get_lottery_event_state(db)
+    t_info = te.get_treasury_info(db)
+    return {
+        "success": True,
+        "lottery": l_state,
+        "treasury": t_info
+    }
+
+@app.post("/api/merchant/open")
+@app.post("/api/admin/merchant/open")
+async def api_merchant_open(req: Optional[MerchantOpenRequest] = None, db=Depends(get_db)):
+    """POST /api/admin/merchant/open - Streamer opens Mysterious Merchant event via Admin panel."""
+    dur = req.duration_minutes if req and req.duration_minutes else 10
+    name = req.merchant_name if req and req.merchant_name else "신비상인"
+    success, reply, details = te.open_merchant(db, duration_minutes=dur, name=name)
+    if not success:
+        raise HTTPException(status_code=400, detail=reply)
+
+    if reply:
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+
+    state = te.get_market_state(db)
+    sync_docs_market_state(state)
+    await manager.broadcast({
+        "type": "merchant_appeared",
+        "data": details,
+        "market_state": serialize_market_state(state)
+    })
+    return {"success": True, "reply": reply, "data": details, "market_state": serialize_market_state(state)}
+
+@app.post("/api/merchant/close")
+@app.post("/api/admin/merchant/close")
+async def api_merchant_close(db=Depends(get_db)):
+    """POST /api/admin/merchant/close - Streamer closes Mysterious Merchant event via Admin panel."""
+    success, reply, details = te.close_merchant(db)
+    if not success:
+        raise HTTPException(status_code=400, detail=reply)
+
+    if reply:
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+
+    state = te.get_market_state(db)
+    sync_docs_market_state(state)
+    await manager.broadcast({
+        "type": "merchant_left",
+        "data": details,
+        "market_state": serialize_market_state(state)
+    })
+    return {"success": True, "reply": reply, "data": details, "market_state": serialize_market_state(state)}
+
+@app.get("/api/merchant/status")
+async def api_merchant_status(db=Depends(get_db)):
+    """GET /api/merchant/status - Current Mysterious Merchant status and items."""
+    m_state = te.get_merchant_state(db)
+    t_info = te.get_treasury_info(db)
+    return {
+        "success": True,
+        "merchant": m_state,
         "treasury": t_info
     }
 

@@ -304,6 +304,25 @@ def test_refill_treasury_and_day_open(client):
     assert refill_data["success"] is True
     assert refill_data["treasury_pool"] == 600000.0
 
+def test_set_day_open_api(client):
+    # 1. Set explicit day open price
+    res = client.post("/api/admin/set-day-open", json={"price": 2137})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["day_open_price"] == 2137
+
+    # Verify market state reflects 2137
+    res_state = client.get("/api/market/state")
+    assert res_state.status_code == 200
+    state_data = res_state.json()
+    assert state_data["day_open_price"] == 2137
+
+    # 2. Reset day open price to current_price when price is None
+    res_curr = client.post("/api/admin/set-day-open", json={})
+    assert res_curr.status_code == 200
+    assert res_curr.json()["day_open_price"] == state_data["current_price"]
+
 def test_bankruptcy_court_api(client):
     u = "court_applicant"
     name = "신청자A"
@@ -402,7 +421,7 @@ def test_margin_buy_and_admin_page(client):
     assert "빚만 남았습니다" in found[0]["reason"]
 
 def test_donation_api_and_db_management(client):
-    # 1. Test POST /api/chzzk/donation (1:100 ratio)
+    # 1. Test POST /api/chzzk/donation (1:1000 ratio)
     res_don = client.post("/api/chzzk/donation", json={
         "donationType": "CHAT",
         "channelId": "ch_api_test",
@@ -415,14 +434,14 @@ def test_donation_api_and_db_management(client):
     assert res_don.status_code == 200
     data = res_don.json()
     assert data["success"] is True
-    # 10,000 KRW * 100 = 1,000,000 Points
-    assert data["details"]["points_credited"] == 1000000
-    assert "1,000,000P 충전 완료" in data["message"]
+    # 10,000 KRW * 1000 = 10,000,000 Points
+    assert data["details"]["points_credited"] == 10000000
+    assert "10,000,000P 충전 완료" in data["message"]
 
     # 2. Check user points
     res_user = client.get("/api/user/donor_api_1")
     assert res_user.status_code == 200
-    assert res_user.json()["points"] >= 1000000
+    assert res_user.json()["points"] >= 10000000
 
     # 3. Duplicate donation rejection test
     res_dup = client.post("/api/chzzk/donation", json={
@@ -593,7 +612,7 @@ def test_admin_users_and_grant_by_nickname(client):
     don_data = res_don.json()
     assert don_data["success"] is True
     assert don_data["details"]["user_id"] == "real_hash_elf"
-    assert don_data["details"]["points_credited"] == 100000
+    assert don_data["details"]["points_credited"] == 1000000
 
 def test_allin_chat_commands_api(client):
     # Ensure market unlocked
@@ -684,8 +703,8 @@ def test_transfer_api_endpoint(client):
     data = res.json()
     assert data["success"] is True
     assert data["details"]["amount"] == 20000
-    assert data["details"]["tax"] == 1000 # 5% tax
-    assert data["details"]["recipient_net"] == 19000
+    assert data["details"]["tax"] == 20 # 0.1% tax
+    assert data["details"]["recipient_net"] == 19980
 
     # Test transfer failure with self
     res_err = client.post("/api/transfer", json={
@@ -696,5 +715,269 @@ def test_transfer_api_endpoint(client):
     })
     assert res_err.status_code == 400
     assert "본인 계좌" in res_err.json()["detail"]
+
+def test_tracker_push_and_status(client):
+    # 1. Check status endpoint
+    res_status = client.get("/api/tracker/status")
+    assert res_status.status_code == 200
+    st_data = res_status.json()
+    assert "connected" in st_data
+    assert "tracker_data" in st_data
+
+    # 2. Initial push establishes baseline
+    res_init = client.post("/api/tracker/push", json={
+        "nickname": "ちぃず鍋",
+        "score": "2,137pt (2,137pt)",
+        "record": "12123",
+        "rank": "작걸3"
+    })
+    assert res_init.status_code == 200
+    init_json = res_init.json()
+    assert init_json["success"] is True
+
+    # 3. Match finished: score increases from 2137 to 2350 (+213), new 1st place record '1' prepended
+    res_match = client.post("/api/tracker/push", json={
+        "nickname": "ちぃず鍋",
+        "score": "2,350pt (2,137pt)",
+        "record": "112123",
+        "rank": "작걸3"
+    })
+    assert res_match.status_code == 200
+    match_json = res_match.json()
+    assert match_json["success"] is True
+    assert match_json["settled"] is True
+    assert match_json["rank"] == 1
+    assert match_json["delta"] == 213
+    assert match_json["current_price"] == 2350
+    assert match_json["day_open_price"] == 2137
+
+    # 4. Status reflects updated tracker and market state
+    res_status2 = client.get("/api/tracker/status")
+    assert res_status2.status_code == 200
+    st2 = res_status2.json()
+    assert st2["connected"] is True
+    assert st2["last_synced_pts"] == 2350
+    assert st2["last_synced_record"] == "112123"
+
+    # 5. Chat command !트래커 reports current points and day open
+    res_chat = client.post("/api/chat/command", json={
+        "user_id": "test_user_tr",
+        "username": "시청자",
+        "message": "!트래커"
+    })
+    assert res_chat.status_code == 200
+    reply = res_chat.json()["reply"]
+    assert "2,350pt" in reply
+    assert "2,137pt" in reply
+
+def test_admin_delist_api(client):
+    """Test POST /api/admin/delist triggers delisting and resets stock to 작성2 at 3,500P."""
+    # First place a buy
+    client.post("/api/chat/command", json={
+        "user_id": "api_delist_user",
+        "username": "상폐테스터",
+        "message": "!매수 1X 1"
+    })
+
+    # Trigger admin delist
+    res = client.post("/api/admin/delist", json={
+        "old_rank": "작성3",
+        "new_rank": "작성2",
+        "starting_points": 3000
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["delisting_info"]["new_rank"] == "작성2"
+    assert data["delisting_info"]["new_price"] == 3000
+    assert data["market_state"]["current_rank_name"] == "작성2"
+    assert data["market_state"]["current_price"] == 3000
+
+    # User should now have 0 shares
+    res_info = client.post("/api/chat/command", json={
+        "user_id": "api_delist_user",
+        "username": "상폐테스터",
+        "message": "!내정보"
+    })
+    assert "보유 포지션이 없습니다" in res_info.json()["reply"]
+
+def test_tracker_push_demotion_to_master2_triggers_delisting(client):
+    """Test that tracker pushing '작성2' while system was '작성3' triggers delisting and resets to 3,000P."""
+    # First reset market to 작성3
+    client.post("/api/admin/reset-market")
+
+    # User buys shares
+    client.post("/api/chat/command", json={
+        "user_id": "victim_tracker_user",
+        "username": "트래커피해자",
+        "message": "!매수 1X 5"
+    })
+
+    # Tracker pushes update indicating demotion to 작성2 (기준점 3000/6000)
+    res_push = client.post("/api/tracker/push", json={
+        "nickname": "ちぃず鍋",
+        "rank": "작성2",
+        "score": "3000/6000 (3000)",
+        "score_diff": "0",
+        "record": "123"
+    })
+    assert res_push.status_code == 200
+    push_data = res_push.json()
+    assert push_data["success"] is True
+    assert push_data["delisted"] is True
+    assert push_data["current_price"] == 3000
+
+    # User's shares wiped out (휴짓조각)
+    res_info = client.post("/api/chat/command", json={
+        "user_id": "victim_tracker_user",
+        "username": "트래커피해자",
+        "message": "!내정보"
+    })
+    assert "보유 포지션이 없습니다" in res_info.json()["reply"]
+
+
+def test_lottery_api_endpoints(client):
+    # 1. Check initial lottery status
+    res_st = client.get("/api/lottery/status")
+    assert res_st.status_code == 200
+    st_data = res_st.json()
+    assert st_data["success"] is True
+    assert "lottery" in st_data
+    assert "treasury" in st_data
+
+    # 2. Open lottery via POST /api/admin/lottery/open
+    res_open = client.post("/api/admin/lottery/open", json={
+        "duration_minutes": 20,
+        "title": "특별 복지 복권"
+    })
+    assert res_open.status_code == 200
+    open_data = res_open.json()
+    assert open_data["success"] is True
+    assert open_data["data"]["is_active"] is True
+    assert open_data["data"]["duration_minutes"] == 20
+    assert open_data["data"]["title"] == "특별 복지 복권"
+    assert open_data["market_state"]["lottery_is_open"] is True
+
+    # 3. Verify status endpoint shows active
+    res_st2 = client.get("/api/lottery/status")
+    assert res_st2.status_code == 200
+    assert res_st2.json()["lottery"]["is_active"] is True
+
+    # 4. User scratches lottery via chat command API
+    res_scratch = client.post("/api/chat/command", json={
+        "user_id": "api_lotto_user",
+        "username": "API복권러",
+        "message": "!복권 3"
+    })
+    assert res_scratch.status_code == 200
+    scratch_data = res_scratch.json()
+    assert "3장 일괄 긁기" in scratch_data["reply"]
+    assert scratch_data["event"] is not None
+
+    # 5. Close lottery via POST /api/admin/lottery/close
+    res_close = client.post("/api/admin/lottery/close")
+    assert res_close.status_code == 200
+    close_data = res_close.json()
+    assert close_data["success"] is True
+    assert close_data["data"]["is_active"] is False
+    assert close_data["market_state"]["lottery_is_open"] is False
+
+    # 6. Verify status shows closed
+    res_st3 = client.get("/api/lottery/status")
+    assert res_st3.status_code == 200
+    assert res_st3.json()["lottery"]["is_active"] is False
+
+
+def test_merchant_api_endpoints_and_admin_users(client):
+    # 1. Check initial merchant status
+    res_st = client.get("/api/merchant/status")
+    assert res_st.status_code == 200
+    st_data = res_st.json()
+    assert st_data["success"] is True
+    assert "merchant" in st_data
+    assert "treasury" in st_data
+
+    # 2. Open merchant via POST /api/admin/merchant/open
+    res_open = client.post("/api/admin/merchant/open", json={
+        "duration_minutes": 25,
+        "merchant_name": "방랑신비상인"
+    })
+    assert res_open.status_code == 200
+    open_data = res_open.json()
+    assert open_data["success"] is True
+    assert open_data["data"]["is_active"] is True
+    assert open_data["market_state"]["merchant_is_open"] is True
+    assert "shield" in open_data["market_state"]["merchant_items"]
+
+    # 3. Verify status endpoint shows active
+    res_st2 = client.get("/api/merchant/status")
+    assert res_st2.status_code == 200
+    assert res_st2.json()["merchant"]["is_active"] is True
+
+    # 4. User buys items via chat command API
+    # First grant points
+    client.post("/api/admin/grant-points", json={
+        "user_id": "api_merchant_viewer",
+        "username": "치즈러버",
+        "points": 1000000
+    })
+
+    res_buy = client.post("/api/chat/command", json={
+        "user_id": "api_merchant_viewer",
+        "username": "치즈러버",
+        "message": "!상인구매 1 1"
+    })
+    assert res_buy.status_code == 200
+    buy_data = res_buy.json()
+    assert "구매 완료" in buy_data["reply"]
+    assert buy_data["event"]["type"] == "merchant_bought"
+
+    # 5. Close merchant via POST /api/admin/merchant/close
+    res_close = client.post("/api/admin/merchant/close")
+    assert res_close.status_code == 200
+    close_data = res_close.json()
+    assert close_data["success"] is True
+    assert close_data["data"]["is_active"] is False
+    assert close_data["market_state"]["merchant_is_open"] is False
+
+    # 6. Buy a stock to have positions
+    client.post("/api/chat/command", json={
+        "user_id": "api_merchant_viewer",
+        "username": "치즈러버",
+        "message": "!매수 1X 10"
+    })
+
+    # 7. Test enriched GET /api/admin/users
+    res_users = client.get("/api/admin/users")
+    assert res_users.status_code == 200
+    users_data = res_users.json()
+    assert users_data["success"] is True
+    assert "users" in users_data
+
+    found = [u for u in users_data["users"] if u["id"] == "api_merchant_viewer"]
+    assert len(found) == 1
+    target_user = found[0]
+
+    # Verify complete asset & item breakdown
+    assert "net_worth" in target_user
+    assert "cash" in target_user
+    assert "stock_value" in target_user
+    assert "positions" in target_user
+    assert len(target_user["positions"]) >= 1
+    assert "equipments" in target_user
+    assert "equipped_item" in target_user
+    assert "items" in target_user
+    assert target_user["items"]["shield_scroll_count"] >= 1
+    assert "auto_mining_active" in target_user["items"]
+
+    # 8. Check Admin page HTML loads and contains Merchant & Inspector sections
+    res_admin = client.get("/admin")
+    assert res_admin.status_code == 200
+    assert "방랑 신비상인" in res_admin.text
+    assert "시청자 통합 자산 / 장비 / 아이템 실시간 모니터링" in res_admin.text
+    assert "user-detail-modal" in res_admin.text
+
+
+
 
 
