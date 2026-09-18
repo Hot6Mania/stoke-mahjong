@@ -685,7 +685,7 @@
                 const d = data.data;
                 const durStr = d && d.duration_minutes > 0 ? `${d.duration_minutes}분간` : "무제한";
                 const maxBet = d ? Number(d.max_bet).toLocaleString() : "100,000";
-                showTickerToast(`🎰 [국고 카지노 오픈!] 스트리머가 ${durStr} 도박장을 열었습니다! (최대 배팅: ${maxBet}P | !슬롯, !주사위)`, 'settle', 10000);
+                showTickerToast(`🎰 [국고 카지노 오픈!] 스트리머가 ${durStr} 도박장을 열었습니다! (최대 배팅: ${maxBet}P | !경마, !슬롯, !주사위, !마작패)`, 'settle', 10000);
                 if (data.leaderboard) renderLeaderboard(data.leaderboard);
                 if (d && d.treasury_pool !== undefined && treasuryValEl) {
                     treasuryValEl.textContent = `${Math.floor(d.treasury_pool).toLocaleString()}P`;

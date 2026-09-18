@@ -813,7 +813,7 @@
                         if (msg.leaderboard) updateLeaderboard(msg.leaderboard);
                         if (msg.data.treasury_pool !== undefined) updateTreasury(msg.data.treasury_pool);
                         const durStr = msg.data.duration_minutes > 0 ? `${msg.data.duration_minutes}분간` : "무제한";
-                        showTickerMessage("settle", `🎰 [국고 카지노 오픈!] 스트리머가 ${durStr} 도박장을 열었습니다! (최대 배팅: ${Number(msg.data.max_bet).toLocaleString()}P | !슬롯, !주사위)`, 10000);
+                        showTickerMessage("settle", `🎰 [국고 카지노 오픈!] 스트리머가 ${durStr} 도박장을 열었습니다! (최대 배팅: ${Number(msg.data.max_bet).toLocaleString()}P | !경마, !슬롯, !주사위, !마작패)`, 10000);
                     }
 
                     if (msg.type === "casino_close") {

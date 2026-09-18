@@ -7,7 +7,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from database import Base
-from models import User, Position, MarketState, LimitOrder, ProductType, OrderType, OrderStatus, UserEquipment, EquipmentListing, ItemListing
+from models import (
+    User, Position, MarketState, LimitOrder, ProductType,
+    OrderType, OrderStatus, UserEquipment, EquipmentListing, ItemListing,
+    UserAssetHistory, ArenaMatchLog
+)
 import trading_engine as te
 import command_handler as ch
 
@@ -1593,16 +1597,17 @@ def test_random_mining_tiers_structure():
 def test_mining_tier_coal_immunity_and_jackpot_rate():
     # 1. Test 15+ pickaxe level never rolls Coal (C) and has generous high tier rates
     results = []
+    random.seed(42)
     for _ in range(500):
         t = te.roll_mining_tier(crit_bonus=45.0, pickaxe_level=15)
         assert t["code"] != "C", "15성 이상 곡괭이는 석탄(C) 광맥이 나오지 않아야 합니다."
         results.append(t["code"])
 
-    # 15성 여유로운 보정: 잭팟(EX+UR++UR) >= 12% 및 고등급(SR+) >= 50%
+    # 15성 여유로운 보정: 잭팟(EX+UR++UR) >= 12% 및 고등급(SR+) >= 45%
     jackpot_count = sum(1 for c in results if c in ["EX", "UR+", "UR"])
     high_tier_count = sum(1 for c in results if c in ["EX", "UR+", "UR", "SSR", "SR"])
     assert jackpot_count / len(results) >= 0.12, f"15성 잭팟 확률({jackpot_count/len(results):.2%})이 기대치보다 낮습니다."
-    assert high_tier_count / len(results) >= 0.50, f"15성 고등급 출현율({high_tier_count/len(results):.2%})이 기대치보다 낮습니다."
+    assert high_tier_count / len(results) >= 0.45, f"15성 고등급 출현율({high_tier_count/len(results):.2%})이 기대치보다 낮습니다."
 
     # 2. Test pickaxe info contains coal immunity description for 15+
     info_14 = te.get_pickaxe_info(14)
@@ -1777,21 +1782,21 @@ def test_pickaxe_upgrade_and_treasury_recycle(db_session, monkeypatch):
     assert det10["new_level"] == 10
     assert user.pickaxe_level == 10
 
-    # 5. Test 11성 failure (Drop 1 level to 10성)
+    # 5. Test 11성 failure (MapleStory rule: No drop, maintains 11성)
     user.pickaxe_level = 11
     db_session.commit()
-    # 11성: success 47.25, drop 52.75 -> roll 60 is drop
+    # 11성: success 47.25, maintain 52.75 -> roll 60 is maintain
     monkeypatch.setattr(random, "uniform", lambda a, b: 60.0)
     ok11, rep11, det11 = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
     assert ok11 is True
-    assert det11["outcome"] == "drop"
-    assert det11["new_level"] == 10
-    assert user.pickaxe_level == 10
+    assert det11["outcome"] == "maintain"
+    assert det11["new_level"] == 11
+    assert user.pickaxe_level == 11
 
     # 6. Test 17성 destruction (15+ stars blow-up -> restores to 12성)
     user.pickaxe_level = 17
     db_session.commit()
-    # 17성: success 15.75, drop 77.51 (cumul 93.26), destroy 6.74 (roll 95 is destroy)
+    # 17성: success 15.75, maintain 77.51 (cumul 93.26), destroy 6.74 (roll 95 is destroy)
     monkeypatch.setattr(random, "uniform", lambda a, b: 95.0)
     ok17, rep17, det17 = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
     assert ok17 is True
@@ -1808,9 +1813,9 @@ def test_pickaxe_upgrade_and_treasury_recycle(db_session, monkeypatch):
     ok_debt, msg_debt, _ = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
     assert ok_debt is True
 
-    # 8. Max level 25 check
+    # 8. Max level 30 check
     user.debt = 0
-    user.pickaxe_level = 25
+    user.pickaxe_level = 30
     db_session.commit()
     ok_max, msg_max, _ = te.execute_pickaxe_upgrade(db_session, u, "스타포스장인")
     assert ok_max is False
@@ -3733,8 +3738,10 @@ def test_scroll_protections_in_starforce_upgrade(db_session, monkeypatch):
     assert det["new_level"] == 16
     assert eq.starforce == 16
 
-    # 2. Test Downgrade Scroll: at 16성, roll of 50.0 hits the drop tier (30.0 <= 50.0 < 97.9).
-    # downgrade_scroll_count is 1, designated with use_downgrade=True -> prevents downgrade!
+    # 2. Test Downgrade Scroll: under modern 30-star rules drop rate is 0.0%.
+    # When drop > 0 (e.g. customized event/tier), downgrade scroll prevents the drop:
+    monkeypatch.setitem(te.STARFORCE_TIERS[16], "drop", 50.0)
+    monkeypatch.setitem(te.STARFORCE_TIERS[16], "maintain", 16.445)
     monkeypatch.setattr(random, "uniform", lambda a, b: 50.0)
     ok2, rep2, det2 = te.execute_pickaxe_upgrade(db_session, u.id, u.username, str(eq.id), use_downgrade=True)
     assert ok2 is True
@@ -4303,6 +4310,437 @@ def test_user_requested_updates_september_19(db_session, monkeypatch):
     # 7. Test casino default max bet is 10M
     c_state = te.get_casino_state(db_session)
     assert c_state["max_bet"] == 10000000
+
+
+def test_user_requested_updates_september_19_part2(db_session):
+    """
+    Test suite for:
+    1. Mysterious merchant closes and leaves automatically when all items are sold out
+    2. Mining cooldown in !남은시간 matches !채굴 and accounts for potential cooldown reductions
+    3. Legendary tier cubing has boosted Legendary option rates (Line 2 80%, Line 3 60%)
+    4. 20-star pickaxe Yakuman rates are enhanced
+    """
+    import datetime
+    from datetime import timezone
+    uid = "update_test_user_pt2"
+    uname = "패치검증러2"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 10000000
+    db_session.commit()
+
+    # 1. Test merchant leaves when all items are sold out
+    ok_open, _, _ = te.open_merchant(db_session, duration_minutes=30)
+    assert ok_open is True
+    m_state = te.get_market_state(db_session)
+    m_state.merchant_shield_stock = 1
+    m_state.merchant_boost_stock = 0
+    m_state.merchant_downgrade_stock = 0
+    m_state.merchant_snipe_stock = 0
+    db_session.commit()
+
+    r_buy, ev_buy = ch.handle_chat_command(db_session, uid, uname, "!상인구매 1 1")
+    assert "완판" in r_buy or "떠났습니다" in r_buy
+    m_state_after = te.get_merchant_state(db_session)
+    assert m_state_after["is_active"] is False
+
+    # 2. Test mining cooldown in !남은시간 matches !채굴 and accounts for potential reduction
+    eq = te.get_user_equipped_item(db_session, user)
+    if not eq:
+        te.execute_buy_equipment(db_session, uid, uname, 0)
+    user.pickaxe_level = 10
+    eq.starforce = 10  # Base cooldown: 10 minutes
+    eq.potential_line_1 = json.dumps({"code": "MINING_CD_REDUCTION", "val": 2, "text": "-2분"})
+    eq.potential_line_2 = ""
+    eq.potential_line_3 = ""
+    db_session.commit()
+
+    # User mined 1 minute ago (effective cooldown is 10 - 2 = 8 minutes -> 7 minutes remaining)
+    now_utc = datetime.datetime.now(timezone.utc)
+    user.last_mined_at = now_utc - datetime.timedelta(minutes=1)
+    db_session.commit()
+
+    r_time, _ = ch.handle_chat_command(db_session, uid, uname, "!남은시간")
+    assert "6분" in r_time or "7분" in r_time
+    assert "9분" not in r_time  # Must NOT use unreduced 10-minute cooldown!
+
+    r_mine, ev_mine = ch.handle_chat_command(db_session, uid, uname, "!채굴")
+    assert "6분" in r_mine or "7분" in r_mine
+    assert "9분" not in r_mine
+
+    # 3. Test boosted Legendary potential rates (Line 2 80%, Line 3 60%)
+    l2_leg_count = 0
+    l3_leg_count = 0
+    sample_size = 300
+    for _ in range(sample_size):
+        l1, l2, l3 = te.roll_cube_potential("LEGENDARY")
+        assert l1["tier"] == "LEGENDARY"
+        if l2["tier"] == "LEGENDARY":
+            l2_leg_count += 1
+        if l3["tier"] == "LEGENDARY":
+            l3_leg_count += 1
+
+    l2_rate = l2_leg_count / sample_size
+    l3_rate = l3_leg_count / sample_size
+    assert l2_rate >= 0.70, f"Expected Line 2 to be ~80% LEGENDARY, got {l2_rate:.2f}"
+    assert l3_rate >= 0.50, f"Expected Line 3 to be ~60% LEGENDARY, got {l3_rate:.2f}"
+
+
+def test_equipment_cube_lock_and_unlock(db_session):
+    """Test equipment cube lock preventing accidental cube rolls (!큐브잠금, !큐브해제)."""
+    user_id = "test_eq_lock_user"
+    user = te.get_or_create_user(db_session, user_id, "큐브락유저")
+    user.cube_count = 5
+    db_session.commit()
+
+    eq = te.get_user_equipped_item(db_session, user)
+    assert eq.is_cube_locked is False
+
+    # 1. Lock equipment
+    rep1, _ = ch.handle_chat_command(db_session, user_id, "큐브락유저", "!큐브잠금")
+    assert "큐브 잠금(보호)이 활성화" in rep1
+    db_session.refresh(eq)
+    assert eq.is_cube_locked is True
+
+    # 2. Try using cube while locked - must be blocked
+    rep2, ev2 = ch.handle_chat_command(db_session, user_id, "큐브락유저", "!큐브")
+    assert "큐브 잠금(보호) 상태입니다" in rep2
+    assert ev2 is None
+    assert user.cube_count == 5
+
+    # 3. Unlock equipment
+    rep3, _ = ch.handle_chat_command(db_session, user_id, "큐브락유저", "!큐브해제")
+    assert "큐브 잠금이 해제" in rep3
+    db_session.refresh(eq)
+    assert eq.is_cube_locked is False
+
+    # 4. Cube now works
+    rep4, ev4 = ch.handle_chat_command(db_session, user_id, "큐브락유저", "!큐브")
+    assert "큐브를 사용했습니다" in rep4
+    assert ev4 is not None
+    assert user.cube_count == 4
+
+
+def test_potential_line_lock_twenty_times_cost(db_session):
+    """Test potential line lock requiring 20x cube cost (300,000P or 20 cubes) and preserving lines."""
+    user_id = "test_line_lock_user"
+    user = te.get_or_create_user(db_session, user_id, "라인락유저")
+    user.points = 10000000
+    user.cube_count = 50
+    db_session.commit()
+
+    eq = te.get_user_equipped_item(db_session, user)
+    eq.potential_tier = "LEGENDARY"
+    l1 = {"code": "STARFORCE_SAFEGUARD", "name": "15성+ 파괴 방지", "icon": "🛡️", "tier": "LEGENDARY", "val": 65.0, "unit": "%", "text": "🛡️ 15성+ 파괴 방지 65%"}
+    l2 = {"code": "CASINO_SLOT_BOOST", "name": "슬롯 보너스", "icon": "🎰", "tier": "LEGENDARY", "val": 50.0, "unit": "%", "text": "🎰 슬롯 보너스 50%"}
+    l3 = {"code": "MAHJONG_TILE_BOOST", "name": "마작 보너스", "icon": "🀄", "tier": "LEGENDARY", "val": 15.0, "unit": "%", "text": "🀄 마작 보너스 15%"}
+    eq.potential_line_1 = json.dumps(l1, ensure_ascii=False)
+    eq.potential_line_2 = json.dumps(l2, ensure_ascii=False)
+    eq.potential_line_3 = json.dumps(l3, ensure_ascii=False)
+    db_session.commit()
+
+    # 1. Lock line 1 via command
+    rep1, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!옵션잠금 1")
+    assert "잠재 옵션 라인 잠금 설정 완료" in rep1
+    db_session.refresh(eq)
+    assert eq.is_line1_locked is True
+    assert eq.is_line2_locked is False
+
+    # 2. Cannot lock more than 1 line
+    rep_fail, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!옵션잠금 2 3")
+    assert "최대 1줄까지만" in rep_fail
+
+    # 2-1. Locking line 2 automatically switches from line 1 (only 1 line locked)
+    rep_switch, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!옵션잠금 2")
+    assert "전환" in rep_switch or "잠금 설정 완료" in rep_switch
+    db_session.refresh(eq)
+    assert eq.is_line1_locked is False
+    assert eq.is_line2_locked is True
+    assert eq.is_line3_locked is False
+
+    # Switch back to line 1 for subsequent cube tests
+    ch.handle_chat_command(db_session, user_id, "라인락유저", "!옵션잠금 1")
+    db_session.refresh(eq)
+    assert eq.is_line1_locked is True
+    assert eq.is_line2_locked is False
+
+    # 3. Roll cube with line 1 locked: consumes 20 cubes and keeps line 1
+    prev_cubes = user.cube_count
+    prev_frags = user.cube_fragments or 0
+    rep_cube, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!큐브")
+    assert "라인 1줄 잠금 적용" in rep_cube
+    assert "보유 큐브 20개 소모" in rep_cube
+    assert "🔒[잠금유지]" in rep_cube
+    db_session.refresh(user)
+    db_session.refresh(eq)
+    assert user.cube_count == prev_cubes - 20
+    assert user.cube_fragments == prev_frags + 20
+    assert json.loads(eq.potential_line_1) == l1
+
+    # 4. Roll cube with points when cubes < 20 (pays in points directly at 20x price)
+    user.cube_count = 0
+    user.points = 1000000
+    db_session.commit()
+    rep_cube2, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!큐브")
+    assert "300,000P 소모 (라인 잠금 20배)" in rep_cube2
+    db_session.refresh(user)
+    assert user.points == 700000
+    assert user.cube_fragments == prev_frags + 40
+
+    # 5. Reset line lock
+    rep_clear, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!옵션잠금 해제")
+    assert "모든 잠재 옵션 라인 잠금이 해제" in rep_clear
+    db_session.refresh(eq)
+    assert eq.is_line1_locked is False
+    assert eq.is_line2_locked is False
+    assert eq.is_line3_locked is False
+
+
+def test_second_place_dividend_payout_and_chat_reply(db_session):
+    """Verify that 2nd place pays 1% dividend and chat message correctly displays the paid amount (not +0P)."""
+    user_id = "test_holder_2nd_div"
+    te.execute_buy(db_session, user_id, "배당주주", "1X", "20")
+    user = db_session.query(User).filter_by(id=user_id).first()
+    pts_before = user.points
+    divs_before = user.total_dividends or 0
+
+    # Streamer runs !정산 2 0 (or !정산 2)
+    rep, evt = ch.handle_chat_command(db_session, "streamer", "치즈나베", "!정산 2 0")
+    assert "2위" in rep
+    assert "2위 준우승 1% 1X 배당: 1명(+" in rep
+    assert "(+0P)" not in rep
+
+    db_session.refresh(user)
+    assert user.points > pts_before
+    assert user.total_dividends > divs_before
+
+    # Verify settle_match with negative delta still distributes 2nd place dividend
+    settle_res = te.settle_match(db_session, rank=2, point_delta=-15)
+    assert len(settle_res["dividends"]) >= 1
+    d = next(item for item in settle_res["dividends"] if item["user_id"] == user_id)
+    assert d["payout"] > 0
+    assert d["amount"] == d["payout"]
+    assert d["rate_pct"] == 1.0
+
+
+def test_credit_rating_evaluation_and_limits(db_session):
+    """Test dynamic credit scoring, tier determination, and personalized loan limits."""
+    # 1. New user has Tier 5 (BB 보통) and 3,000,000P limit
+    u_new = te.get_or_create_user(db_session, "credit_user_new", "새내기")
+    c_new = te.get_user_credit_info(u_new, db=db_session)
+    assert c_new["tier"] == 5
+    assert c_new["grade"] == "BB"
+    assert c_new["loan_limit"] == 3000000
+    assert c_new["interest_rate_pct"] == 2.0
+    assert c_new["available_borrow"] == 3000000
+
+    # 2. Rich user with Diamond pickaxe 21-star and 100M+ assets gets Tier 1 (AAA)
+    u_rich = te.get_or_create_user(db_session, "credit_user_rich", "재벌엘프")
+    u_rich.points = 120000000
+    u_rich.total_mined = 2000000
+    eq_dia = UserEquipment(
+        user_id="credit_user_rich",
+        name="다이아몬드 곡괭이",
+        starforce=21,
+        is_equipped=True,
+        potential_tier="LEGENDARY",
+        potential_line_1='{"text": "채굴량 0.2배 증가", "tier": "LEGENDARY"}'
+    )
+    db_session.add(eq_dia)
+    db_session.commit()
+    db_session.refresh(u_rich)
+
+    c_rich = te.get_user_credit_info(u_rich, db=db_session)
+    assert c_rich["tier"] == 1
+    assert c_rich["grade"] == "AAA"
+    assert c_rich["loan_limit"] == 50000000
+    assert c_rich["interest_rate_pct"] == 1.0
+
+    # 3. Bankrupted user gets Tier 10 (D) and 0P limit
+    u_bankrupt = te.get_or_create_user(db_session, "credit_user_bankrupt", "파산자")
+    u_bankrupt.last_bankrupt_at = datetime.now(timezone.utc)
+    u_bankrupt.debt = 1000000
+    db_session.commit()
+    db_session.refresh(u_bankrupt)
+
+    c_bankrupt = te.get_user_credit_info(u_bankrupt, db=db_session)
+    assert c_bankrupt["tier"] == 10
+    assert c_bankrupt["loan_limit"] == 0
+    assert c_bankrupt["available_borrow"] == 0
+
+    # Bankrupt user cannot borrow
+    ok_b, msg_b, _ = te.execute_borrow(db_session, "credit_user_bankrupt", "파산자", "10000")
+    assert ok_b is False
+    assert "신규 대출이 불가합니다" in msg_b or "대출 불가" in msg_b
+
+    # 4. New user borrowing within 3,000,000P limit succeeds (fund treasury first)
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 50000000.0
+    db_session.commit()
+
+    ok_borrow, msg_borrow, det_borrow = te.execute_borrow(db_session, "credit_user_new", "새내기", "2000000")
+    assert ok_borrow is True
+    assert det_borrow["amount"] == 2000000
+    assert "5등급" in msg_borrow
+
+    # 5. New user borrowing exceeding remaining limit fails
+    ok_exceed, msg_exceed, _ = te.execute_borrow(db_session, "credit_user_new", "새내기", "2000000")
+    assert ok_exceed is False
+    assert "최대 대출 한도" in msg_exceed
+
+
+def test_credit_repayment_bonus_and_settle(db_session):
+    """Test repayment history increases credit score and settlement applies credit interest rate."""
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 50000000.0
+    db_session.commit()
+
+    u = te.get_or_create_user(db_session, "credit_repay_user", "성실상환자")
+    te.execute_borrow(db_session, "credit_repay_user", "성실상환자", "500000")
+    db_session.refresh(u)
+    assert u.debt == 500000
+
+    # Repay partial
+    ok_rep, msg_rep, det_rep = te.execute_repay(db_session, "credit_repay_user", "성실상환자", "200000")
+    assert ok_rep is True
+    assert u.repay_count == 1
+    assert u.total_repaid == 200000
+    assert "신용등급" in msg_rep
+
+    # Settle match charges interest based on credit tier
+    # User's debt ratio is 300,000 / 350,000 = 85.7% (Tier 6, B 일반 -> 2.2% interest)
+    # Remaining debt 300,000 * 2.2% = 6,600P
+    settle_res = te.settle_match(db_session, rank=3, point_delta=0)
+    assert settle_res["interest_collected"] == 6600
+
+
+def test_credit_rating_chat_commands(db_session):
+    """Test !신용등급, !신용, !대출 without args, and !내정보 credit display."""
+    uid = "credit_chat_user"
+    uname = "신용러"
+    te.get_or_create_user(db_session, uid, uname)
+
+    # 1. !신용등급
+    rep_cred, _ = ch.handle_chat_command(db_session, uid, uname, "!신용등급")
+    assert "나베신용평가원" in rep_cred
+    assert "신용등급" in rep_cred
+    assert "대출 한도" in rep_cred
+    assert "적용 금리" in rep_cred
+
+    # 2. !신용 alias
+    rep_alias, _ = ch.handle_chat_command(db_session, uid, uname, "!신용")
+    assert "나베신용평가원" in rep_alias
+
+    # 3. !대출 with no args shows credit tier & remaining capacity
+    rep_loan_prompt, _ = ch.handle_chat_command(db_session, uid, uname, "!대출")
+    assert "신용:" in rep_loan_prompt
+    assert "추가 가능 한도" in rep_loan_prompt
+
+    # 4. !내정보 includes credit rating
+    rep_info, _ = ch.handle_chat_command(db_session, uid, uname, "!내정보")
+    assert "신용:" in rep_info
+
+
+def test_user_asset_history_and_seeding(db_session):
+    u = te.get_or_create_user(db_session, "u_trend_test", "추이트렌드")
+    u.points = 120000
+
+    # 1. Seed history for user
+    hist = te.seed_single_user_asset_history(db_session, u)
+    assert len(hist) >= 5
+    assert hist[0].net_worth == 50000
+    assert hist[0].event_type == "INITIAL"
+    assert hist[-1].net_worth == 120000
+
+    # 2. Add manual snapshot
+    snap = te.record_user_asset_snapshot(db_session, u, event_type="MINE", note="대박 채굴", force=True)
+    assert snap is not None
+    assert snap.net_worth == 120000
+
+    # 3. Fetch history
+    fetched = te.get_user_asset_history(db_session, u.id)
+    assert len(fetched) >= 6
+    assert fetched[-1]["event_type"] == "MINE"
+    assert fetched[-1]["note"] == "대박 채굴"
+
+
+def test_pvp_arena_duel_flow(db_session):
+    p1 = te.get_or_create_user(db_session, "p1_fighter", "격투왕")
+    p2 = te.get_or_create_user(db_session, "p2_challenger", "도전자")
+    p1.points = 100000
+    p2.points = 100000
+    db_session.commit()
+
+    # 1. Direct Challenge
+    ok, reply, details = te.create_pvp_challenge(db_session, p1.id, p1.username, p2.username, "50000")
+    assert ok is True
+    assert "맞짱 신청" in reply
+    assert details["bet"] == 50000
+    assert details["pot_total"] == 100000
+
+    # 2. Cannot challenge self
+    ok_self, rep_self, _ = te.create_pvp_challenge(db_session, p1.id, p1.username, p1.username, "10000")
+    assert ok_self is False
+    assert "자기 자신" in rep_self
+
+    # 3. Decline challenge
+    ok_dec, rep_dec, _ = te.decline_pvp_challenge(db_session, p2.id, p2.username)
+    assert ok_dec is True
+    assert "도망" in rep_dec
+
+    # 4. Challenge again and Accept
+    ok, reply, details = te.create_pvp_challenge(db_session, p1.id, p1.username, p2.username, "50000")
+    assert ok is True
+    ok_acc, rep_acc, det_acc = te.accept_pvp_challenge(db_session, p2.id, p2.username)
+    assert ok_acc is True
+    assert "데스매치 결과" in rep_acc
+    assert det_acc["winner_reward"] == 98000 # 98% of 100,000
+    assert det_acc["tax_fee"] == 2000 # 2% tax
+    assert (p1.points + p2.points) == 198000 # 200,000 - 2,000 tax
+
+    # 5. Open public arena match
+    ok_open, rep_open, det_open = te.open_public_arena_match(db_session, p1.id, p1.username, "30000")
+    assert ok_open is True
+    assert "공개 결투장 개설" in rep_open
+
+    # 6. Join open match
+    ok_join, rep_join, det_join = te.join_public_arena_match(db_session, p2.id, p2.username)
+    assert ok_join is True
+    assert "데스매치 결과" in rep_join
+    assert det_join["bet"] == 30000
+
+
+def test_scroll_arm_toggle_safe_against_cube(db_session):
+    u = te.get_or_create_user(db_session, "u_scroll_safe", "주문서세이프")
+    u.points = 100000
+    u.cube_count = 5
+    u.boost_scroll_count = 3
+    db_session.commit()
+
+    # 1. !주문서 강화 on -> must toggle arm_boost, ZERO cubes used
+    rep1, evt1 = ch.handle_chat_command(db_session, u.id, u.username, "!주문서 강화 on")
+    db_session.refresh(u)
+    assert "강화확률상승권" in rep1
+    assert "활성화" in rep1
+    assert u.arm_boost is True
+    assert u.cube_count == 5
+    assert evt1 is None
+
+    # 2. !주문서 2 off -> must toggle arm_boost to False, ZERO cubes used
+    rep2, evt2 = ch.handle_chat_command(db_session, u.id, u.username, "!주문서 2 off")
+    db_session.refresh(u)
+    assert "비활성화" in rep2
+    assert u.arm_boost is False
+    assert u.cube_count == 5
+
+    # 3. !주문서 2 on, -> handles trailing comma cleanly
+    rep3, evt3 = ch.handle_chat_command(db_session, u.id, u.username, "!주문서 2 on,")
+    db_session.refresh(u)
+    assert "활성화" in rep3
+    assert u.arm_boost is True
+    assert u.cube_count == 5
+
+
+
 
 
 

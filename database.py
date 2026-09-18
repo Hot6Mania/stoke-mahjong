@@ -31,7 +31,8 @@ def get_db():
 def init_db():
     from models import (
         MarketState, User, Position, LimitOrder, BankruptcyApplication,
-        DonationRecord, UserEquipment, EquipmentListing
+        DonationRecord, UserEquipment, EquipmentListing, ItemListing,
+        UserAssetHistory, ArenaMatchLog
     )
     Base.metadata.create_all(bind=engine)
     
@@ -101,6 +102,14 @@ def init_db():
                 "ALTER TABLE user_equipments ADD COLUMN potential_line_2 VARCHAR",
                 "ALTER TABLE user_equipments ADD COLUMN potential_line_3 VARCHAR",
                 "ALTER TABLE user_equipments ADD COLUMN pity_count INTEGER DEFAULT 0",
+                "ALTER TABLE user_equipments ADD COLUMN is_cube_locked BOOLEAN DEFAULT 0",
+                "ALTER TABLE user_equipments ADD COLUMN is_line1_locked BOOLEAN DEFAULT 0",
+                "ALTER TABLE user_equipments ADD COLUMN is_line2_locked BOOLEAN DEFAULT 0",
+                "ALTER TABLE user_equipments ADD COLUMN is_line3_locked BOOLEAN DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN repay_count INTEGER DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN total_repaid INTEGER DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN web_pin VARCHAR",
+                "ALTER TABLE users ADD COLUMN web_token VARCHAR",
                 "UPDATE market_state SET casino_max_bet = 10000000 WHERE casino_max_bet < 10000000",
                 "UPDATE market_state SET merchant_shield_price = 500000 WHERE merchant_shield_price < 350000",
                 "UPDATE market_state SET merchant_boost_price = 350000 WHERE merchant_boost_price < 250000",

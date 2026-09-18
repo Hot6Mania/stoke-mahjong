@@ -12,6 +12,27 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
+            scrollbar-width: thin;
+            scrollbar-color: #334155 rgba(15, 23, 42, 0.7);
+        }
+
+        /* Sleek Modern Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.7);
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: background 0.2s ease;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #38bdf8;
         }
 
         body {
@@ -19,6 +40,7 @@
             background-color: #0f172a;
             color: #f8fafc;
             padding: 24px;
+            scroll-behavior: smooth;
         }
 
         .header {
@@ -1493,10 +1515,12 @@
                 const shieldCount = it.shield_scroll_count || 0;
                 const boostCount = it.boost_scroll_count || 0;
                 const downCount = it.downgrade_scroll_count || 0;
+                const snipeCount = it.snipe_scroll_count || 0;
                 let itemChips = [];
                 if (shieldCount > 0) itemChips.push(`<span class="chip" style="background: #0369a1; color: #fff; font-size: 10px;">🛡️파방 ${shieldCount}</span>`);
                 if (boostCount > 0) itemChips.push(`<span class="chip" style="background: #b45309; color: #fff; font-size: 10px;">⚡상승 ${boostCount}</span>`);
                 if (downCount > 0) itemChips.push(`<span class="chip" style="background: #be123c; color: #fff; font-size: 10px;">📉하강 ${downCount}</span>`);
+                if (snipeCount > 0) itemChips.push(`<span class="chip" style="background: #0d9488; color: #fff; font-size: 10px;">🎯저격 ${snipeCount}</span>`);
                 if (cubeCount > 0) itemChips.push(`<span class="chip" style="background: #4338ca; color: #fff; font-size: 10px;">🔮큐브 ${cubeCount}</span>`);
                 const itemsHtml = itemChips.length > 0 ? itemChips.join(" ") : '<span style="color: #64748b; font-size: 11px;">없음</span>';
 
@@ -1661,6 +1685,11 @@
                             <div style="font-size: 11px; color: #94a3b8;">📉 하강방지권</div>
                             <div style="font-size: 16px; font-weight: 800; color: #f43f5e;">${(it.downgrade_scroll_count || 0).toLocaleString()}장</div>
                             <div style="font-size: 10px; color: #64748b;">실패 시 하락 100% 방어</div>
+                        </div>
+                        <div style="background: #1e293b; padding: 10px; border-radius: 6px; border: 1px solid #334155;">
+                            <div style="font-size: 11px; color: #94a3b8;">🎯 잠재저격주문서</div>
+                            <div style="font-size: 16px; font-weight: 800; color: #2dd4bf;">${(it.snipe_scroll_count || 0).toLocaleString()}장</div>
+                            <div style="font-size: 10px; color: #64748b;">특정 잠재 확률 3배 저격</div>
                         </div>
                         <div style="background: #1e293b; padding: 10px; border-radius: 6px; border: 1px solid #334155;">
                             <div style="font-size: 11px; color: #94a3b8;">🔮 미라클 큐브 / 🧩 조각</div>

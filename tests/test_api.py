@@ -978,6 +978,737 @@ def test_merchant_api_endpoints_and_admin_users(client):
     assert "user-detail-modal" in res_admin.text
 
 
+def test_second_place_settle_with_negative_delta_api(client):
+    """Ensure 2nd place dividend is paid properly even when match point delta is negative."""
+    # Buy 1X stock
+    client.post("/api/chat/command", json={
+        "user_id": "div_neg_user",
+        "username": "마이너스2등",
+        "message": "!매수 1X 10"
+    })
+
+    # Settle match for 2nd place with negative delta (-10pt)
+    res_settle = client.post("/api/admin/settle-match", json={
+        "rank": 2,
+        "point_delta": -10
+    })
+    assert res_settle.status_code == 200
+    data = res_settle.json()
+    assert data["rank"] == 2
+    assert "dividends" in data
+    assert len(data["dividends"]) >= 1
+    d = next(item for item in data["dividends"] if item["user_id"] == "div_neg_user")
+    assert d["rate_pct"] == 1.0
+    assert d["payout"] > 0
+    assert d["amount"] == d["payout"]
+
+
+def test_public_users_and_single_user_endpoints(client):
+    """Test public GET /api/users and GET /api/user/{user_id_or_username}."""
+    # 1. Create a user with points and a pickaxe
+    client.post("/api/chat/command", json={
+        "user_id": "pub_viewer_777",
+        "username": "럭키세븐",
+        "message": "!내정보"
+    })
+    client.post("/api/chat/command", json={
+        "user_id": "pub_viewer_777",
+        "username": "럭키세븐",
+        "message": "!매수 1X 5"
+    })
+
+    # 2. Query public list /api/users
+    res_users = client.get("/api/users")
+    assert res_users.status_code == 200
+    data = res_users.json()
+    assert data["success"] is True
+    assert "users" in data
+    assert len(data["users"]) >= 1
+
+    matched = [u for u in data["users"] if u["username"] == "럭키세븐"]
+    assert len(matched) == 1
+    u_info = matched[0]
+    assert "net_worth" in u_info
+    assert "cash" in u_info
+    assert "stock_value" in u_info
+    assert "positions" in u_info
+    assert "equipments" in u_info
+    assert "items" in u_info
+
+    # 3. Query single user /api/user/{username}
+    res_single = client.get("/api/user/럭키세븐")
+    assert res_single.status_code == 200
+    single_data = res_single.json()
+    assert single_data["success"] is True
+    assert single_data["user"]["username"] == "럭키세븐"
+    assert len(single_data["user"]["positions"]) >= 1
+
+    # 4. Query non-existent user
+    res_404 = client.get("/api/user/존재하지않는유저12345")
+    assert res_404.status_code == 404
+
+
+def test_tunnel_endpoints(client):
+    """Test GET and POST /api/tunnel."""
+    # Initially or default
+    res_get = client.get("/api/tunnel")
+    assert res_get.status_code == 200
+
+    # Set tunnel URL
+    res_post = client.post("/api/admin/tunnel", json={"url": "https://test-mahjong.trycloudflare.com/"})
+    assert res_post.status_code == 200
+    assert res_post.json()["tunnel_url"] == "https://test-mahjong.trycloudflare.com"
+
+    # Verify updated
+    res_get2 = client.get("/api/tunnel")
+    assert res_get2.json()["tunnel_url"] == "https://test-mahjong.trycloudflare.com"
+
+
+def test_guide_page_includes_inspector(client):
+    """Test GET /guide includes the viewer inspector tab and modal."""
+    res_guide = client.get("/guide")
+    assert res_guide.status_code == 200
+    assert "tab-inspector" in res_guide.text
+    assert "public-user-modal" in res_guide.text
+    assert "시청자 랭킹" in res_guide.text and "스펙" in res_guide.text
+    assert "user-search-input" in res_guide.text
+
+
+def test_root_url_serves_guide_page(client):
+    """Test GET / serves the viewer guide page directly (matching cloudflare tunnel root)."""
+    res_root = client.get("/")
+    assert res_root.status_code == 200
+    assert "tab-inspector" in res_root.text
+    assert "public-user-modal" in res_root.text
+    assert "시청자 랭킹" in res_root.text
+
+
+def test_static_json_snapshots(client):
+    """Test /market_state.json and /users_state.json are served statically."""
+    res_market = client.get("/market_state.json")
+    assert res_market.status_code == 200
+    assert "current_price" in res_market.json()
+
+    res_users = client.get("/users_state.json")
+    assert res_users.status_code == 200
+    assert "users" in res_users.json()
+
+
+def test_admin_lockdown_blocks_external_access(client):
+    """Test that external requests via Cloudflare tunnel or external proxies are 403 Forbidden on admin routes."""
+    # 1. External request with cf-connecting-ip hitting /admin
+    cf_headers = {
+        "cf-connecting-ip": "203.0.113.195",
+        "cf-ray": "8c591234abcd-ICN",
+        "host": "lan-six-prison-jerusalem.trycloudflare.com"
+    }
+    res_admin = client.get("/admin", headers=cf_headers)
+    assert res_admin.status_code == 403
+    assert "SECURITY SHIELD" in res_admin.text
+    assert "관리자 페이지 접근 차단" in res_admin.text
+
+    # 2. External request hitting /api/admin/*
+    res_api = client.post("/api/admin/grant-points", headers=cf_headers, json={"user_id": "u", "points": 100})
+    assert res_api.status_code == 403
+    assert res_api.json()["success"] is False
+    assert "원천 차단" in res_api.json()["detail"]
+
+    # 3. External request hitting admin-only sensitive endpoints
+    res_casino = client.post("/api/casino/open", headers=cf_headers, json={})
+    assert res_casino.status_code == 403
+
+    res_chat = client.post("/api/chat/command", headers=cf_headers, json={"user_id": "hack", "username": "hack", "message": "!매수"})
+    assert res_chat.status_code == 403
+
+    # 4. BUT external request to public viewer routes MUST SUCCEED (200 OK)
+    res_pub_root = client.get("/", headers=cf_headers)
+    assert res_pub_root.status_code == 200
+    assert "tab-inspector" in res_pub_root.text
+
+    res_pub_guide = client.get("/guide", headers=cf_headers)
+    assert res_pub_guide.status_code == 200
+
+    res_pub_market = client.get("/api/market/state", headers=cf_headers)
+    assert res_pub_market.status_code == 200
+
+    res_pub_users = client.get("/api/users", headers=cf_headers)
+    assert res_pub_users.status_code == 200
+
+
+def test_local_admin_access_allowed(client):
+    """Test that local access (streamer PC) can still access /admin and admin APIs."""
+    res_admin = client.get("/admin")
+    assert res_admin.status_code == 200
+    assert "관리자 제어판" in res_admin.text or "admin" in res_admin.text.lower()
+
+    res_admin_users = client.get("/api/admin/users")
+    assert res_admin_users.status_code == 200
+    assert res_admin_users.json()["success"] is True
+
+
+def test_credit_rating_in_user_inspector_api(client):
+    """Test that /api/users and /api/user/{id} include credit rating payload."""
+    client.post("/api/chat/command", json={
+        "user_id": "api_credit_viewer_1",
+        "username": "신용테스터",
+        "message": "!내정보"
+    })
+
+    # Test single user endpoint
+    res_single = client.get("/api/user/신용테스터")
+    assert res_single.status_code == 200
+    data = res_single.json()
+    assert "credit" in data["user"]
+    credit = data["user"]["credit"]
+    assert "tier" in credit
+    assert "grade" in credit
+    assert "loan_limit" in credit
+    assert "score" in credit
+    assert credit["loan_limit"] > 0
+
+    # Test users list endpoint
+    res_list = client.get("/api/users")
+    assert res_list.status_code == 200
+    users = res_list.json()["users"]
+    matched = [u for u in users if u["username"] == "신용테스터"]
+    assert len(matched) == 1
+    assert "credit" in matched[0]
+    assert matched[0]["credit"]["grade"] == "BB"
+
+
+def test_web_desk_endpoints(client):
+    """Full end-to-end test for Web Viewer Lounge APIs (Auth, Transfer, Exchange, Arena, Stock)."""
+    import re
+
+    # 1. Create two users via chat command
+    client.post("/api/chat/command", json={
+        "user_id": "web_user_alice",
+        "username": "웹앨리스",
+        "message": "!내정보"
+    })
+    client.post("/api/chat/command", json={
+        "user_id": "web_user_bob",
+        "username": "웹밥",
+        "message": "!내정보"
+    })
+
+    # 2. Test !웹로그인 command (One-time code)
+    res_code = client.post("/api/chat/command", json={
+        "user_id": "web_user_alice",
+        "username": "웹앨리스",
+        "message": "!웹로그인"
+    })
+    assert res_code.status_code == 200
+    reply = res_code.json()["reply"]
+    match = re.search(r"\[([0-9]{4})\]", reply)
+    assert match is not None
+    alice_code = match.group(1)
+
+    # 3. Test POST /api/web/login with one-time code
+    res_login = client.post("/api/web/login", json={
+        "username": "웹앨리스",
+        "code": alice_code
+    })
+    assert res_login.status_code == 200
+    alice_token = res_login.json()["token"]
+    assert alice_token.startswith("tk_")
+
+    # 4. Test GET /api/web/me
+    res_me = client.get("/api/web/me", headers={"x-web-token": alice_token})
+    assert res_me.status_code == 200
+    assert res_me.json()["user"]["username"] == "웹앨리스"
+    assert res_me.json()["user"]["max_leverage_multiplier"] == 10
+    assert res_me.json()["user"]["beast_heart_count"] == 0
+
+    # 5. Test !비번 command (Permanent PIN)
+    res_pin = client.post("/api/chat/command", json={
+        "user_id": "web_user_bob",
+        "username": "웹밥",
+        "message": "!비번 7788"
+    })
+    assert res_pin.status_code == 200
+    assert "7788" in res_pin.json()["reply"]
+
+    # 6. Test POST /api/web/login with permanent PIN
+    res_bob_login = client.post("/api/web/login", json={
+        "username": "웹밥",
+        "code": "7788"
+    })
+    assert res_bob_login.status_code == 200
+    bob_token = res_bob_login.json()["token"]
+
+    # 7. Test POST /api/web/transfer
+    res_transfer = client.post("/api/web/transfer", json={
+        "token": alice_token,
+        "target_name": "웹밥",
+        "amount": "5000"
+    })
+    assert res_transfer.status_code == 200
+    assert res_transfer.json()["success"] is True
+
+    # 8. Test POST /api/web/trade/stock (Buy & Sell)
+    res_buy_stock = client.post("/api/web/trade/stock", json={
+        "token": alice_token,
+        "action": "BUY",
+        "product_type": "1X",
+        "quantity": 1
+    })
+    assert res_buy_stock.status_code == 200
+    assert res_buy_stock.json()["success"] is True
+
+    # Give Alice some scrolls to sell
+    client.post("/api/chat/command", json={
+        "user_id": "web_user_alice",
+        "username": "웹앨리스",
+        "message": "!상인구매 1 2"  # May fail if merchant closed, so grant directly via admin grant or test exchange
+    })
+
+    # Test Exchange: Bob gives Bob some points and tests listing item
+    db = TestingSessionLocal()
+    alice = db.query(User).filter_by(id="web_user_alice").first()
+    alice.shield_scroll_count = 5
+    bob = db.query(User).filter_by(id="web_user_bob").first()
+    bob.points = 100000
+    db.commit()
+    db.close()
+
+    # 9. Test POST /api/web/exchange/sell-item
+    res_sell_item = client.post("/api/web/exchange/sell-item", json={
+        "token": alice_token,
+        "item_type": "shield",
+        "quantity": 2,
+        "price": 20000
+    })
+    assert res_sell_item.status_code == 200
+    assert res_sell_item.json()["success"] is True
+    listing_id = res_sell_item.json()["details"]["listing_id"]
+
+    # 10. Test GET /api/web/exchange/listings
+    res_listings = client.get("/api/web/exchange/listings", headers={"x-web-token": bob_token})
+    assert res_listings.status_code == 200
+    assert len(res_listings.json()["items"]) >= 1
+
+    # 11. Test POST /api/web/exchange/buy
+    res_buy_item = client.post("/api/web/exchange/buy", json={
+        "token": bob_token,
+        "listing_token": f"I{listing_id}"
+    })
+    assert res_buy_item.status_code == 200
+    assert res_buy_item.json()["success"] is True
+
+    # 12. Test POST /api/web/arena/open & GET /api/web/arena/status & POST /api/web/arena/join
+    res_open_arena = client.post("/api/web/arena/open", json={
+        "token": alice_token,
+        "bet": "10000"
+    })
+    assert res_open_arena.status_code == 200
+
+    res_arena_status = client.get("/api/web/arena/status")
+    assert res_arena_status.status_code == 200
+    assert len(res_arena_status.json()["open_matches"]) >= 1
+
+    res_join_arena = client.post("/api/web/arena/join", json={
+        "token": bob_token,
+        "host_id": "web_user_alice"
+    })
+    assert res_join_arena.status_code == 200
+    assert res_join_arena.json()["success"] is True
+    assert "승자" in res_join_arena.json()["reply"]
+
+    # 13. Test POST /api/web/logout
+    res_logout = client.post("/api/web/logout", json={"token": alice_token})
+    assert res_logout.status_code == 200
+    # Next call to /api/web/me should be 401
+    res_unauth = client.get("/api/web/me", headers={"x-web-token": alice_token})
+    assert res_unauth.status_code == 401
+
+
+def test_web_mining_starforce_cube_endpoints(client):
+    """Test web lounge endpoints for mining, starforce enhancement, and cube rerolls."""
+    # 1. Login user
+    client.post("/api/chat/command", json={
+        "user_id": "web_craftsman",
+        "username": "장인유저",
+        "message": "!내정보"
+    })
+    client.post("/api/chat/command", json={
+        "user_id": "web_craftsman",
+        "username": "장인유저",
+        "message": "!비번 7777"
+    })
+    res_login = client.post("/api/web/login", json={"username": "장인유저", "code": "7777"})
+    assert res_login.status_code == 200
+    token = res_login.json()["token"]
+    user_data = res_login.json()["user"]
+    assert "mining" in user_data
+    eq_id = user_data["equipments"][0]["id"]
+
+    # 2. Test mining: POST /api/web/mining/mine
+    res_mine = client.post("/api/web/mining/mine", json={"token": token})
+    assert res_mine.status_code == 200
+    mine_data = res_mine.json()
+    assert mine_data["success"] is True
+    assert "shares_awarded" in mine_data["details"]
+
+    # 3. Test Starforce upgrade: POST /api/web/enhancement/upgrade
+    res_sf = client.post("/api/web/enhancement/upgrade", json={
+        "token": token,
+        "equipment_id": eq_id
+    })
+    assert res_sf.status_code == 200
+    sf_data = res_sf.json()
+    assert sf_data["success"] is True
+    assert sf_data["details"]["outcome"] in ["success", "maintain", "drop", "downgrade_prevented", "destroyed"]
+
+    # 4. Test Buy Cubes: POST /api/web/cube/buy
+    res_cbuy = client.post("/api/web/cube/buy", json={"token": token, "count": 2})
+    assert res_cbuy.status_code == 200
+    assert res_cbuy.json()["success"] is True
+    assert res_cbuy.json()["user"]["items"]["cube_count"] >= 2
+
+    # 5. Test Cube Use: POST /api/web/cube/use
+    res_cuse = client.post("/api/web/cube/use", json={
+        "token": token,
+        "equipment_id": eq_id
+    })
+    assert res_cuse.status_code == 200
+    cuse_data = res_cuse.json()
+    assert cuse_data["success"] is True
+    assert len(cuse_data["details"]["lines"]) == 3
+
+    # 6. Test Line Lock: POST /api/web/cube/line-lock
+    res_llock = client.post("/api/web/cube/line-lock", json={
+        "token": token,
+        "equipment_id": eq_id,
+        "line_arg": "1",
+        "state": "on"
+    })
+    assert res_llock.status_code == 200
+    assert res_llock.json()["success"] is True
+
+    # 6-1. Test Single Line Lock Enforcement (Locking line 2 auto-unsets line 1)
+    res_llock2 = client.post("/api/web/cube/line-lock", json={
+        "token": token,
+        "equipment_id": eq_id,
+        "line_arg": "2",
+        "state": "on"
+    })
+    assert res_llock2.status_code == 200
+    llock2_data = res_llock2.json()
+    assert llock2_data["success"] is True
+    eq_item = next(e for e in llock2_data["user"]["equipments"] if e["id"] == eq_id)
+    assert eq_item["is_line1_locked"] is False
+    assert eq_item["is_line2_locked"] is True
+    assert eq_item["is_line3_locked"] is False
+
+    # 7. Test Cube Lock Toggle: POST /api/web/cube/lock-toggle
+    res_clock = client.post("/api/web/cube/lock-toggle", json={
+        "token": token,
+        "equipment_id": eq_id
+    })
+    assert res_clock.status_code == 200
+    assert res_clock.json()["success"] is True
+
+    # Unlock for subsequent actions
+    res_cunlock = client.post("/api/web/cube/lock-toggle", json={
+        "token": token,
+        "equipment_id": eq_id
+    })
+    assert res_cunlock.status_code == 200
+
+    # 8. Test Equip: POST /api/web/equipment/equip
+    res_equip = client.post("/api/web/equipment/equip", json={
+        "token": token,
+        "equipment_id": eq_id
+    })
+    assert res_equip.status_code == 200
+    assert res_equip.json()["success"] is True
+
+
+def test_web_cube_snipe_options_and_commands(client):
+    """Tests GET /api/web/cube/snipe-options and chat guide commands."""
+    from command_handler import handle_chat_command
+
+    # 1. Test Endpoint
+    res = client.get("/api/web/cube/snipe-options")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "options" in data
+    assert len(data["options"]) >= 23
+    assert any(opt["keyword"] == "고블린" for opt in data["options"])
+    assert any(opt["keyword"] == "과충전" for opt in data["options"])
+    assert any(opt["keyword"] == "쿨초" for opt in data["options"])
+    assert any(opt["keyword"] == "크리" for opt in data["options"])
+    assert any(opt["keyword"] == "성공률" for opt in data["options"])
+    assert any(opt["keyword"] == "배당" for opt in data["options"])
+    assert any(opt["keyword"] == "야수" for opt in data["options"])
+    assert "guide_text" in data
+    assert "잠재저격주문서" in data["guide_text"]
+
+    # 2. Test Chat Commands
+    with TestingSessionLocal() as db:
+        # Direct guide commands
+        rep1, _ = handle_chat_command(db, "test_snipe_user", "유저1", "!저격목록")
+        assert "잠재저격주문서 옵션 키워드 전체 목록" in rep1
+        assert "고블린" in rep1
+        assert "과충전" in rep1
+
+        rep2, _ = handle_chat_command(db, "test_snipe_user", "유저1", "!저격옵션")
+        assert "잠재저격주문서 옵션 키워드 전체 목록" in rep2
+
+        rep3, _ = handle_chat_command(db, "test_snipe_user", "유저1", "!잠재목록")
+        assert "잠재저격주문서 옵션 키워드 전체 목록" in rep3
+
+        # Scroll command with guide keyword
+        rep4, _ = handle_chat_command(db, "test_snipe_user", "유저1", "!주문서 저격목록")
+        assert "잠재저격주문서 옵션 키워드 전체 목록" in rep4
+
+        rep5, _ = handle_chat_command(db, "test_snipe_user", "유저1", "!주문서 저격 옵션")
+        assert "잠재저격주문서 옵션 키워드 전체 목록" in rep5
+
+        # Cube command with guide keyword
+        rep6, _ = handle_chat_command(db, "test_snipe_user", "유저1", "!큐브 저격목록")
+        assert "잠재저격주문서 옵션 키워드 전체 목록" in rep6
+
+        rep7, _ = handle_chat_command(db, "test_snipe_user", "유저1", "!큐브 옵션")
+        assert "잠재저격주문서 옵션 키워드 전체 목록" in rep7
+
+
+def test_secure_reverse_auth_and_anti_bruteforce(client):
+    """Tests reverse chat challenge auth (anti-hijacking) and anti-bruteforce lockout."""
+    from command_handler import handle_chat_command
+
+    # 1. Create Web Auth Challenge
+    res_ch = client.post("/api/web/auth/challenge")
+    assert res_ch.status_code == 200
+    ch_data = res_ch.json()
+    assert ch_data["success"] is True
+    ch_id = ch_data["challenge_id"]
+    code = ch_data["code"]
+    assert ch_data["command"] == f"!인증 {code}"
+
+    # 2. Poll before user types in chat -> PENDING
+    res_p1 = client.get(f"/api/web/auth/poll?challenge_id={ch_id}")
+    assert res_p1.status_code == 200
+    assert res_p1.json()["status"] == "PENDING"
+
+    # 3. User types !인증 [code] in chat
+    with TestingSessionLocal() as db:
+        rep_chat, _ = handle_chat_command(db, "chzzk_sec_user_99", "보안유저", f"!인증 {code}")
+        assert "웹 라운지 인증이 완료되었습니다" in rep_chat
+
+        # Check !웹로그인 in chat (contains security notice)
+        rep_login_guide, _ = handle_chat_command(db, "chzzk_sec_user_99", "보안유저", "!웹로그인")
+        assert "치즈나베 웹 로그인" in rep_login_guide
+        assert "보안 추천" in rep_login_guide
+
+    # 4. Poll after authorization -> AUTHORIZED with session token
+    res_p2 = client.get(f"/api/web/auth/poll?challenge_id={ch_id}")
+    assert res_p2.status_code == 200
+    p2_data = res_p2.json()
+    assert p2_data["status"] == "AUTHORIZED"
+    assert "token" in p2_data
+    assert p2_data["token"].startswith("tk_")
+    assert p2_data["user"]["username"] == "보안유저"
+    user_token = p2_data["token"]
+
+    # 5. Challenge consumed -> subsequent poll is INVALID (replay attack prevented)
+    res_p3 = client.get(f"/api/web/auth/poll?challenge_id={ch_id}")
+    assert res_p3.status_code == 200
+    assert res_p3.json()["status"] == "INVALID"
+
+    # 6. Test setting PIN privately on Web without chat leaking
+    res_set_pin = client.post("/api/web/user/set-pin", json={
+        "token": user_token,
+        "pin": "9876"
+    })
+    assert res_set_pin.status_code == 200
+    assert res_set_pin.json()["success"] is True
+
+    # 7. Test PIN Login on Web
+    res_pin_login = client.post("/api/web/login", json={
+        "username": "보안유저",
+        "code": "9876"
+    })
+    assert res_pin_login.status_code == 200
+    assert res_pin_login.json()["success"] is True
+
+    # 8. Test Anti-Bruteforce Lockout (5 failed attempts locks out for 15 minutes)
+    for i in range(4):
+        res_fail = client.post("/api/web/login", json={
+            "username": "보안유저",
+            "code": f"000{i}"
+        })
+        assert res_fail.status_code == 400
+        assert "올바르지 않습니다" in res_fail.json()["detail"]
+
+    # 5th failure triggers lockout
+    res_fail_5 = client.post("/api/web/login", json={
+        "username": "보안유저",
+        "code": "0009"
+    })
+    assert res_fail_5.status_code == 400
+    assert "잠겼습니다" in res_fail_5.json()["detail"] or "차단" in res_fail_5.json()["detail"]
+
+    # 6th attempt is immediately rejected by lockout
+    res_fail_6 = client.post("/api/web/login", json={
+        "username": "보안유저",
+        "code": "9876"  # even correct pin is locked out
+    })
+    assert res_fail_6.status_code == 400
+    assert "차단" in res_fail_6.json()["detail"] or "잠겼습니다" in res_fail_6.json()["detail"]
+
+
+def test_web_merchant_and_casino_features(client):
+    """Test wandering merchant price masking and casino race/mahjong API endpoints."""
+    with TestingSessionLocal() as db:
+        # 1. Mystery merchant wandering: price should be masked with "???"
+        te.close_merchant(db)
+    
+    res_m_closed = client.get("/api/web/merchant/status")
+    assert res_m_closed.status_code == 200
+    m_data = res_m_closed.json()["merchant"]
+    assert m_data["is_active"] is False
+    assert len(m_data["items"]) > 0
+    for item in m_data["items"].values():
+        assert item["price"] == "???"
+        assert item["stock"] == "???"
+
+    # Re-open merchant and verify prices are revealed as numeric
+    with TestingSessionLocal() as db:
+        te.open_merchant(db, duration_minutes=10)
+    
+    res_m_open = client.get("/api/web/merchant/status")
+    assert res_m_open.status_code == 200
+    m_open_data = res_m_open.json()["merchant"]
+    assert m_open_data["is_active"] is True
+    for item in m_open_data["items"].values():
+        assert isinstance(item["price"], (int, float))
+        assert item["price"] > 0
+        assert isinstance(item["stock"], int)
+        assert item["stock"] > 0
+
+    # 2. Test user for casino
+    with TestingSessionLocal() as db:
+        u = db.query(User).filter_by(id="casino_gamer_1").first()
+        if not u:
+            u = User(id="casino_gamer_1", username="겜블러", points=5000000.0)
+            db.add(u)
+        else:
+            u.points = 5000000.0
+        db.commit()
+        te.open_casino(db, duration_minutes=15)
+
+    # Set PIN and login on Web to get token
+    client.post("/api/chat/command", json={
+        "user_id": "casino_gamer_1",
+        "username": "겜블러",
+        "message": "!비번 1234"
+    })
+    res_login = client.post("/api/web/login", json={"username": "겜블러", "code": "1234"})
+    assert res_login.status_code == 200
+    token = res_login.json()["token"]
+
+    # 3. Test POST /api/web/casino/race
+    res_race = client.post("/api/web/casino/race", json={
+        "token": token,
+        "runner": "1",
+        "bet": 10000
+    })
+    assert res_race.status_code == 200
+    race_json = res_race.json()
+    assert race_json["success"] is True
+    assert "details" in race_json
+    assert "ranking" in race_json["details"]
+    assert "p1" in race_json["details"]
+    assert "ranking_names" in race_json["details"]
+
+    # 4. Test POST /api/web/casino/mahjong (Suit bet: "만")
+    res_mj_suit = client.post("/api/web/casino/mahjong", json={
+        "token": token,
+        "choice": "만",
+        "bet": 10000
+    })
+    assert res_mj_suit.status_code == 200
+    mj_suit_json = res_mj_suit.json()
+    assert mj_suit_json["success"] is True
+    assert "details" in mj_suit_json
+    assert "drawn_suit" in mj_suit_json["details"]
+    assert "drawn_tile" in mj_suit_json["details"]
+
+    # 5. Test POST /api/web/casino/mahjong (Exact tile bet: "1만")
+    res_mj_exact = client.post("/api/web/casino/mahjong", json={
+        "token": token,
+        "choice": "1만",
+        "bet": 10000
+    })
+    assert res_mj_exact.status_code == 200
+    mj_exact_json = res_mj_exact.json()
+    assert mj_exact_json["success"] is True
+    assert "details" in mj_exact_json
+
+
+def test_web_lottery_endpoints_and_admin_security(client):
+    """Test web lottery purchase with tickets list in details and verify admin IP access."""
+    # 1. Open Lottery
+    with TestingSessionLocal() as db:
+        te.open_lottery_event(db, duration_minutes=15)
+
+    res_l_status = client.get("/api/web/lottery/status")
+    assert res_l_status.status_code == 200
+    assert res_l_status.json()["success"] is True
+    assert res_l_status.json()["lottery"]["is_active"] is True
+
+    # 2. Get user token for purchase
+    with TestingSessionLocal() as db:
+        u = db.query(User).filter_by(id="lottery_user_1").first()
+        if not u:
+            u = User(id="lottery_user_1", username="복권유저", points=1000000.0)
+            db.add(u)
+        else:
+            u.points = 1000000.0
+        db.commit()
+
+    client.post("/api/chat/command", json={
+        "user_id": "lottery_user_1",
+        "username": "복권유저",
+        "message": "!비번 5555"
+    })
+    res_login = client.post("/api/web/login", json={"username": "복권유저", "code": "5555"})
+    assert res_login.status_code == 200
+    token = res_login.json()["token"]
+
+    # 3. Buy 3 basic tickets via Web
+    res_buy = client.post("/api/web/lottery/buy", json={
+        "token": token,
+        "lottery_type": "basic",
+        "count": 3
+    })
+    assert res_buy.status_code == 200
+    buy_json = res_buy.json()
+    assert buy_json["success"] is True
+    assert "details" in buy_json
+    details = buy_json["details"]
+    assert "tickets" in details
+    assert len(details["tickets"]) == 3
+    for t in details["tickets"]:
+        assert "tier" in t
+        assert "name" in t
+        assert "prize" in t
+        assert "badge" in t
+
+    # 4. Test admin route is allowed for local/testclient
+    res_admin = client.get("/admin")
+    assert res_admin.status_code == 200
+
+    # 5. Test external access blocked when Cloudflare Tunnel header is present
+    res_cf_blocked = client.get("/admin", headers={"cf-connecting-ip": "1.2.3.4"})
+    assert res_cf_blocked.status_code == 403
+
+
+
+
 
 
 

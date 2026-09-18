@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Tuple, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from models import Position
+import trading_engine as te
 from trading_engine import (
     STARTING_POINTS,
     get_market_state,
@@ -18,6 +19,8 @@ from trading_engine import (
     execute_mining,
     execute_borrow,
     execute_repay,
+    get_user_credit_info,
+    format_user_credit_report,
     execute_bankruptcy,
     submit_bankruptcy_application,
     get_treasury_info,
@@ -56,10 +59,13 @@ from trading_engine import (
     renew_auto_mining,
     get_auto_mining_status,
     get_user_equipped_item,
+    get_equipment_potential_effects,
     get_user_cooldown_status,
     execute_buy_cubes,
     execute_cube_use,
     execute_cube_fragment_exchange,
+    execute_equipment_cube_lock,
+    execute_potential_line_lock,
     set_day_open_price,
     get_lottery_event_state,
     open_lottery_event,
@@ -80,7 +86,13 @@ from trading_engine import (
     execute_buy_exchange,
     execute_cancel_exchange,
     get_unified_market_listings,
-    match_potential_target
+    match_potential_target,
+    create_pvp_challenge,
+    accept_pvp_challenge,
+    decline_pvp_challenge,
+    open_public_arena_match,
+    join_public_arena_match,
+    get_arena_status
 )
 
 CHANNEL_ID = os.getenv("CHANNEL_ID", "4495f96624a2c60bd1ed5a6139014d20")
@@ -90,12 +102,13 @@ SUPPORTED_LEVERAGE_PREFIXES = ["1", "2", "3", "5", "10", "20", "40", "60"]
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !국고, !남은시간, !쿨타임
+• 금융: !내정보, !신용등급, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !인증 [코드], !웹로그인, !비번 [4자리], !국고, !남은시간, !쿨타임
 • 복권: !동복권 [수량], !은복권 [수량], !금복권 [수량], !복권 [동/은/금] [수량], !복권확률 (동 1천P / 은 5천P / 금 2만P 초대박!)
 • 상인: !신비상인, !상인구매 [1/2/3/4] [수량], !아이템 (파방/상승/하강/잠재저격 한정 판매)
 • 거래소: !거래소, !아이템판매 [파방/하강/상승/저격/큐브] [수량] [가격], !장비등록 [번호] [가격], !거래소구매 [번호], !거래소취소 [번호]
-• 장비: !상태창, !내장비, !장착 [번호], !강화 [파방/하강/상승/풀], !주문서 [파방/하강/상승] [on/off], !큐브구매 [수량], !큐브 [번호] [저격 옵션], !큐브조각, !피버, !곡괭이구매 [0/5/10]
+• 장비: !상태창, !내장비, !장착 [번호], !강화 [파방/하강/상승/풀], !주문서 [파방/하강/상승] [on/off], !큐브구매 [수량], !큐브 [번호] [저격옵션], !저격목록, !큐브잠금 [번호], !옵션잠금 [1~3], !큐브조각, !피버, !곡괭이구매 [0/5/10]
 • 도박: !슬롯 [금액], !주사위 [홀/짝/대/소] [금액], !마작 [만/삭/통 or 1만~9통] [금액], !경마 [대삼원/사안커/국사무쌍/구련보등] [금액], !카지노, !슬롯확률
+• 투기장: !대결 @유저 [금액], !수락, !거절, !투기장 오픈 [금액], !투기장 참가 (⚔️ 1:1 맞짱 주사위 데스매치)
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) [야수의 심장: 20X, 40X, 60X] (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
 GUIDE_STOCK = HELP_MESSAGE
@@ -104,7 +117,7 @@ GUIDE_BUY = "💡 매수 사용법: !매수 [종목] [수량/올인/빚올인] (
 GUIDE_SELL = "💡 매도 사용법: !매도 [종목] [수량/전량] (!판매, !전량매도 가능. 예: !매도 10X 전량, !전량매도 10X)"
 GUIDE_LIMIT = "💡 지정가 사용법: !지정가 [매수/매도] [종목] [목표가] [수량] (예: !지정가 매수 1X 300 10)"
 GUIDE_LIQUIDATE = "💡 청산 사용법: !청산 [종목/전량] (예: !청산 10X, !청산 전량)"
-GUIDE_BORROW = "💡 대출 사용법: !대출 [금액/최대] (경기 중에도 24시간 상시 가능, 예: !대출 최대, !대출 30000 | 개장 중엔 !빚올인 10X)"
+GUIDE_BORROW = "💡 대출 사용법: !대출 [금액/최대] (경기 중에도 24시간 상시 가능, 예: !대출 최대, !대출 30000 | 개장 중엔 !빚올인 10X | 신용평가: !신용등급)"
 GUIDE_REPAY = "💡 상환 사용법: !상환 [금액/전액] (예: !상환 20000, !상환 전액)"
 GUIDE_TRANSFER = "💡 계좌이체 사용법: !송금 [받는분닉네임] [금액/올인] (예: !송금 치즈나베 10000, !이체 @CYTFT 5만, !송금 닉네임 올인)\n• 1만P 미만 면세, 1만P 이상 0.1%(1만P당 10P), 10만P 이상 0.2%의 미미한 수수료만 국고로 적립됩니다."
 GUIDE_MINING = (
@@ -126,6 +139,16 @@ GUIDE_CASINO = (
     "• 🏇 역만 레이스: !경마 [1~4 or 마명] [금액/올인] (1위 3.6배 / 잠재 2등 세이프티 환급)\n"
     "• 상태 & 확률: !카지노, !슬롯확률\n"
     "* 스트리머 전용: !카지노오픈 [분] [최대한도], !카지노마감"
+)
+GUIDE_ARENA = (
+    "⚔️ [지하 투기장 1:1 맞짱 데스매치 가이드]\n"
+    "• 1:1 맞짱 신청: !대결 @상대닉네임 [금액/올인] (예: !대결 @메루1 50000)\n"
+    "• 대결 수락: !수락 (90초 제한시간 내 수락 시 즉시 주사위 대결)\n"
+    "• 대결 거절: !거절 (도망치기)\n"
+    "• 공개 투기장 개설: !투기장 오픈 [금액] (아무나 와라!)\n"
+    "• 공개 투기장 참가: !투기장 참가\n"
+    "• 투기장 현황: !투기장\n"
+    "• 룰: 1d100 주사위 맞짱! 더 높은 숫자 승리! 승자 98% 독식 대박, 2% 국고 수수료 적립!"
 )
 
 def handle_chat_command(
@@ -168,6 +191,36 @@ def handle_chat_command(
             f"• 실시간 주가 차트, 주주 랭킹, 상세 가이드 및 룰북을 웹에서 바로 확인하실 수 있습니다!"
         )
         return reply, None
+
+    # 1-1-1. Secure Web Reverse Challenge Authentication (!인증, !인증번호, !인증코드, !로그인 [코드])
+    if cmd in ["!인증", "!인증번호", "!인증코드", "!로그인인증", "!authcode"]:
+        if len(tokens) < 2:
+            return "💡 [웹 간편인증] 사용법: !인증 [4자리코드] (웹 라운지 [🔑 로그인] 창에 표시된 4자리 번호를 입력하세요! 예: !인증 8421)", None
+        ok, reply, _ = te.verify_chat_auth_challenge(db, user_id, username, tokens[1])
+        return reply, None
+
+    # 1-1-2. Web Desk Login Code & Guide (!웹로그인, !접속, !웹인증, !weblogin, !auth, !login)
+    if cmd in ["!웹로그인", "!접속", "!웹인증", "!weblogin", "!auth", "!login"]:
+        if len(tokens) >= 2 and tokens[1].isdigit():
+            # User provided challenge code directly with !웹로그인 or !login (e.g. !로그인 8421)
+            ok, reply, _ = te.verify_chat_auth_challenge(db, user_id, username, tokens[1])
+            return reply, None
+
+        code = te.generate_web_login_code(user_id, username)
+        reply = (
+            f"🔑 [치즈나베 웹 로그인] {username} 님의 1회용 접속 코드: [{code}]\n"
+            f"• 유효시간: 5분 | 웹페이지 상단 [🔑 로그인] 창에 닉네임과 위 4자리 코드를 입력해주세요!\n"
+            f"🔒 [보안 추천] 타인의 코드 가로채기를 방지하려면 웹 로그인 창의 [⚡ 간편 채팅 인증(!인증)]을 이용하세요!"
+        )
+        return reply, None
+
+    # 1-1-3. Permanent Web Login PIN (!비번, !비밀번호, !pin, !password)
+    if cmd in ["!비번", "!비밀번호", "!pin", "!password"]:
+        if len(tokens) < 2:
+            return "💡 웹 비밀번호 설정법: !비번 [4자리숫자] (예: !비번 1234 | 웹 라운지에서 언제든 마이페이지로 안전하게 변경 가능)", None
+        pin_arg = tokens[1]
+        ok, msg = te.set_user_web_pin(db, user_id, pin_arg)
+        return msg, None
 
     # 1-2. Abbreviation & Shorthand Guide (!약어, !단축어, !종목약어, etc.)
     if cmd in ["!약어", "!단축어", "!종목약어", "!줄임말", "!은어", "!별칭", "!alias"]:
@@ -257,10 +310,15 @@ def handle_chat_command(
         # 4. User Mining Cooldown
         equipped_item = get_user_equipped_item(db, user)
         pick_lvl = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0) or 0
-        pick_lvl = max(0, min(25, int(pick_lvl)))
+        pick_lvl = max(0, min(30, int(pick_lvl)))
         user.pickaxe_level = pick_lvl
         pick_info = get_pickaxe_info(pick_lvl)
-        pickaxe_cd = pick_info["cooldown_seconds"]
+        cd_min = pick_info["cooldown_minutes"]
+        pot_eff = get_equipment_potential_effects(equipped_item) if equipped_item else {}
+        pot_cd_red = pot_eff.get("mining_cd_reduction", 0)
+        heavy_cd_add = pot_eff.get("heavy_mining_cd_add", 0)
+        effective_cd_min = max(2, cd_min - pot_cd_red + heavy_cd_add)
+        pickaxe_cd = effective_cd_min * 60
         mine_str = "⛏️ 즉시 가능"
         if user.last_mined_at:
             now_utc = datetime.now(timezone.utc)
@@ -340,14 +398,17 @@ def handle_chat_command(
         if cube_cnt > 0 or frag_cnt > 0:
             cube_str = f" | 큐브: {cube_cnt}개(조각: {frag_cnt})"
 
+        credit_info = get_user_credit_info(user, db=db, market_state=state)
+        credit_str = f" | 신용: {credit_info['tier']}등급({credit_info['grade']})"
+
         if pos_summaries:
             pos_str = " | ".join(pos_summaries)
             reply = (
-                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str}{cube_str} | "
+                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{credit_str}{pickaxe_str}{am_str}{cube_str} | "
                 f"보유: [{pos_str}]"
             )
         else:
-            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{pickaxe_str}{am_str}{cube_str} | 보유 포지션이 없습니다."
+            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{credit_str}{pickaxe_str}{am_str}{cube_str} | 보유 포지션이 없습니다."
 
         return reply, None
 
@@ -773,45 +834,63 @@ def handle_chat_command(
             success, reply, details = toggle_user_scroll_arm(db, user_id, username, None, None)
             return reply, None
 
-        # Check for snipe intent or equipment ID + keyword
-        is_snipe_cmd = False
-        target_item_token = None
-        keyword_token = None
-        on_off_token = None
+        # Check if user is asking for snipe options list/guide e.g. !주문서 저격목록, !주문서 저격 옵션, !주문서 목록, !주문서 옵션, !주문서 도감
+        if any(a in ["저격목록", "저격옵션", "저격리스트", "옵션목록", "잠재목록", "잠재옵션", "저격도감", "잠재도감"] for a in clean_args) or (
+            any(a in ["저격", "잠재저격", "snipe", "잠재"] for a in clean_args) and any(a in ["목록", "리스트", "옵션", "가이드", "도감", "설명", "list", "options", "help", "도움말"] for a in clean_args)
+        ):
+            return te.get_snipe_options_guide_text(), None
 
-        for a in clean_args:
-            if a in ["저격", "잠재저격", "snipe", "저격주문서", "4"]:
-                is_snipe_cmd = True
-            elif a in ["on", "off", "켜기", "끄기", "활성", "비활성", "1", "0", "true", "false"]:
-                on_off_token = a
-            elif a.startswith("#") or (a.isdigit() and int(a) != 4) or a in ["현재", "기본", "장착"]:
-                target_item_token = a
-            else:
-                keyword_token = a
+        # Check for ON / OFF toggle tokens
+        on_off_tokens = [a for a in clean_args if a in ["on", "off", "켜기", "끄기", "활성", "비활성", "true", "false", "start", "stop"]]
+        non_on_off = [a for a in clean_args if a not in ["on", "off", "켜기", "끄기", "활성", "비활성", "true", "false", "start", "stop"]]
 
-        if is_snipe_cmd and on_off_token:
-            success, reply, details = toggle_user_scroll_arm(db, user_id, username, "저격", on_off_token)
+        # 1. Any command containing ON/OFF is 100% a TOGGLE setting - NEVER CUBE USE!
+        if on_off_tokens:
+            on_off_val = on_off_tokens[0]
+            scroll_type_val = non_on_off[0] if non_on_off else "전체"
+            success, reply, details = toggle_user_scroll_arm(db, user_id, username, scroll_type_val, on_off_val)
             return reply, None
 
-        if is_snipe_cmd or (keyword_token and match_potential_target(keyword_token)[1] is not None):
-            if not keyword_token and not on_off_token:
+        # 2. Direct Snipe Scroll Cube Use: ONLY when user explicitly asks for snipe cube rolling (!주문서사용 or contains 저격)
+        is_snipe_use = (cmd == "!주문서사용") or any(a in ["저격", "잠재저격", "snipe", "저격주문서"] for a in clean_args)
+        if is_snipe_use:
+            target_item_token = None
+            keyword_tokens = []
+            for a in clean_args:
+                if a in ["저격", "잠재저격", "snipe", "저격주문서", "4"]:
+                    continue
+                elif a.startswith("#") or (a.isdigit() and int(a) > 4):
+                    target_item_token = a
+                else:
+                    keyword_tokens.append(a)
+
+            keyword_str = " ".join(keyword_tokens) if keyword_tokens else None
+            if keyword_str and keyword_str.strip().lower() in ["목록", "리스트", "옵션", "가이드", "도감", "설명", "list", "options", "help", "도움말"]:
+                return te.get_snipe_options_guide_text(), None
+
+            if not keyword_str:
+                # No target keyword specified, show snipe scroll guide
                 success, reply, details = toggle_user_scroll_arm(db, user_id, username, "저격", None)
                 return reply, None
 
             success, reply, details = execute_cube_use(
                 db, user_id, username,
                 item_id_or_index=target_item_token,
-                target_keyword=keyword_token,
+                target_keyword=keyword_str,
                 use_snipe=True
             )
             event = {"type": "cube_use", "data": details} if success and details else None
             return reply, event
 
+        # 3. Simple toggle by scroll type name alone (e.g. !주문서 상승, !주문서 강화, !주문서 2, !주문서 파방, !주문서 전체)
         scroll_arg = clean_args[0] if len(clean_args) >= 1 else None
         state_arg = clean_args[1] if len(clean_args) >= 2 else None
         success, reply, details = toggle_user_scroll_arm(db, user_id, username, scroll_arg, state_arg)
-        event = {"type": "cube_use", "data": details} if success and details and details.get("game_type") == "cube" else None
-        return reply, event
+        return reply, None
+
+    # 8-3-2. Potential Snipe Scroll Options Guide (!저격목록, !저격옵션, !저격리스트, !옵션목록, !잠재목록, !잠재옵션, !저격가이드, !저격도감, !잠재도감)
+    if cmd in ["!저격목록", "!저격옵션", "!저격리스트", "!옵션목록", "!잠재목록", "!잠재옵션", "!저격가이드", "!저격도감", "!잠재도감"]:
+        return te.get_snipe_options_guide_text(), None
 
     # 8-4. Pickaxe Tier Guide (!강화표, !곡괭이목록)
     if cmd in ["!곡괭이목록", "!곡괭이표", "!강화표", "!강화목록"]:
@@ -955,25 +1034,52 @@ def handle_chat_command(
 
     # 8-12. Maple Cube Potential Reset (!큐브, !cube, !미라클큐브, !블랙큐브, !잠재, !잠재능력)
     if cmd in ["!큐브", "!cube", "!미라클큐브", "!블랙큐브", "!잠재", "!잠재능력", "!큐브사용"]:
+        # Check if user is asking for snipe options list e.g. !큐브 옵션, !큐브 저격목록, !큐브 저격 옵션, !큐브 도감
+        for tok in tokens[1:]:
+            clean = tok.strip().strip("'\"`’‘“”,;[]()").lower()
+            if clean in ["저격목록", "저격옵션", "저격리스트", "옵션목록", "잠재목록", "잠재옵션", "옵션도감", "저격도감"]:
+                return te.get_snipe_options_guide_text(), None
+
         target_token = None
         target_keyword = None
         use_snipe = False
+        lock_lines = []
 
-        for tok in tokens[1:]:
+        skip_indices = set()
+        for idx_t, tok in enumerate(tokens[1:], start=1):
+            if idx_t in skip_indices:
+                continue
             clean = tok.strip().strip("'\"`’‘“”,;[]()").lower()
             if clean in ["저격", "저격권", "snipe", "target"]:
                 use_snipe = True
+            elif "잠금" in clean or "lock" in clean:
+                for c in ["1", "2", "3"]:
+                    if c in clean:
+                        lock_lines.append(int(c))
+                # Check next tokens for numbers
+                for next_idx in range(idx_t + 1, len(tokens)):
+                    nxt = tokens[next_idx].strip().strip("'\"`’‘“”,;[]()").lower()
+                    if nxt in ["1", "2", "3", "1줄", "2줄", "3줄"]:
+                        lock_lines.append(int(nxt[0]))
+                        skip_indices.add(next_idx)
+                    else:
+                        break
             elif clean.startswith("#") or clean.isdigit() or clean in ["현재", "기본", "장착", "equipped"]:
                 target_token = clean
             else:
                 target_keyword = clean
 
         if target_keyword:
+            if target_keyword in ["목록", "리스트", "옵션", "가이드", "도감", "설명", "list", "options", "help", "도움말"]:
+                return te.get_snipe_options_guide_text(), None
             use_snipe = True
+
+        lock_lines = sorted(list(set(lock_lines))) if lock_lines else None
 
         success, reply, details = execute_cube_use(
             db, user_id, username, target_token,
-            target_keyword=target_keyword, use_snipe=use_snipe
+            target_keyword=target_keyword, use_snipe=use_snipe,
+            lock_lines=lock_lines
         )
         event = {"type": "cube_use", "data": details} if success and details else None
         return reply, event
@@ -982,6 +1088,44 @@ def handle_chat_command(
     if cmd in ["!큐브조각", "!큐브조각교환", "!조각교환", "!조각"]:
         success, reply, details = execute_cube_fragment_exchange(db, user_id, username)
         event = {"type": "cube_fragment_exchange", "data": details} if success and details else None
+        return reply, event
+
+    # 8-14. Equipment Cube Lock (!큐브잠금, !장비잠금, !큐브락, !cubelock, !큐브보호, !장비보호, !큐브해제, !큐브잠금해제)
+    if cmd in ["!큐브잠금", "!장비잠금", "!큐브락", "!cubelock", "!큐브보호", "!장비보호", "!큐브해제", "!큐브잠금해제"]:
+        state_str = None
+        target_eq = None
+        if cmd in ["!큐브해제", "!큐브잠금해제"]:
+            state_str = "off"
+            if len(tokens) > 1:
+                target_eq = tokens[1]
+        else:
+            if len(tokens) == 2:
+                if tokens[1].lower() in ["on", "off", "켜기", "끄기", "해제", "잠금", "설정"]:
+                    state_str = tokens[1]
+                else:
+                    target_eq = tokens[1]
+            elif len(tokens) >= 3:
+                target_eq = tokens[1]
+                state_str = tokens[2]
+
+        success, reply, details = execute_equipment_cube_lock(db, user_id, username, target_eq, state_str)
+        event = {"type": "cube_lock", "data": details} if success and details else None
+        return reply, event
+
+    # 8-15. Potential Line Lock (!옵션잠금, !잠재잠금, !라인잠금, !줄잠금, !옵션락, !잠재락)
+    if cmd in ["!옵션잠금", "!잠재잠금", "!라인잠금", "!줄잠금", "!옵션락", "!잠재락"]:
+        line_arg = None
+        state_str = None
+        target_eq = None
+        if len(tokens) >= 2:
+            line_arg = tokens[1]
+        if len(tokens) >= 3:
+            state_str = tokens[2]
+        if len(tokens) >= 4:
+            target_eq = tokens[3]
+
+        success, reply, details = execute_potential_line_lock(db, user_id, username, line_arg, state_str, target_eq)
+        event = {"type": "potential_line_lock", "data": details} if success and details else None
         return reply, event
 
     # 9. Treasury Info Query
@@ -1002,13 +1146,21 @@ def handle_chat_command(
         )
         return reply, None
 
+    # 10-1. Credit Rating & Loan Limit Query (신용등급 / 신용점수 / 대출한도 조회)
+    if cmd in ["!신용등급", "!신용", "!신용도", "!신용점수", "!대출한도", "!한도", "!credit"]:
+        user = get_or_create_user(db, user_id, username)
+        report = format_user_credit_report(user, db)
+        return report, None
+
     # 11. Margin Loan (Borrow from Treasury)
-    if cmd in ["!대출", "!빚", "!사채", "!신용", "!borrow", "!loan", "!빌리기", "!차용"]:
+    if cmd in ["!대출", "!빚", "!사채", "!borrow", "!loan", "!빌리기", "!차용"]:
         user = get_or_create_user(db, user_id, username)
         if len(tokens) < 2:
+            credit_info = get_user_credit_info(user, db=db)
             current_debt = getattr(user, "debt", 0) or 0
-            avail = max(0, 50000 - current_debt)
-            return f"{GUIDE_BORROW} (현재 빚: {current_debt:,}P | 추가 가능 한도: {avail:,}P)", None
+            limit = credit_info["loan_limit"]
+            avail = max(0, limit - current_debt)
+            return f"{GUIDE_BORROW} (신용: {credit_info['tier_name']} | 현재 빚: {current_debt:,}P | 추가 가능 한도: {avail:,}P | 금리: {credit_info['interest_rate_pct']:.1f}%)", None
 
         # Check if user typed '!대출 10X 올인' or '!대출 올인 10X' or '!빚 10X 올인' -> route to margin buy
         if len(tokens) >= 3:
@@ -1121,7 +1273,7 @@ def handle_chat_command(
             return f"🎰 [나베 국고 카지노: 마감] 현재 도박장이 닫혀 있습니다. (국고 상금풀: {pool:,}P) | 스트리머가 개장할 때까지 대기해주세요!", None
         rem = c_state["remaining_sec"]
         time_str = f"{rem//60}분 {rem%60}초 남음" if rem > 0 else "무제한"
-        return f"🎰 [나베 국고 카지노: 영업중 🔥] 남은 시간: {time_str} | 최대 배팅: {c_state['max_bet']:,}P | 잭팟 국고: {pool:,}P | 명령어: !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액/올인] (확률: !슬롯확률)", None
+        return f"🎰 [나베 국고 카지노: 영업중 🔥] 남은 시간: {time_str} | 최대 배팅: {c_state['max_bet']:,}P | 잭팟 국고: {pool:,}P | 명령어: !경마 [1~4/마명] [금액] (1위 3.6배), !슬롯 [금액/올인], !주사위 [홀/짝/대/소] [금액], !마작 [패] [금액] (확률: !슬롯확률)", None
 
     # 15-1. Casino & Slot Odds Query
     if cmd in ["!슬롯확률", "!도박확률", "!확률", "!배당표", "!카지노확률", "!배당율"]:
@@ -1368,6 +1520,76 @@ def handle_chat_command(
         event = {"type": "merchant_left", "data": details} if success and details else None
         return reply, event
 
+    # 17-7. Underground Arena 1:1 PvP Deathmatch (!대결, !결투, !맞짱, !pvp, !피빕, !수락, !거절, !투기장)
+    if cmd in ["!대결방법", "!투기장방법", "!대결가이드", "!투기장가이드"]:
+        return GUIDE_ARENA, None
+
+    if cmd in ["!대결", "!결투", "!맞짱", "!pvp", "!피빕", "!배틀", "!다이다이", "!1대1", "!1:1"]:
+        if len(tokens) < 3:
+            return (
+                "⚔️ [지하 투기장 1:1 맞짱 데스매치]\n"
+                "💡 사용법: !대결 @상대닉네임 [금액/올인] (예: !대결 @메루1 50000, !대결 @CYTFT 올인)\n"
+                "• 1d100 주사위 승부! 더 높은 숫자가 승리!\n"
+                "• 승자 98% 독식 대박, 2% 국고 수수료 적립 (90초 제한시간 내 !수락 / !거절)"
+            ), None
+
+        target_token = tokens[1]
+        bet_token = tokens[2]
+        if target_token.isdigit() or target_token in ["올인", "all", "전액", "최대"] or target_token.endswith("만") or target_token.endswith("천"):
+            target_token, bet_token = tokens[2], tokens[1]
+
+        success, reply, details = create_pvp_challenge(db, user_id, username, target_token, bet_token)
+        event = {"type": "pvp_challenge", "data": details} if success and details else None
+        return reply, event
+
+    if cmd in ["!수락", "!승낙", "!받기", "!accept", "!yes"]:
+        success, reply, details = accept_pvp_challenge(db, user_id, username)
+        event = {"type": "pvp_duel", "data": details} if success and details else None
+        return reply, event
+
+    if cmd in ["!거절", "!런", "!도망", "!decline", "!no"]:
+        success, reply, details = decline_pvp_challenge(db, user_id, username)
+        event = {"type": "pvp_declined", "data": details} if success and details else None
+        return reply, event
+
+    if cmd in ["!투기장", "!아레나", "!arena", "!투기장오픈", "!투기장참가"]:
+        if cmd == "!투기장오픈":
+            if len(tokens) < 2:
+                return "⚔️ [투기장 공개 개설] 사용법: !투기장 오픈 [금액/올인] (예: !투기장 오픈 30000)", None
+            success, reply, details = open_public_arena_match(db, user_id, username, tokens[1])
+            event = {"type": "pvp_open", "data": details} if success and details else None
+            return reply, event
+
+        if cmd == "!투기장참가":
+            target_host = tokens[1] if len(tokens) > 1 else None
+            success, reply, details = join_public_arena_match(db, user_id, username, target_host)
+            event = {"type": "pvp_duel", "data": details} if success and details else None
+            return reply, event
+
+        if len(tokens) == 1:
+            return get_arena_status(db), None
+
+        sub = tokens[1].lower()
+        if sub in ["오픈", "개설", "열기", "open"]:
+            if len(tokens) < 3:
+                return "⚔️ [투기장 공개 개설] 사용법: !투기장 오픈 [금액/올인] (예: !투기장 오픈 30000)", None
+            success, reply, details = open_public_arena_match(db, user_id, username, tokens[2])
+            event = {"type": "pvp_open", "data": details} if success and details else None
+            return reply, event
+
+        if sub in ["참가", "참여", "도전", "join"]:
+            target_host = tokens[2] if len(tokens) > 2 else None
+            success, reply, details = join_public_arena_match(db, user_id, username, target_host)
+            event = {"type": "pvp_duel", "data": details} if success and details else None
+            return reply, event
+
+        if sub.isdigit() or sub in ["올인", "all", "전액", "최대"] or sub.endswith("만") or sub.endswith("천"):
+            success, reply, details = open_public_arena_match(db, user_id, username, tokens[1])
+            event = {"type": "pvp_open", "data": details} if success and details else None
+            return reply, event
+
+        return get_arena_status(db), None
+
     # 18. Streamer Match Settlement Command (!정산 [등수] [변동점수])
     if cmd in ["!정산", "!경기정산", "!결과", "!settle"]:
         is_streamer = (user_id == CHANNEL_ID or username in ["치즈나베", "스트리머"] or user_id in ["streamer", "admin"])
@@ -1417,7 +1639,7 @@ def handle_chat_command(
         new_price = settle_res["new_price"]
         divs = settle_res.get("dividends", [])
         div_count = len(divs)
-        div_total = sum(d.get("amount", 0) for d in divs)
+        div_total = sum(d.get("payout", 0) or d.get("amount", 0) for d in divs)
         pct_label = "1위 우승 5% 1X" if rank_val == 1 else ("2위 준우승 1% 1X" if rank_val == 2 else "1X")
         div_label = f" | 🎁 {pct_label} 배당: {div_count}명(+{div_total:,}P)" if div_count > 0 else ""
         liq_count = len(settle_res.get("liquidations", []))

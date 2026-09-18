@@ -1,12 +1,12 @@
 {
   "current_rank_name": "작성3",
-  "current_rank_point": 2796,
-  "current_price": 2796,
-  "previous_price": 2533,
+  "current_rank_point": 2610,
+  "current_price": 2610,
+  "previous_price": 2619,
   "day_open_price": 2137,
   "is_trading_locked": true,
-  "last_settlement_delta": 263,
-  "treasury_pool": 21271006.0,
+  "last_settlement_delta": -9,
+  "treasury_pool": 132713767.0,
   "free_trading_remaining": 0,
   "free_trading_end_time": 0.0,
   "casino_is_open": false,
@@ -25,21 +25,26 @@
   "merchant_items": {
     "shield": {
       "name": "🛡️ 파괴방어권",
-      "price": 356902,
+      "price": 570000,
       "stock": 0
     },
     "boost": {
       "name": "⚡ 강화확률상승권",
-      "price": 350000,
+      "price": 510000,
       "stock": 0
     },
     "downgrade": {
       "name": "📉 하강방지권",
       "price": 400000,
       "stock": 0
+    },
+    "snipe": {
+      "name": "🎯 잠재저격주문서",
+      "price": 420000,
+      "stock": 0
     }
   },
-  "day_diff": 659,
-  "day_diff_pct": 30.84,
-  "updated_at": "2026-09-19 01:00:35"
+  "day_diff": 473,
+  "day_diff_pct": 22.13,
+  "updated_at": "2026-09-19 05:45:19"
 }

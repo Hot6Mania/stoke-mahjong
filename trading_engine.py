@@ -4,6 +4,8 @@ import json
 import hashlib
 import random
 import re
+import uuid
+import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Tuple, List, Optional
 from sqlalchemy import func
@@ -11,7 +13,8 @@ from sqlalchemy.orm import Session
 from models import (
     User, Position, MarketState, LimitOrder, ProductType,
     OrderType, OrderStatus, BankruptcyApplication, BankruptcyStatus,
-    DonationRecord, UserEquipment, EquipmentListing, ItemListing
+    DonationRecord, UserEquipment, EquipmentListing, ItemListing,
+    UserAssetHistory, ArenaMatchLog
 )
 
 PRODUCT_MULTIPLIERS: Dict[ProductType, float] = {
@@ -301,8 +304,26 @@ def parse_product_type(text: str) -> Optional[ProductType]:
 STARTING_POINTS: int = 50000
 DEFAULT_TREASURY_POOL: float = 500000.0
 TRADING_FEE_RATE: float = 0.01  # 1% 거래 수수료 -> 국고 채굴풀 자동 적립
-MAX_LOAN_LIMIT: int = 50000000    # 최대 50,000,000P 신용 대출 한도 (1,000배 대폭 상향)
-LOAN_INTEREST_RATE: float = 0.02 # 경기당 2% 대출 이자 (국고 환수)
+MAX_LOAN_LIMIT: int = 50000000    # 최대 50,000,000P 신용 대출 상한선 (1등급 한도)
+LOAN_INTEREST_RATE: float = 0.02 # 경기당 2% 대출 기준 이자 (5등급 기준)
+
+# ==========================================
+# Credit Rating & Personalized Loan Limit System (개인별 신용등급 및 차등 대출 한도제)
+# ==========================================
+# 1등급(AAA) ~ 10등급(D) 개인 신용평가 체계 (0~1000점)
+CREDIT_TIERS: List[Tuple[int, int, str, str, int, float]] = [
+    # (min_score, tier, grade, tier_name, loan_limit, interest_rate)
+    (900, 1,  "AAA", "1등급 (AAA 최우수)", 50000000, 0.010),
+    (800, 2,  "AA",  "2등급 (AA 우수)",    30000000, 0.012),
+    (700, 3,  "A",   "3등급 (A 우량)",     15000000, 0.015),
+    (600, 4,  "BBB", "4등급 (BBB 양호)",   7000000,  0.018),
+    (500, 5,  "BB",  "5등급 (BB 보통)",    3000000,  0.020),
+    (400, 6,  "B",   "6등급 (B 일반)",     1500000,  0.022),
+    (300, 7,  "CCC", "7등급 (CCC 주의)",    700000,  0.025),
+    (200, 8,  "CC",  "8등급 (CC 경고)",     300000,  0.030),
+    (100, 9,  "C",   "9등급 (C 고위험)",    100000,  0.035),
+    (0,   10, "D",   "10등급 (D 신용불량)",        0, 0.050),
+]
 
 # 계좌이체 수수료 정책: 1만P 미만 면세, 1만P 이상 0.1%(1만P당 10P), 10만P 이상 0.2%(10만P당 200P)의 미미한 수수료
 TRANSFER_TAX_THRESHOLD: int = 10000       # 1만P 이상 이체 시 미미한 수수료 부과
@@ -591,7 +612,7 @@ def match_potential_target(target_str: Optional[str]) -> Tuple[Optional[str], Op
         return "⛏️ 채굴 계열 전체", [
             "MINING_CD_RESET", "MINING_BONUS_CASH", "MINING_CRIT_BOOST",
             "MINING_YIELD_BOOST", "HEAVY_MINING", "MINING_CD_REDUCTION",
-            "AUTO_MINING_DURATION", "TREASURY_LOOT_PCT"
+            "AUTO_MINING_DURATION", "TREASURY_LOOT_PCT", "GOBLIN_JACKPOT_CHANCE"
         ]
     if any(k in raw for k in ["카지노", "도박", "casino"]):
         return "🎰 카지노 계열 전체", [
@@ -607,6 +628,263 @@ def match_potential_target(target_str: Optional[str]) -> Tuple[Optional[str], Op
         ]
 
     return None, None
+
+
+SNIPE_TARGET_DEFINITIONS: List[Dict[str, Any]] = [
+    # 1. Mining
+    {
+        "keyword": "고블린",
+        "aliases": ["황금고블린", "goblin"],
+        "category": "채굴",
+        "name": "황금 고블린 잭팟",
+        "icon": "👹",
+        "desc": "채굴 시 확률적으로 황금 고블린을 토벌하여 거액 잭팟 현금 획득",
+        "max_val": "최대 15% / +3,500,000P"
+    },
+    {
+        "keyword": "과충전",
+        "aliases": ["묵직", "heavy", "오버차지"],
+        "category": "채굴",
+        "name": "과충전 집중 채굴",
+        "icon": "🌋",
+        "desc": "쿨타임이 소폭 증가하는 대신 채굴량(주식/현금) 초대박 한방 증폭",
+        "max_val": "쿨+7분 대신 보상 +400% (5.0배)"
+    },
+    {
+        "keyword": "쿨초",
+        "aliases": ["초기화", "reset"],
+        "category": "채굴",
+        "name": "쿨타임 즉시 초기화",
+        "icon": "⚡",
+        "desc": "채굴 직후 즉시 쿨타임이 0초로 리셋되어 연속 채굴 가능",
+        "max_val": "최대 15% 확률로 쿨타임 즉시 0초"
+    },
+    {
+        "keyword": "쿨감",
+        "aliases": ["단축", "reduction"],
+        "category": "채굴",
+        "name": "채굴 쿨타임 단축",
+        "icon": "⌛",
+        "desc": "곡괭이의 기본 채굴 쿨타임을 영구적으로 단축",
+        "max_val": "쿨타임 -3분 영구 단축"
+    },
+    {
+        "keyword": "크리",
+        "aliases": ["치명", "crit"],
+        "category": "채굴",
+        "name": "채굴 크리티컬 확률",
+        "icon": "💥",
+        "desc": "채굴 시 1.5배~3.0배 대박 크리티컬 발생 확률 대폭 증가",
+        "max_val": "크리티컬 확률 +25%"
+    },
+    {
+        "keyword": "채굴량",
+        "aliases": ["배율", "yield"],
+        "category": "채굴",
+        "name": "주식 채굴량 배율",
+        "icon": "⛏️",
+        "desc": "매 채굴 시 주어지는 1X 마작 주식 기본 배율 증가",
+        "max_val": "주식 채굴 배율 +2.0x"
+    },
+    {
+        "keyword": "현금",
+        "aliases": ["캐시", "cash"],
+        "category": "채굴",
+        "name": "채굴 확정 현금",
+        "icon": "🪙",
+        "desc": "채굴 성공 시마다 무조건 확정 추가 현금(P) 지급",
+        "max_val": "매 채굴마다 확정 +60,000P"
+    },
+    {
+        "keyword": "국고",
+        "aliases": ["갈취", "loot"],
+        "category": "채굴",
+        "name": "국고 풀 갈취",
+        "icon": "🏛️",
+        "desc": "채굴 시 국고 상금풀의 일정 퍼센트를 추가로 털어 현금 강탈",
+        "max_val": "국고 잔고의 0.25% 약탈"
+    },
+    {
+        "keyword": "자동",
+        "aliases": ["지속", "auto"],
+        "category": "채굴",
+        "name": "자동채굴 시간 연장",
+        "icon": "⏰",
+        "desc": "자동 채굴 이용권 활성화 시 지속 시간을 대폭 연장",
+        "max_val": "지속 시간 +100% (2배)"
+    },
+
+    # 2. Starforce
+    {
+        "keyword": "성공률",
+        "aliases": ["성공확률"],
+        "category": "스타포스",
+        "name": "강화 성공률 증가",
+        "icon": "⭐",
+        "desc": "스타포스 강화 성공률을 올리고 실패 확률을 직접 감소",
+        "max_val": "성공률 +8.0% & 실패율 -8.0%"
+    },
+    {
+        "keyword": "할인",
+        "aliases": ["강화비"],
+        "category": "스타포스",
+        "name": "스타포스 강화비 할인",
+        "icon": "🔨",
+        "desc": "스타포스 강화 시 지불하는 포인트 비용 상시 할인",
+        "max_val": "강화 비용 20% 상시 할인"
+    },
+    {
+        "keyword": "파괴방지",
+        "aliases": ["세이프가드", "safeguard"],
+        "category": "스타포스",
+        "name": "15성+ 파괴 방지",
+        "icon": "🛡️",
+        "desc": "15성 이상 위험 구간에서 파괴 실패 시 파괴를 무효화",
+        "max_val": "파괴 무효화 확률 65%"
+    },
+
+    # 3. Stock & Dividend
+    {
+        "keyword": "배당",
+        "aliases": ["dividend"],
+        "category": "주식",
+        "name": "배당금 수령 증폭",
+        "icon": "📈",
+        "desc": "마작 경기 종료 시 주주들에게 정산되는 배당금 수령액 증폭",
+        "max_val": "배당금 수령액 +100% (2배!)"
+    },
+    {
+        "keyword": "수수료",
+        "aliases": ["fee"],
+        "category": "주식",
+        "name": "거래 수수료 감면",
+        "icon": "📉",
+        "desc": "주식 매매 수수료 및 P2P 송금 수수료 감면 혜택",
+        "max_val": "수수료 60% 상시 감면"
+    },
+    {
+        "keyword": "야수",
+        "aliases": ["레버리지", "beast"],
+        "category": "주식",
+        "name": "야수의 심장",
+        "icon": "🦁",
+        "desc": "20X / 40X / 60X 초고배율 야수주 매매 권한 영구 해금",
+        "max_val": "최대 60배 레버리지 개방"
+    },
+
+    # 4. Casino
+    {
+        "keyword": "슬롯",
+        "aliases": ["slot"],
+        "category": "카지노",
+        "name": "슬롯 당첨금 보너스",
+        "icon": "🎰",
+        "desc": "카지노 슬롯머신 당첨 시 당첨금 추가 보너스 증폭",
+        "max_val": "당첨금 +14% 보너스"
+    },
+    {
+        "keyword": "주사위",
+        "aliases": ["dice"],
+        "category": "카지노",
+        "name": "주사위 패배 페이백",
+        "icon": "🎲",
+        "desc": "카지노 주사위 배틀 패배 시 베팅 포인트 일부 환급",
+        "max_val": "패배 시 20% 즉시 페이백"
+    },
+    {
+        "keyword": "마작",
+        "aliases": ["화료", "mahjong"],
+        "category": "카지노",
+        "name": "마작패 화료 배당 보너스",
+        "icon": "🀄",
+        "desc": "마작패 뽑기 맞추기 적중 시 당첨금 추가 보너스",
+        "max_val": "적중 배당금 +11.1% 보너스"
+    },
+    {
+        "keyword": "경마",
+        "aliases": ["레이스", "race"],
+        "category": "카지노",
+        "name": "역만 레이스 2등 세이프티",
+        "icon": "🏇",
+        "desc": "역만 경마에서 2등(준우승) 시 베팅금 세이프티 환급",
+        "max_val": "2등 시 베팅금 40% 환급"
+    },
+
+    # 5. Broad Groups
+    {
+        "keyword": "채굴",
+        "aliases": ["광부", "mining"],
+        "category": "통합",
+        "name": "⛏️ 채굴 계열 종합 (9종)",
+        "icon": "⛏️",
+        "desc": "채굴 관련 9개 옵션 전체에 3.5배 가중치 분산 적용",
+        "max_val": "채굴 9종 종합 가중치"
+    },
+    {
+        "keyword": "스타포스",
+        "aliases": ["강화", "starforce"],
+        "category": "통합",
+        "name": "⭐ 스타포스 계열 종합 (3종)",
+        "icon": "⭐",
+        "desc": "강화 관련 3개 옵션 전체에 3.5배 가중치 분산 적용",
+        "max_val": "강화 3종 종합 가중치"
+    },
+    {
+        "keyword": "주식",
+        "aliases": ["stock"],
+        "category": "통합",
+        "name": "📈 주식/배당 계열 종합 (3종)",
+        "icon": "📈",
+        "desc": "주식/배당/수수료 3개 옵션 전체에 3.5배 가중치 적용",
+        "max_val": "주식 3종 종합 가중치"
+    },
+    {
+        "keyword": "카지노",
+        "aliases": ["도박", "casino"],
+        "category": "통합",
+        "name": "🎰 카지노 계열 종합 (4종)",
+        "icon": "🎰",
+        "desc": "카지노 미니게임 4개 옵션 전체에 3.5배 가중치 적용",
+        "max_val": "도박 4종 종합 가중치"
+    }
+]
+
+
+def get_snipe_options_data() -> List[Dict[str, Any]]:
+    """Returns structured list of all snipe target definitions."""
+    return SNIPE_TARGET_DEFINITIONS
+
+
+def get_snipe_options_guide_text() -> str:
+    """Returns formatted guide text for potential snipe scroll options."""
+    return (
+        "🎯 [잠재저격주문서 옵션 키워드 전체 목록]\n"
+        "💡 사용법: !큐브 [장비번호] [옵션명] 또는 !주문서 저격 [옵션명] (예: !큐브 저격 고블린)\n"
+        "• 저격 주문서 사용 시 Line 1 확정 저격 확률 35% + 전 라인 3.5배 가중치 부여!\n\n"
+        "⛏️ [채굴 계열]\n"
+        "• 고블린: 👹 황금 고블린 잭팟 (채굴 시 최대 +350만P 잭팟)\n"
+        "• 과충전: 🌋 과충전 집중 채굴 (쿨+7분 대신 보상 +400% 5배)\n"
+        "• 쿨초: ⚡ 쿨타임 즉시 초기화 (채굴 시 최대 15% 쿨타임 0초)\n"
+        "• 쿨감: ⌛ 채굴 쿨타임 단축 (쿨타임 -3분 영구 단축)\n"
+        "• 크리: 💥 채굴 크리티컬 확률 (치명타율 최대 +25%)\n"
+        "• 채굴량: ⛏️ 주식 채굴량 배율 (채굴량 최대 +2.0x)\n"
+        "• 현금: 🪙 채굴 확정 현금 (매 채굴 시 확정 +6만P)\n"
+        "• 국고: 🏛️ 국고 풀 갈취 (국고 잔고의 0.25% 추가 약탈)\n"
+        "• 자동: ⏰ 자동채굴 시간 연장 (지속 시간 최대 +100%)\n\n"
+        "⭐ [스타포스 강화 계열]\n"
+        "• 성공률: ⭐ 강화 성공률 증가 & 실패율 감소 (성공률 +8%)\n"
+        "• 할인: 🔨 스타포스 강화비 할인 (강화 비용 20% 상시 할인)\n"
+        "• 파괴방지: 🛡️ 15성+ 파괴 방지 (15성 이상 실패 시 65% 방어)\n\n"
+        "📈 [주식 & 배당 계열]\n"
+        "• 배당: 📈 배당금 수령 증폭 (경기 종료 배당금 최대 2배!)\n"
+        "• 수수료: 📉 거래 수수료 감면 (주식/송금 수수료 최대 60% 감면)\n"
+        "• 야수: 🦁 야수의 심장 (20X~60X 초고배율 레버리지 개방)\n\n"
+        "🎰 [카지노 계열]\n"
+        "• 슬롯: 🎰 당첨금 보너스 (+14%) | 주사위: 🎲 패배 페이백 (20%)\n"
+        "• 마작: 🀄 화료 보너스 (+11.1%) | 경마: 🏇 2등 세이프티 (40%)\n\n"
+        "🌐 [통합 계열] 채굴, 스타포스, 주식, 카지노 (해당 계열 전체 분산 가중치)"
+    )
+
 
 def get_lower_potential_tier(tier: str) -> str:
     """Returns the tier directly below the given tier (minimum RARE)."""
@@ -670,16 +948,20 @@ def roll_cube_potential(
     # Line 1: 100% Current tier (35% targeted snipe chance if target_codes provided)
     line1 = roll_single_potential_line(tier, target_codes=target_codes, target_chance_pct=35.0 if target_codes else 0.0)
 
-    # Line 2: 50% Current / 50% Lower (RARE is always RARE)
+    # Line 2: 50% Current / 50% Lower (RARE is always RARE | LEGENDARY boosted to 80%)
     if tier == "RARE":
         l2_tier = "RARE"
+    elif tier == "LEGENDARY":
+        l2_tier = "LEGENDARY" if random.random() < 0.80 else lower_tier
     else:
         l2_tier = tier if random.random() < 0.50 else lower_tier
     line2 = roll_single_potential_line(l2_tier, target_codes=target_codes, target_chance_pct=0.0)
 
-    # Line 3: 20% Current / 80% Lower
+    # Line 3: 20% Current / 80% Lower (RARE is always RARE | LEGENDARY boosted to 60%)
     if tier == "RARE":
         l3_tier = "RARE"
+    elif tier == "LEGENDARY":
+        l3_tier = "LEGENDARY" if random.random() < 0.60 else lower_tier
     else:
         l3_tier = tier if random.random() < 0.20 else lower_tier
     line3 = roll_single_potential_line(l3_tier, target_codes=target_codes, target_chance_pct=0.0)
@@ -1118,6 +1400,268 @@ def calculate_position_valuation(position: Position, current_base_price: int) ->
         "pnl_pct": pnl_pct,
     }
 
+def get_user_credit_info(
+    user: User,
+    db: Optional[Session] = None,
+    market_state: Optional[MarketState] = None
+) -> Dict[str, Any]:
+    """
+    Computes real-time dynamic credit rating (신용등급), credit score (0~1000),
+    personalized margin loan limit, and interest rate.
+    
+    Scoring model:
+    - Base: 500 pts (BB tier)
+    - Net Worth / Assets: -150 ~ +200 pts
+    - Collateral / Equipment: 0 ~ +180 pts
+    - Income / Mining: 0 ~ +120 pts
+    - Repayment History: 0 ~ +150 pts
+    - Donation VIP: 0 ~ +80 pts
+    - Debt Overleverage: 0 ~ -200 pts
+    - Bankruptcy history: -350 pts
+    """
+    cash = int(getattr(user, "points", 0) or 0)
+    debt = int(getattr(user, "debt", 0) or 0)
+    total_mined = float(getattr(user, "total_mined", 0.0) or 0.0)
+    repay_count = int(getattr(user, "repay_count", 0) or 0)
+    total_repaid = int(getattr(user, "total_repaid", 0) or 0)
+
+    # 1. Position stock valuation
+    stock_value = 0.0
+    current_price = 2340
+    if market_state is not None:
+        current_price = getattr(market_state, "current_price", 2340) or 2340
+    elif db is not None:
+        try:
+            st = get_market_state(db)
+            if st:
+                current_price = getattr(st, "current_price", 2340) or 2340
+        except Exception:
+            pass
+
+    positions = getattr(user, "positions", None)
+    if positions:
+        for p in positions:
+            if getattr(p, "quantity", 0) > 0:
+                try:
+                    val = calculate_position_valuation(p, current_price)
+                    stock_value += val.get("current_value", 0.0)
+                except Exception:
+                    pass
+
+    net_worth = int(round(cash + stock_value - debt))
+
+    # Factor 1: Net Worth score (-150 ~ +200)
+    if net_worth >= 100000000:
+        asset_score = 200
+    elif net_worth >= 30000000:
+        asset_score = 160
+    elif net_worth >= 10000000:
+        asset_score = 120
+    elif net_worth >= 3000000:
+        asset_score = 80
+    elif net_worth >= 1000000:
+        asset_score = 50
+    elif net_worth >= 100000:
+        asset_score = 25
+    elif net_worth >= 0:
+        asset_score = 0
+    elif net_worth >= -500000:
+        asset_score = -50
+    elif net_worth >= -2000000:
+        asset_score = -100
+    else:
+        asset_score = -150
+
+    # Factor 2: Collateral Equipment score (0 ~ +180)
+    collateral_score = 0
+    equipped = None
+    equipments = getattr(user, "equipments", None)
+    if equipments:
+        for eq in equipments:
+            if getattr(eq, "is_equipped", False):
+                equipped = eq
+                break
+        if not equipped and len(equipments) > 0:
+            equipped = max(equipments, key=lambda e: getattr(e, "starforce", 0) or 0)
+
+    if equipped:
+        ename = getattr(equipped, "name", "")
+        if "다이아" in ename:
+            collateral_score += 60
+        elif "백금" in ename:
+            collateral_score += 45
+        elif "황금" in ename:
+            collateral_score += 30
+        elif "은" in ename:
+            collateral_score += 15
+        else:
+            collateral_score += 5
+
+        sf = int(getattr(equipped, "starforce", 0) or 0)
+        collateral_score += min(75, sf * 3)
+
+        pot = (getattr(equipped, "potential_tier", "") or "").upper()
+        if pot == "LEGENDARY":
+            collateral_score += 45
+        elif pot == "UNIQUE":
+            collateral_score += 30
+        elif pot == "EPIC":
+            collateral_score += 20
+        elif pot == "RARE":
+            collateral_score += 10
+    else:
+        pick_lvl = getattr(user, "pickaxe_level", 1) or 1
+        if pick_lvl >= 5:
+            collateral_score += 60
+        elif pick_lvl == 4:
+            collateral_score += 45
+        elif pick_lvl == 3:
+            collateral_score += 30
+        elif pick_lvl == 2:
+            collateral_score += 15
+        else:
+            collateral_score += 5
+
+    # Factor 3: Income / Mining score (0 ~ +120)
+    if total_mined >= 5000000:
+        mining_score = 120
+    elif total_mined >= 1000000:
+        mining_score = 90
+    elif total_mined >= 200000:
+        mining_score = 60
+    elif total_mined >= 50000:
+        mining_score = 30
+    elif total_mined >= 10000:
+        mining_score = 15
+    else:
+        mining_score = 0
+
+    # Factor 4: Repayment History score (0 ~ +150)
+    cnt_pts = min(60, repay_count * 10)
+    if total_repaid >= 10000000:
+        amt_pts = 90
+    elif total_repaid >= 3000000:
+        amt_pts = 60
+    elif total_repaid >= 1000000:
+        amt_pts = 40
+    elif total_repaid >= 200000:
+        amt_pts = 20
+    elif total_repaid >= 1:
+        amt_pts = 10
+    else:
+        amt_pts = 0
+    repayment_score = cnt_pts + amt_pts
+
+    # Factor 5: Donation VIP score (0 ~ +80)
+    donation_score = 0
+    donations = getattr(user, "donations", None)
+    if donations:
+        d_cnt = len(donations)
+        if d_cnt >= 5:
+            donation_score = 80
+        elif d_cnt >= 2:
+            donation_score = 50
+        elif d_cnt >= 1:
+            donation_score = 30
+
+    # Factor 6: Debt Overleverage penalty (0 ~ -200)
+    gross_assets = max(0.0, cash + stock_value)
+    if debt <= 0:
+        debt_penalty = 20  # clean credit bonus!
+    else:
+        if gross_assets <= 0:
+            debt_penalty = -200
+        else:
+            ratio = debt / gross_assets
+            if ratio > 2.0:
+                debt_penalty = -200
+            elif ratio > 1.2:
+                debt_penalty = -120
+            elif ratio > 0.7:
+                debt_penalty = -60
+            elif ratio > 0.3:
+                debt_penalty = -20
+            else:
+                debt_penalty = 0
+
+    # Factor 7: Bankruptcy Penalty (0 ~ -350)
+    bankruptcy_penalty = 0
+    if getattr(user, "last_bankrupt_at", None) is not None:
+        bankruptcy_penalty = -350
+
+    # Compute Total Score clamped [0, 1000]
+    raw_score = (
+        500
+        + asset_score
+        + collateral_score
+        + mining_score
+        + repayment_score
+        + donation_score
+        + debt_penalty
+        + bankruptcy_penalty
+    )
+    final_score = max(0, min(1000, int(round(raw_score))))
+
+    # Match tier
+    tier_info = CREDIT_TIERS[-1]  # default to lowest
+    for t in CREDIT_TIERS:
+        if final_score >= t[0]:
+            tier_info = t
+            break
+
+    _, tier_num, grade_str, tier_name_str, limit_val, interest_val = tier_info
+    avail_val = max(0, limit_val - debt)
+
+    return {
+        "score": final_score,
+        "tier": tier_num,
+        "grade": grade_str,
+        "tier_name": tier_name_str,
+        "loan_limit": limit_val,
+        "available_borrow": avail_val,
+        "interest_rate": interest_val,
+        "interest_rate_pct": round(interest_val * 100.0, 1),
+        "debt": debt,
+        "net_worth": net_worth,
+        "cash": cash,
+        "stock_value": stock_value,
+        "factors": {
+            "asset_score": asset_score,
+            "collateral_score": collateral_score,
+            "mining_score": mining_score,
+            "repayment_score": repayment_score,
+            "donation_score": donation_score,
+            "debt_penalty": debt_penalty,
+            "bankruptcy_penalty": bankruptcy_penalty
+        }
+    }
+
+def get_user_loan_limit(db: Session, user: User) -> int:
+    """Returns the maximum loan limit for the user based on dynamic credit rating."""
+    info = get_user_credit_info(user, db=db)
+    return info["loan_limit"]
+
+def format_user_credit_report(user: User, db: Session) -> str:
+    """Formats a detailed credit rating report for chat display."""
+    info = get_user_credit_info(user, db=db)
+    f = info["factors"]
+    plus_minus = lambda v: f"+{v}" if v > 0 else str(v)
+
+    report = (
+        f"💳 [나베신용평가원] {user.username}님의 신용평가 보고서\n"
+        f"• 신용등급: {info['tier_name']} (신용점수: {info['score']}점 / 1,000점)\n"
+        f"• 대출 한도: {info['loan_limit']:,}P (현재 빚: {info['debt']:,}P | 대출 가능: {info['available_borrow']:,}P)\n"
+        f"• 적용 금리: 경기당 {info['interest_rate_pct']:.1f}% (기준금리 2.0%)\n"
+        f"• 신용 평가 요인:\n"
+        f"  - 순자산: {info['net_worth']:,}P ({plus_minus(f['asset_score'])}점)\n"
+        f"  - 장비/담보: {plus_minus(f['collateral_score'])}점 | 채굴 실적: {plus_minus(f['mining_score'])}점\n"
+        f"  - 상환 실적: {plus_minus(f['repayment_score'])}점 | 부채 위험도: {plus_minus(f['debt_penalty'])}점"
+    )
+    if f["bankruptcy_penalty"] < 0:
+        report += f"\n  - ⚠️ 파산 이력 감점: {f['bankruptcy_penalty']}점"
+    report += "\n💡 신용 올리기: 성실한 채굴, 곡괭이 강화, 대출금 정상 상환 시 신용점수가 대폭 상승합니다!"
+    return report
+
 def execute_buy(
     db: Session,
     user_id: str,
@@ -1161,13 +1705,14 @@ def execute_buy(
         quantity = math.floor(user.points / (current_price * (1.0 + TRADING_FEE_RATE)))
         if quantity <= 0:
             current_debt = getattr(user, "debt", 0) or 0
-            avail_loan = max(0, MAX_LOAN_LIMIT - current_debt)
+            credit_info = get_user_credit_info(user, db=db, market_state=state)
+            avail_loan = max(0, credit_info["loan_limit"] - current_debt)
             treasury_avail = int(getattr(state, "treasury_pool", DEFAULT_TREASURY_POOL) or 0)
             actual_avail = min(avail_loan, treasury_avail)
             if actual_avail > 0:
                 return False, (
                     f"⚠️ 보유 포인트가 부족하여 올인 매수할 수 없습니다 (보유: {user.points:,}P, 1주 필요: {int(current_price * (1.0 + TRADING_FEE_RATE)):,}P). "
-                    f"💡 빚(국고 대출)으로 올인하시려면 '!매수 {product_type.value} 빚올인' 또는 '!빚올인 {product_type.value}'을 입력하세요! (대출 가능 한도: {actual_avail:,}P)"
+                    f"💡 빚(국고 대출)으로 올인하시려면 '!매수 {product_type.value} 빚올인' 또는 '!빚올인 {product_type.value}'을 입력하세요! (신용: {credit_info['tier_name']}, 대출 가능: {actual_avail:,}P)"
                 ), None
             return False, f"⚠️ 포인트가 부족하여 올인 매수할 수 없습니다. (보유: {user.points:,}P, 현재가: {current_price:,}P, 수수료: 1%)", None
     else:
@@ -1280,8 +1825,11 @@ def execute_margin_buy(
     if getattr(state, "treasury_pool", None) is None:
         state.treasury_pool = DEFAULT_TREASURY_POOL
 
+    credit_info = get_user_credit_info(user, db=db, market_state=state)
+    user_loan_limit = credit_info["loan_limit"]
+
     # Calculate borrowable capacity
-    max_borrow = max(0, MAX_LOAN_LIMIT - current_debt)
+    max_borrow = max(0, user_loan_limit - current_debt)
     borrow_amount = min(max_borrow, int(state.treasury_pool))
 
     # If user has borrowable room and treasury has funds, borrow first
@@ -1298,7 +1846,7 @@ def execute_margin_buy(
             db.commit()
             if borrow_amount > 0:
                 return False, f"⚠️ 국고에서 {borrow_amount:,}P를 대출하였으나 현재 주가({current_price:,}P) 1주를 매수하기에 부족합니다. (보유 현금: {user.points:,}P, 총 빚: {user.debt:,}P)", None
-            return False, f"⚠️ 이미 최대 대출 한도({MAX_LOAN_LIMIT:,}P)에 도달하였고 잔여 포인트({user.points:,}P)도 부족하여 매수할 수 없습니다. (총 빚: {user.debt:,}P)", None
+            return False, f"⚠️ 이미 {user.username}님의 신용등급({credit_info['tier_name']}) 최대 대출 한도({user_loan_limit:,}P)에 도달하였고 잔여 포인트({user.points:,}P)도 부족하여 매수할 수 없습니다. (총 빚: {user.debt:,}P)", None
     else:
         try:
             quantity = float(clean_qty_str)
@@ -1832,7 +2380,8 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         total_interest_collected = 0
         debtors = db.query(User).filter(User.debt > 0).all()
         for debtor in debtors:
-            interest = int(math.ceil(debtor.debt * LOAN_INTEREST_RATE))
+            debtor_credit = get_user_credit_info(debtor, db=db, market_state=state)
+            interest = int(math.ceil(debtor.debt * debtor_credit["interest_rate"]))
             if interest > 0:
                 if debtor.points >= interest:
                     debtor.points -= interest
@@ -1947,6 +2496,7 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
                         "user_id": u.id,
                         "username": u.username,
                         "payout": payout,
+                        "amount": payout,
                         "shares": p.quantity,
                         "rate_pct": div_rate * 100.0,
                         "dividend_boost_pct": div_boost_pct
@@ -2037,7 +2587,8 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
     total_interest_collected = 0
     debtors = db.query(User).filter(User.debt > 0).all()
     for debtor in debtors:
-        interest = int(math.ceil(debtor.debt * LOAN_INTEREST_RATE))
+        debtor_credit = get_user_credit_info(debtor, db=db, market_state=state)
+        interest = int(math.ceil(debtor.debt * debtor_credit["interest_rate"]))
         if interest > 0:
             if debtor.points >= interest:
                 debtor.points -= interest
@@ -2055,6 +2606,19 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
 
     # Unlock market after settlement
     state.is_trading_locked = False
+
+    # Record asset snapshots for all users after match settlement
+    try:
+        all_users = db.query(User).all()
+        for u in all_users:
+            record_user_asset_snapshot(
+                db, u,
+                event_type="SETTLEMENT",
+                note=f"마작 경기 정산: {rank}등 ({point_delta:+d}pt)",
+                force=True
+            )
+    except Exception:
+        pass
 
     db.commit()
     db.refresh(state)
@@ -2076,8 +2640,8 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         "interest_collected": total_interest_collected
     }
 
-# 메이플 스타일 곡괭이 스타포스 강화표 (0성 ~ 25성 MAX)
-# 0~14성: 파괴 0% (안전/하락) | 15성~: 파괴 확률 존재 (파괴 시 12성 장비의 흔적 복원)
+# 메이플 스타일 곡괭이 스타포스 강화표 (0성 ~ 30성 종결 MAX)
+# 2025/2026 메이플스토리 룰 반영: 실패 시 단계 하락 전면 삭제 (등급 유지) | 15성~: 파괴 확률 존재 (파괴 시 12성 장비의 흔적 복원)
 STARFORCE_TIERS: Dict[int, Dict[str, Any]] = {
     0: {"cost": 2000, "success": 99.75, "maintain": 0.25, "drop": 0.0, "destroy": 0.0},
     1: {"cost": 4000, "success": 94.50, "maintain": 5.50, "drop": 0.0, "destroy": 0.0},
@@ -2090,26 +2654,26 @@ STARFORCE_TIERS: Dict[int, Dict[str, Any]] = {
     8: {"cost": 30000, "success": 63.00, "maintain": 37.00, "drop": 0.0, "destroy": 0.0},
     9: {"cost": 40000, "success": 57.75, "maintain": 42.25, "drop": 0.0, "destroy": 0.0},
     10: {"cost": 50000, "success": 52.50, "maintain": 47.50, "drop": 0.0, "destroy": 0.0},
-    # 11~14성: 실패 시 1성 하락, 파괴 없음 (0%)
-    11: {"cost": 70000, "success": 47.25, "maintain": 0.0, "drop": 52.75, "destroy": 0.0},
-    12: {"cost": 100000, "success": 42.00, "maintain": 0.0, "drop": 58.00, "destroy": 0.0},
-    13: {"cost": 140000, "success": 36.75, "maintain": 0.0, "drop": 63.25, "destroy": 0.0},
-    14: {"cost": 200000, "success": 31.50, "maintain": 0.0, "drop": 68.50, "destroy": 0.0},
-    # 15성: 15성 방지턱이라 실패 시 유지, 파괴 확률 발생 (2.055%)
+    11: {"cost": 70000, "success": 47.25, "maintain": 52.75, "drop": 0.0, "destroy": 0.0},
+    12: {"cost": 100000, "success": 42.00, "maintain": 58.00, "drop": 0.0, "destroy": 0.0},
+    13: {"cost": 140000, "success": 36.75, "maintain": 63.25, "drop": 0.0, "destroy": 0.0},
+    14: {"cost": 200000, "success": 31.50, "maintain": 68.50, "drop": 0.0, "destroy": 0.0},
     15: {"cost": 300000, "success": 31.50, "maintain": 66.445, "drop": 0.0, "destroy": 2.055},
-    # 16~19성: 실패 시 하락, 파괴 발생
-    16: {"cost": 450000, "success": 31.50, "maintain": 0.0, "drop": 66.445, "destroy": 2.055},
-    17: {"cost": 650000, "success": 15.75, "maintain": 0.0, "drop": 77.510, "destroy": 6.740},
-    18: {"cost": 900000, "success": 15.75, "maintain": 0.0, "drop": 77.510, "destroy": 6.740},
-    19: {"cost": 1250000, "success": 15.75, "maintain": 0.0, "drop": 75.825, "destroy": 8.425},
-    # 20성: 20성 방지턱이라 실패 시 유지, 파괴 발생 (10.275%)
+    16: {"cost": 450000, "success": 31.50, "maintain": 66.445, "drop": 0.0, "destroy": 2.055},
+    17: {"cost": 650000, "success": 15.75, "maintain": 77.510, "drop": 0.0, "destroy": 6.740},
+    18: {"cost": 900000, "success": 15.75, "maintain": 77.510, "drop": 0.0, "destroy": 6.740},
+    19: {"cost": 1250000, "success": 15.75, "maintain": 75.825, "drop": 0.0, "destroy": 8.425},
     20: {"cost": 1700000, "success": 31.50, "maintain": 58.225, "drop": 0.0, "destroy": 10.275},
-    # 21~24성: 실패 시 하락, 파괴 발생
-    21: {"cost": 2300000, "success": 15.75, "maintain": 0.0, "drop": 71.6125, "destroy": 12.6375},
-    22: {"cost": 3000000, "success": 15.75, "maintain": 0.0, "drop": 67.40, "destroy": 16.85},
-    23: {"cost": 4000000, "success": 10.50, "maintain": 0.0, "drop": 71.60, "destroy": 17.90},
-    24: {"cost": 5500000, "success": 10.50, "maintain": 0.0, "drop": 71.60, "destroy": 17.90},
-    25: {"cost": 0, "success": 0.0, "maintain": 0.0, "drop": 0.0, "destroy": 0.0}
+    21: {"cost": 2300000, "success": 15.75, "maintain": 71.6125, "drop": 0.0, "destroy": 12.6375},
+    22: {"cost": 3000000, "success": 15.75, "maintain": 67.40, "drop": 0.0, "destroy": 16.85},
+    23: {"cost": 4200000, "success": 10.50, "maintain": 71.60, "drop": 0.0, "destroy": 17.90},
+    24: {"cost": 5800000, "success": 10.50, "maintain": 71.60, "drop": 0.0, "destroy": 17.90},
+    25: {"cost": 8000000, "success": 10.50, "maintain": 71.60, "drop": 0.0, "destroy": 17.90},
+    26: {"cost": 11000000, "success": 7.35, "maintain": 74.16, "drop": 0.0, "destroy": 18.53},
+    27: {"cost": 15000000, "success": 5.25, "maintain": 75.80, "drop": 0.0, "destroy": 18.95},
+    28: {"cost": 20000000, "success": 3.15, "maintain": 77.48, "drop": 0.0, "destroy": 19.37},
+    29: {"cost": 26000000, "success": 1.05, "maintain": 79.16, "drop": 0.0, "destroy": 19.79},
+    30: {"cost": 0, "success": 0.0, "maintain": 0.0, "drop": 0.0, "destroy": 0.0}
 }
 
 STARFORCE_EVENT_TYPES: Dict[str, Dict[str, Any]] = {
@@ -2799,6 +3363,7 @@ def execute_buy_lottery(
         "net_profit": net_profit,
         "has_jackpot": len(jackpot_hits) > 0,
         "jackpots": jackpot_hits,
+        "tickets": tickets_results,
         "user_points": user.points,
         "treasury_pool": state.treasury_pool
     }
@@ -2918,13 +3483,13 @@ def get_merchant_state(
             end_time = now + dur_m * 60.0
             next_time = end_time + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
 
-            state.merchant_shield_price = random.randint(350000, 700000)
+            state.merchant_shield_price = random.randint(8, 98) * 10000
             state.merchant_shield_stock = random.randint(2, 6)
-            state.merchant_boost_price = random.randint(250000, 450000)
-            state.merchant_boost_stock = random.randint(5, 12)
-            state.merchant_downgrade_price = random.randint(300000, 550000)
+            state.merchant_boost_price = random.randint(4, 65) * 10000
+            state.merchant_boost_stock = random.randint(4, 12)
+            state.merchant_downgrade_price = random.randint(6, 80) * 10000
             state.merchant_downgrade_stock = random.randint(3, 8)
-            state.merchant_snipe_price = random.randint(350000, 650000)
+            state.merchant_snipe_price = random.randint(9, 120) * 10000
             state.merchant_snipe_stock = random.randint(2, 5)
 
             state.merchant_is_open = True
@@ -2941,24 +3506,24 @@ def get_merchant_state(
     rem_sec = max(0, int(end_time - now)) if active else 0
     next_in_sec = max(0, int(next_time - now)) if (next_time and next_time > now) else 0
 
-    # Auto-upgrade legacy cheap prices if found in database
+    # Auto-initialize legacy zero prices if found in database
     cur_shield_price = getattr(state, "merchant_shield_price", 0) or 0
     cur_boost_price = getattr(state, "merchant_boost_price", 0) or 0
     cur_downgrade_price = getattr(state, "merchant_downgrade_price", 0) or 0
     cur_snipe_price = getattr(state, "merchant_snipe_price", 0) or 0
 
     updated_m_price = False
-    if cur_shield_price < 350000:
-        state.merchant_shield_price = random.randint(350000, 700000)
+    if cur_shield_price <= 0:
+        state.merchant_shield_price = random.randint(8, 98) * 10000
         updated_m_price = True
-    if cur_boost_price < 250000:
-        state.merchant_boost_price = random.randint(250000, 450000)
+    if cur_boost_price <= 0:
+        state.merchant_boost_price = random.randint(4, 65) * 10000
         updated_m_price = True
-    if cur_downgrade_price < 300000:
-        state.merchant_downgrade_price = random.randint(300000, 550000)
+    if cur_downgrade_price <= 0:
+        state.merchant_downgrade_price = random.randint(6, 80) * 10000
         updated_m_price = True
-    if cur_snipe_price < 350000:
-        state.merchant_snipe_price = random.randint(350000, 650000)
+    if cur_snipe_price <= 0:
+        state.merchant_snipe_price = random.randint(9, 120) * 10000
         updated_m_price = True
 
     if updated_m_price:
@@ -3023,14 +3588,14 @@ def open_merchant(
     state.merchant_name = name
     state.merchant_next_time = next_time
 
-    # Generate random prices and stocks
-    state.merchant_shield_price = random.randint(350000, 700000)
+    # Generate random wide-range prices and stocks
+    state.merchant_shield_price = random.randint(8, 98) * 10000
     state.merchant_shield_stock = random.randint(2, 6)
-    state.merchant_boost_price = random.randint(250000, 450000)
-    state.merchant_boost_stock = random.randint(5, 12)
-    state.merchant_downgrade_price = random.randint(300000, 550000)
+    state.merchant_boost_price = random.randint(4, 65) * 10000
+    state.merchant_boost_stock = random.randint(4, 12)
+    state.merchant_downgrade_price = random.randint(6, 80) * 10000
     state.merchant_downgrade_stock = random.randint(3, 8)
-    state.merchant_snipe_price = random.randint(350000, 650000)
+    state.merchant_snipe_price = random.randint(9, 120) * 10000
     state.merchant_snipe_stock = random.randint(2, 5)
 
     db.commit()
@@ -3116,12 +3681,19 @@ def execute_buy_merchant_item(
     if qty <= 0:
         qty = 1
 
+    requested_qty = qty
+    # Clamp quantity to available stock ("더 많은 개수 입력하면 있는만큼 사게해줘")
     if qty > avail_stock:
-        return False, f"⚠️ 신비상인의 남은 재고가 부족합니다! (남은 재고: {avail_stock}개 | 요청: {qty}개)", None
+        qty = avail_stock
 
     total_cost = qty * unit_price
     if user.points < total_cost:
-        return False, f"⚠️ 보유 현금이 부족합니다! (필요: {total_cost:,}P | 보유: {user.points:,}P | 단가: {unit_price:,}P)", None
+        affordable_qty = (user.points // unit_price) if unit_price > 0 else 0
+        if affordable_qty > 0:
+            qty = min(qty, affordable_qty)
+            total_cost = qty * unit_price
+        else:
+            return False, f"⚠️ 보유 현금이 부족합니다! (필요: {unit_price:,}P | 보유: {user.points:,}P | 단가: {unit_price:,}P)", None
 
     # Deduct funds and grant consumable item
     user.points -= total_cost
@@ -3147,13 +3719,27 @@ def execute_buy_merchant_item(
         user.snipe_scroll_count = (getattr(user, "snipe_scroll_count", 0) or 0) + qty
         user_stock = user.snipe_scroll_count
 
+    total_remaining_stock = (
+        (getattr(state, "merchant_shield_stock", 0) or 0) +
+        (getattr(state, "merchant_boost_stock", 0) or 0) +
+        (getattr(state, "merchant_downgrade_stock", 0) or 0) +
+        (getattr(state, "merchant_snipe_stock", 0) or 0)
+    )
+
+    all_sold_out = (total_remaining_stock <= 0)
+    sold_out_msg = ""
+    if all_sold_out:
+        close_merchant(db)
+        sold_out_msg = f"\n🚪💨 [완판 마감] 신비상인의 모든 물품이 완판(매진)되어 보따리를 싸고 마을을 떠났습니다! 다음 방문을 기다려주세요."
+
     db.commit()
     db.refresh(user)
     db.refresh(state)
 
+    clamp_msg = f" (요청 {requested_qty}개 중 가능 수량 {qty}개 구매)" if requested_qty > qty else ""
     reply = (
-        f"🛒✨ [신비상인 구매 완료] {user.username}님이 [{item_def['name']}] {qty}장을 {total_cost:,}P에 구매했습니다! "
-        f"(보유 수량: {user_stock}장 | 잔여 현금: {user.points:,}P | 상인 남은 재고: {max(0, avail_stock - qty)}개)"
+        f"🛒✨ [신비상인 구매 완료] {user.username}님이 [{item_def['name']}] {qty}장을 {total_cost:,}P에 구매했습니다!{clamp_msg} "
+        f"(보유 수량: {user_stock}장 | 잔여 현금: {user.points:,}P | 상인 남은 재고: {max(0, avail_stock - qty)}개){sold_out_msg}"
     )
     details = {
         "item_type": matched_item_type,
@@ -3163,7 +3749,8 @@ def execute_buy_merchant_item(
         "total_cost": total_cost,
         "user_stock": user_stock,
         "remaining_merchant_stock": max(0, avail_stock - qty),
-        "user_points": user.points
+        "user_points": user.points,
+        "all_sold_out": all_sold_out
     }
     return True, reply, details
 
@@ -3197,10 +3784,14 @@ def get_user_item_inventory(db: Session, user: User) -> Dict[str, Any]:
     }
 
 def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    lvl = max(0, min(25, int(level or 0)))
+    lvl = max(0, min(30, int(level or 0)))
 
-    if lvl >= 25:
-        base_name = "🀄 역만 마작 곡괭이"
+    if lvl >= 30:
+        base_name = "👑 오리하르콘 곡괭이"
+    elif lvl >= 28:
+        base_name = "🛡️ 아다만티움 곡괭이"
+    elif lvl >= 25:
+        base_name = "🔮 미스릴 곡괭이"
     elif lvl >= 22:
         base_name = "🌌 옵시디언 곡괭이"
     elif lvl >= 20:
@@ -3215,8 +3806,8 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
         base_name = "🪵 나무 곡괭이"
 
     name = f"{base_name} (★{lvl}성)"
-    if lvl == 25:
-        name = f"{base_name} (★25성 MAX)"
+    if lvl == 30:
+        name = f"{base_name} (★30성 종결 MAX)"
 
     t = dict(STARFORCE_TIERS[lvl])
 
@@ -3246,7 +3837,7 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
         is_guaranteed_100 = True
 
     # Mining yield multiplier calculation (BUFFED)
-    # 0성 1.0x -> 10성 3.0x -> 15성 6.5x -> 20성 22.0x -> 22성 36.0x -> 25성 80.0x
+    # 0성 1.0x -> 10성 3.0x -> 15성 6.5x -> 20성 22.0x -> 22성 36.0x -> 25성 80.0x -> 30성 300.0x
     yield_table = {
         0: 1.00, 1: 1.15, 2: 1.30, 3: 1.45, 4: 1.60,
         5: 1.80, 6: 2.00, 7: 2.20, 8: 2.40, 9: 2.65,
@@ -3254,12 +3845,13 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
         15: 6.50, 16: 8.50, 17: 11.00, 18: 14.00, 19: 17.50,
         20: 22.00, 21: 28.00,
         22: 36.00, 23: 45.00, 24: 58.00,
-        25: 80.00
+        25: 80.00, 26: 105.00, 27: 135.00, 28: 175.00, 29: 230.00,
+        30: 300.00
     }
     yield_mult = yield_table.get(lvl, 1.00)
 
     # Guaranteed Bonus Points per Mine (BUFFED: 5성 돌 곡괭이부터 매 채굴마다 무조건 확정 지급되는 추가 현금)
-    # 0~4성 0P -> 5성 5천P -> 10성 1.5만P -> 15성 6만P -> 20성 28만P -> 22성 50만P -> 25성 120만P
+    # 0~4성 0P -> 5성 5천P -> 10성 1.5만P -> 15성 6만P -> 20성 28만P -> 22성 50만P -> 25성 120만P -> 30성 500만P
     bonus_points_table = {
         0: 0, 1: 0, 2: 0, 3: 0, 4: 0,
         5: 5000, 6: 6500, 7: 8000, 8: 10000, 9: 12000,
@@ -3267,12 +3859,13 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
         15: 60000, 16: 85000, 17: 120000, 18: 160000, 19: 210000,
         20: 280000, 21: 380000,
         22: 500000, 23: 650000, 24: 850000,
-        25: 1200000
+        25: 1200000, 26: 1600000, 27: 2100000, 28: 2800000, 29: 3700000,
+        30: 5000000
     }
     bonus_points = bonus_points_table.get(lvl, 0)
 
     # Crit bonus (BUFFED)
-    # 0성 0% -> 10성 20% -> 15성 45% -> 20성 85% -> 22성 100% -> 25성 150%
+    # 0성 0% -> 10성 20% -> 15성 45% -> 20성 85% -> 22성 100% -> 25성 150% -> 30성 300%
     crit_table = {
         0: 0.0, 1: 1.5, 2: 3.0, 3: 4.5, 4: 6.0,
         5: 8.0, 6: 10.0, 7: 12.0, 8: 14.0, 9: 16.0,
@@ -3280,12 +3873,15 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
         15: 45.0, 16: 52.0, 17: 60.0, 18: 68.0, 19: 76.0,
         20: 85.0, 21: 92.0,
         22: 100.0, 23: 110.0, 24: 120.0,
-        25: 150.0
+        25: 150.0, 26: 175.0, 27: 200.0, 28: 230.0, 29: 265.0,
+        30: 300.0
     }
     crit = crit_table.get(lvl, 0.0)
 
-    # Cooldown minutes (BUFFED: 15분 -> 10분 -> 8분 -> 6분 -> 5분 -> 4분 -> 3분)
-    if lvl >= 25:
+    # Cooldown minutes (BUFFED: 15분 -> 10분 -> 8분 -> 6분 -> 5분 -> 4분 -> 3분 -> 2분)
+    if lvl >= 28:
+        cd_min = 2
+    elif lvl >= 25:
         cd_min = 3
     elif lvl >= 22:
         cd_min = 4
@@ -3332,7 +3928,7 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
     }
 
 # Backwards compatibility dictionary mapping
-PICKAXE_TIERS: Dict[int, Dict[str, Any]] = {i: get_pickaxe_info(i) for i in range(26)}
+PICKAXE_TIERS: Dict[int, Dict[str, Any]] = {i: get_pickaxe_info(i) for i in range(31)}
 
 # 채굴 등급 및 크리티컬 확률/보상 테이블 (일확천금 신화급 잭팟 추가)
 MINING_TIERS = [
@@ -3429,7 +4025,27 @@ def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[st
     for tier in MINING_TIERS:
         code = tier["code"]
         base_prob = tier["prob"]
-        if is_golden_or_above:
+        if lvl >= 20 or cb >= 85.0:
+            # ★ 20성 이상 초고강화 마스터 역만 특화 비례 곱연산 증폭 (합산 역만 28%)
+            if code == "EX":
+                w = base_prob * (1.0 + cb * 0.350)      # 천화 신화 잭팟 대폭 증폭 (약 4.7%)
+            elif code == "UR+":
+                w = base_prob * (1.0 + cb * 0.180)      # 구련보등 더블역만 대폭 증폭 (약 10.0%)
+            elif code == "UR":
+                w = base_prob * (1.0 + cb * 0.090)      # 국사무쌍 역만 대폭 증폭 (약 13.3%)
+            elif code == "SSR":
+                w = base_prob * (1.0 + cb * 0.038)      # 다이아몬드 광맥
+            elif code == "SR":
+                w = base_prob * (1.0 + cb * 0.018)      # 황금 광맥
+            elif code == "R":
+                w = base_prob * (1.0 + cb * 0.002)      # 은 광맥
+            elif code == "N":
+                w = max(0.0, base_prob / (1.0 + cb * 0.030))  # 일반 구리 광맥 감소
+            elif code == "C":
+                w = 0.0  # 석탄 광맥 0% 완전 면제
+            else:
+                w = base_prob
+        elif is_golden_or_above:
             # ★ 15성(황금 곡괭이) 이상 여유롭고 풍성한 고등급 채굴 곱연산 비례 보정
             if code == "EX":
                 w = base_prob * (1.0 + cb * 0.240)      # 천화 신화 잭팟 곱연산 증폭
@@ -3515,11 +4131,16 @@ AUTO_MINING_DURATION_HOURS: Dict[int, float] = {
     22: 20.0,  # 20시간 (옵시디언 22성)
     23: 21.0,  # 21시간
     24: 22.0,  # 22시간
-    25: 24.0   # 24시간 (역만 마작 곡괭이 25성 MAX)
+    25: 24.0,  # 24시간 (미스릴 곡괭이 25성)
+    26: 28.0,  # 28시간
+    27: 32.0,  # 32시간
+    28: 36.0,  # 36시간 (아다만티움 곡괭이 28성)
+    29: 42.0,  # 42시간
+    30: 48.0   # 48시간 (오리하르콘 곡괭이 30성 종결 MAX)
 }
 
 def get_auto_mining_duration_hours(level: int) -> float:
-    lvl = max(0, min(25, int(level or 0)))
+    lvl = max(0, min(30, int(level or 0)))
     return AUTO_MINING_DURATION_HOURS.get(lvl, 0.5)
 
 def format_duration_hours(hours: float) -> str:
@@ -3618,7 +4239,7 @@ def execute_auto_mining_tick(
     # 2. Pickaxe and cooldown check
     equipped_item = get_user_equipped_item(db, user)
     star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
-    star = max(0, min(25, int(star or 0)))
+    star = max(0, min(30, int(star or 0)))
     pickaxe = get_pickaxe_info(star)
     pot_eff = get_equipment_potential_effects(equipped_item) if equipped_item else {}
     pot_cd_red = pot_eff.get("mining_cd_reduction", 0)
@@ -3743,7 +4364,7 @@ def set_auto_mining(
     user = get_or_create_user(db, user_id, username)
     equipped_item = get_user_equipped_item(db, user)
     star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
-    star = max(0, min(25, int(star or 0)))
+    star = max(0, min(30, int(star or 0)))
 
     if enable:
         pot_effects = get_equipment_potential_effects(equipped_item)
@@ -3808,7 +4429,7 @@ def renew_auto_mining(
     user = get_or_create_user(db, user_id, username)
     equipped_item = get_user_equipped_item(db, user)
     star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
-    star = max(0, min(25, int(star or 0)))
+    star = max(0, min(30, int(star or 0)))
 
     pot_effects = get_equipment_potential_effects(equipped_item)
     extra_pct = min(200.0, float(pot_effects.get("auto_duration_pct", 0.0)))
@@ -3846,7 +4467,7 @@ def get_auto_mining_status(db: Session, user_id: str, username: str) -> str:
 
     equipped_item = get_user_equipped_item(db, user)
     star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
-    star = max(0, min(25, int(star or 0)))
+    star = max(0, min(30, int(star or 0)))
     info = get_pickaxe_info(star)
 
     now = time.time()
@@ -3902,7 +4523,7 @@ def ensure_user_equipment(db: Session, user: User) -> List[UserEquipment]:
     """Ensures user has at least one equipment in user_equipments table, with one equipped."""
     items = db.query(UserEquipment).filter_by(user_id=user.id).order_by(UserEquipment.id.asc()).all()
     if not items:
-        star = max(0, min(25, int(getattr(user, "pickaxe_level", 0) or 0)))
+        star = max(0, min(30, int(getattr(user, "pickaxe_level", 0) or 0)))
         info = get_pickaxe_info(star)
         item = UserEquipment(
             user_id=user.id,
@@ -3966,7 +4587,7 @@ def ensure_user_equipment(db: Session, user: User) -> List[UserEquipment]:
             and getattr(user, "pickaxe_level", None) is not None
             and user.pickaxe_level != equipped[0].starforce
         ):
-            equipped[0].starforce = max(0, min(25, int(user.pickaxe_level)))
+            equipped[0].starforce = max(0, min(30, int(user.pickaxe_level)))
             equipped[0].name = get_pickaxe_info(equipped[0].starforce)["name"]
             db.commit()
         elif equipped:
@@ -4003,7 +4624,7 @@ def get_user_cooldown_status(db: Session, user_id: str, username: str) -> str:
     # 1. Pickaxe & Mining Cooldown
     equipped_item = get_user_equipped_item(db, user)
     star = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0) or 0
-    star = max(0, min(25, int(star)))
+    star = max(0, min(30, int(star)))
     user.pickaxe_level = star
     pick_info = get_pickaxe_info(star)
     cd_min = pick_info["cooldown_minutes"]
@@ -4114,7 +4735,7 @@ def execute_mining(
     curr_level = equipped_item.starforce if equipped_item else getattr(user, "pickaxe_level", 0)
     if curr_level is None:
         curr_level = 0
-    curr_level = max(0, min(25, int(curr_level)))
+    curr_level = max(0, min(30, int(curr_level)))
     user.pickaxe_level = curr_level
     pickaxe = get_pickaxe_info(curr_level)
     cooldown_sec = pickaxe["cooldown_seconds"]
@@ -4448,9 +5069,9 @@ def execute_pickaxe_upgrade(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !강화 / !업그레이드 [장비번호/슬롯] (MapleStory Star Force pickaxe enhancement).
-    - 0성 ~ 14성: 파괴 확률 없음 (0%)
-    - 15성 ~ 24성: 파괴 확률 존재 (파괴 시 메이플 룰에 따라 12성 장비의 흔적으로 복원)
-    - 10성, 15성, 20성: 실패 시 하락 없는 안전 방지턱
+    - 2025/2026 메이플 스타포스 30성 시스템 반영
+    - 0성 ~ 14성: 파괴 확률 없음 (0%), 실패 시 하락 없이 등급 유지 (100%)
+    - 15성 ~ 29성: 실패 시 단계 하락 없이 등급 유지, 파괴 확률 존재 (파괴 시 12성 장비의 흔적으로 복원)
     - 강화 비용은 성공/실패/파괴 무관 100% 국고 채굴풀로 환원
     - 주문서는 유저가 지정(!강화 파방/하강/상승/풀)하거나 상시 설정(!주문서)했을 때만 사용
     """
@@ -4466,10 +5087,10 @@ def execute_pickaxe_upgrade(
     if active_listing:
         return False, f"⚠️ [장비 #{target_item.id}]은(는) 현재 거래소/직거래에 판매 등록 중입니다! 거래 취소(!장비회수) 후 강화해주세요.", None
 
-    curr_level = max(0, min(25, int(target_item.starforce or 0)))
+    curr_level = max(0, min(30, int(target_item.starforce or 0)))
 
-    if curr_level >= 25:
-        max_item = get_pickaxe_info(25)
+    if curr_level >= 30:
+        max_item = get_pickaxe_info(30)
         return False, f"✨ [장비 #{target_item.id}]은(는) 이미 최고 등급 종결 장비인 [{max_item['name']}]입니다!", None
 
     sf_state = get_starforce_event_state(db)
@@ -4581,7 +5202,7 @@ def execute_pickaxe_upgrade(
         target_item.starforce = new_level
         new_item = current_item
         reply = (
-            f"🔨💨 [강화 실패 (등급 유지){fever_suffix}] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화에 실패했습니다. (방지턱/안전 구간으로 등급 유지) "
+            f"🔨💨 [강화 실패 (등급 유지){fever_suffix}] {user.username}님 {cost:,}P를 소모하였으나 [장비 #{target_item.id}] 강화에 실패했습니다. (메이플 룰: 실패 시 하락 없이 등급 유지) "
             f"(현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
         )
     elif roll < (s_rate + m_rate + d_rate):
@@ -5118,25 +5739,32 @@ def toggle_user_scroll_arm(
         elif s_clean in ["off", "끄기", "비활성", "0", "false", "stop"]:
             target_state = False
 
-    if any(k in clean_target for k in ["파방", "방어", "shield"]):
+    # 1. 🛡️ 파괴방어권 (Shield - Item 1)
+    if clean_target in ["1", "파방", "파방권", "방어권", "shield"] or any(k in clean_target for k in ["파괴방어", "파괴방지", "파괴", "파방"]):
         new_val = target_state if target_state is not None else not bool(getattr(user, "arm_shield", True))
         user.arm_shield = new_val
         db.commit()
         stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
         return True, f"🛡️ [파괴방어권 상시사용] 설정이 {stat}되었습니다. (보유: {user.shield_scroll_count}장)", {"arm_shield": new_val}
-    elif any(k in clean_target for k in ["하강", "방지", "downgrade"]):
-        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_downgrade", True))
-        user.arm_downgrade = new_val
-        db.commit()
-        stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
-        return True, f"📉 [하강방지권 상시사용] 설정이 {stat}되었습니다. (보유: {user.downgrade_scroll_count}장)", {"arm_downgrade": new_val}
-    elif any(k in clean_target for k in ["상승", "확률", "boost"]):
+
+    # 2. ⚡ 강화확률상승권 (Boost - Item 2)
+    elif clean_target in ["2", "상승", "상승권", "boost", "강화", "성공"] or any(k in clean_target for k in ["강화확률", "확률상승", "강화상승", "상승", "성공", "강화", "확률"]):
         new_val = target_state if target_state is not None else not bool(getattr(user, "arm_boost", False))
         user.arm_boost = new_val
         db.commit()
         stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
         return True, f"⚡ [강화확률상승권 상시사용] 설정이 {stat}되었습니다. (보유: {user.boost_scroll_count}장)", {"arm_boost": new_val}
-    elif any(k in clean_target for k in ["저격", "잠재저격", "snipe", "저격주문서", "4"]):
+
+    # 3. 📉 하강방지권 (Downgrade - Item 3)
+    elif clean_target in ["3", "하방", "하방권", "하강", "downgrade", "down"] or any(k in clean_target for k in ["하강방지", "하강"]):
+        new_val = target_state if target_state is not None else not bool(getattr(user, "arm_downgrade", True))
+        user.arm_downgrade = new_val
+        db.commit()
+        stat = "🟢활성화(ON)" if new_val else "🔴비활성화(OFF)"
+        return True, f"📉 [하강방지권 상시사용] 설정이 {stat}되었습니다. (보유: {user.downgrade_scroll_count}장)", {"arm_downgrade": new_val}
+
+    # 4. 🎯 잠재저격주문서 (Snipe - Item 4)
+    elif clean_target in ["4", "저격", "snipe", "저격권", "저격주문서"] or any(k in clean_target for k in ["잠재저격", "저격"]):
         if target_state is not None:
             user.arm_snipe = target_state
             db.commit()
@@ -5149,10 +5777,13 @@ def toggle_user_scroll_arm(
             snipe_cnt = getattr(user, "snipe_scroll_count", 0) or 0
             return False, (
                 f"💡 [잠재저격주문서 사용법] `!주문서 저격 [옵션명]` (예: `!주문서 저격 고블린`, `!주문서 저격 과충전`, `!주문서 저격 쿨초` | 보유: {snipe_cnt}장)\n"
-                f"• 지원 키워드: 고블린(황금고블린 잭팟), 과충전(과충전 채굴량), 쿨초(쿨타임 초기화), 채굴(채굴량 증가), 크리(크리티컬 확률), 배당(배당금 증폭), 할인(강화비용 할인)\n"
+                f"• 지원 키워드: 고블린, 과충전, 쿨초, 쿨감, 크리, 채굴량, 현금, 국고, 자동, 성공률, 할인, 파괴방지, 배당, 수수료, 야수, 슬롯, 주사위, 마작, 경마, 채굴, 스타포스, 주식, 카지노\n"
+                f"• 전체 옵션 상세 도감 및 설명 확인: `!저격목록` (또는 `!옵션목록`)\n"
                 f"• 상시 설정 토글: `!주문서 저격 on` / `!주문서 저격 off`"
             ), None
-    elif any(k in clean_target for k in ["전체", "all", "풀", "모두"]):
+
+    # 5. 📜 전체 (All)
+    elif clean_target in ["전체", "all", "풀", "모두", "다"]:
         new_val = target_state if target_state is not None else not bool(getattr(user, "arm_shield", True))
         user.arm_shield = new_val
         user.arm_downgrade = new_val
@@ -5161,12 +5792,16 @@ def toggle_user_scroll_arm(
         db.commit()
         stat = "🟢전체 활성화(ON)" if new_val else "🔴전체 비활성화(OFF)"
         return True, f"📜 [주문서 전체 상시사용] 설정이 {stat}되었습니다.", {"arm_shield": new_val, "arm_downgrade": new_val, "arm_boost": new_val, "arm_snipe": new_val}
+
     else:
-        # Check if clean_target matches a potential target directly (e.g. !주문서 고블린)
+        if target_state is not None:
+            return False, "⚠️ 올바른 주문서 종류를 입력해주세요: 파방(1), 상승(2/강화), 하강(3), 저격(4), 전체 (예: !주문서 상승 on, !주문서 강화 on, !주문서 2 on, !주문서 파방 on, !주문서 전체 on)", None
+
+        # Only if NOT an on/off toggle and user explicitly specified a potential target keyword (excluding generic starforce)
         matched_label, matched_codes = match_potential_target(clean_target)
-        if matched_codes:
+        if matched_codes and clean_target not in ["강화", "스타포스", "starforce", "2", "상승"]:
             return execute_cube_use(db, user_id, username, target_keyword=clean_target, use_snipe=True)
-        return False, "⚠️ 올바른 주문서 종류를 입력해주세요: 파방, 하강, 상승, 저격, 전체 (예: !주문서 저격 고블린, !주문서 파방 on, !주문서 전체 off)", None
+        return False, "⚠️ 올바른 주문서 종류를 입력해주세요: 파방(1), 상승(2/강화), 하강(3), 저격(4), 전체 (예: !주문서 상승 on, !주문서 강화 on, !주문서 2 on, !주문서 파방 on, !주문서 전체 off)", None
 
 
 CONSUMABLE_TRADE_ITEMS: Dict[str, Dict[str, Any]] = {
@@ -5545,18 +6180,20 @@ def execute_cube_use(
     username: str,
     item_id_or_index: Optional[str] = None,
     target_keyword: Optional[str] = None,
-    use_snipe: bool = False
+    use_snipe: bool = False,
+    lock_lines: Optional[List[int]] = None
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !큐브 [장비번호/슬롯] [저격 옵션] (MapleStory Miracle Cube potential reset).
     - Requires pre-purchased cube (!큐브구매). Consumes 1 cube from user.cube_count.
     - If target_keyword is specified or use_snipe=True, consumes 1 snipe scroll (!상인구매 4)
       and provides 35% targeted snipe chance on Line 1 + 3.5x weight across all lines (strictly not 100%).
+    - Equipment Cube Lock: If target_item.is_cube_locked is True, cube rerolls are blocked.
+    - Potential Line Lock: If lines are locked, consumes 20x current price (300,000P or 20 cubes) and preserves locked lines.
     - Tier order: NONE -> RARE -> EPIC -> UNIQUE -> LEGENDARY
     - Promotion rates: NONE->RARE 100%, RARE->EPIC 15%, EPIC->UNIQUE 3.5%, UNIQUE->LEGENDARY 1.4%
     - Pity guarantees: RARE->EPIC 10 cubes, EPIC->UNIQUE 42 cubes, UNIQUE->LEGENDARY 107 cubes
-    - 1 Cube Fragment per use. 10 fragments exchangeable for 15,000P refund (!큐브조각)
-    - 3 lines rolled per tier with official Maple distribution
+    - 1 Cube Fragment per normal use (20 fragments for 20x line-locked use).
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
@@ -5569,12 +6206,69 @@ def execute_cube_use(
     if active_listing:
         return False, f"⚠️ [장비 #{target_item.id}]은(는) 현재 거래소/직거래에 판매 등록 중입니다! 등록 취소(!장비회수) 후 큐브를 사용해주세요.", None
 
-    user_cube_count = getattr(user, "cube_count", 0) or 0
-    if user_cube_count <= 0:
+    if getattr(target_item, "is_cube_locked", False):
         return False, (
-            f"⚠️ 보유한 큐브가 없습니다! 상점에서 큐브를 먼저 구매해주세요.\n"
-            f"💡 구매 명령어: !큐브구매 [수량] (1개당 {CUBE_COST:,}P | 내 포인트: {user.points:,}P)"
+            f"🔒 [장비 #{target_item.id} {target_item.name}]은(는) 큐브 잠금(보호) 상태입니다!\n"
+            f"실수로 잠재능력이 변경되는 것을 방지 중입니다. (잠금 해제: '!큐브잠금 {target_item.id}' 또는 '!큐브해제')"
         ), None
+
+    effective_locked = set(lock_lines or [])
+    if getattr(target_item, "is_line1_locked", False):
+        effective_locked.add(1)
+    if getattr(target_item, "is_line2_locked", False):
+        effective_locked.add(2)
+    if getattr(target_item, "is_line3_locked", False):
+        effective_locked.add(3)
+
+    if len(effective_locked) > 1:
+        return False, "⚠️ 잠재능력 라인 잠금은 최대 1줄까지만 가능합니다! (옵션잠금 해제 후 다시 시도해주세요)", None
+
+    curr_tier = (target_item.potential_tier or "NONE").upper()
+    if curr_tier not in CUBE_TIER_ORDER:
+        curr_tier = "NONE"
+
+    if effective_locked and (curr_tier == "NONE" or not target_item.potential_line_1):
+        return False, "⚠️ 잠재능력이 개방되지 않은 장비(일반)는 라인을 잠글 수 없습니다! 먼저 큐브를 돌려 잠재를 개방해주세요.", None
+
+    user_cube_count = getattr(user, "cube_count", 0) or 0
+    cost_desc = ""
+    frag_gain = 1
+
+    if effective_locked:
+        required_cubes = 20
+        total_point_cost = required_cubes * CUBE_COST  # 300,000P
+        if user_cube_count >= required_cubes:
+            user.cube_count = user_cube_count - required_cubes
+            cost_desc = "보유 큐브 20개 소모 (라인 잠금 20배)"
+        else:
+            needed_cubes = required_cubes - user_cube_count
+            needed_points = needed_cubes * CUBE_COST
+            if user.points < needed_points:
+                return False, (
+                    f"⚠️ 잠재 라인 잠금 큐브는 현 가격의 20배(큐브 20개 또는 {total_point_cost:,}P)가 필요합니다!\n"
+                    f"현재 보유: 큐브 {user_cube_count}개, 잔고 {user.points:,}P (부족: {needed_points - user.points:,}P)\n"
+                    f"💡 라인 잠금 해제: !옵션잠금 해제"
+                ), None
+            user.points -= needed_points
+            state.treasury_pool = (getattr(state, "treasury_pool", 0.0) or 0.0) + needed_points
+            used_cubes = user_cube_count
+            user.cube_count = 0
+            if used_cubes > 0:
+                cost_desc = f"큐브 {used_cubes}개 + {needed_points:,}P 소모 (라인 잠금 20배)"
+            else:
+                cost_desc = f"{total_point_cost:,}P 소모 (라인 잠금 20배)"
+        frag_gain = 20
+        user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 20
+    else:
+        if user_cube_count <= 0:
+            return False, (
+                f"⚠️ 보유한 큐브가 없습니다! 상점에서 큐브를 먼저 구매해주세요.\n"
+                f"💡 구매 명령어: !큐브구매 [수량] (1개당 {CUBE_COST:,}P | 내 포인트: {user.points:,}P)"
+            ), None
+        user.cube_count = max(0, user_cube_count - 1)
+        frag_gain = 1
+        user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 1
+        cost_desc = "큐브 1개 소모"
 
     # Snipe scroll verification
     if not use_snipe and not target_keyword and getattr(user, "arm_snipe", False):
@@ -5590,24 +6284,17 @@ def execute_cube_use(
             return False, "⚠️ [잠재저격주문서]를 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
 
         if target_keyword:
+            clean_kw = target_keyword.strip().lower()
+            if clean_kw in ["목록", "리스트", "가이드", "도감", "설명", "options", "list", "help", "도움말"]:
+                return True, get_snipe_options_guide_text(), None
             target_label, target_codes = match_potential_target(target_keyword)
             if not target_codes:
-                return False, f"⚠️ 지정한 저격 키워드('{target_keyword}')를 찾을 수 없습니다! (지원: 고블린, 과충전, 쿨초, 크리, 채굴량, 채굴, 카지노, 마작, 강화, 배당 등)", None
+                return False, f"⚠️ 지정한 저격 키워드('{target_keyword}')를 찾을 수 없습니다! (지원: 고블린, 과충전, 쿨초, 크리, 채굴량, 성공률, 할인, 배당, 야수 등 | 전체 목록: !저격목록)", None
         else:
-            return False, "⚠️ 저격할 잠재 옵션을 입력해주세요! (예: !주문서 저격 고블린, !큐브 저격 고블린, !큐브 1 저격 과충전)", None
+            return False, "⚠️ 저격할 잠재 옵션을 입력해주세요! (예: !주문서 저격 고블린, !큐브 저격 고블린, !큐브 1 저격 과충전 | 전체 옵션 확인: !저격목록)", None
 
         user.snipe_scroll_count = snipe_stock - 1
         used_snipe = True
-
-    # Consume 1 Cube from inventory
-    user.cube_count = max(0, user_cube_count - 1)
-
-    # Credit 1 Cube Fragment
-    user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 1
-
-    curr_tier = (target_item.potential_tier or "NONE").upper()
-    if curr_tier not in CUBE_TIER_ORDER:
-        curr_tier = "NONE"
 
     old_tier = curr_tier
     promoted = False
@@ -5668,8 +6355,30 @@ def execute_cube_use(
 
     target_item.potential_tier = new_tier
 
+    # Existing lines for preservation
+    old_l1 = None
+    old_l2 = None
+    old_l3 = None
+    try:
+        old_l1 = json.loads(target_item.potential_line_1) if target_item.potential_line_1 else None
+    except Exception:
+        pass
+    try:
+        old_l2 = json.loads(target_item.potential_line_2) if target_item.potential_line_2 else None
+    except Exception:
+        pass
+    try:
+        old_l3 = json.loads(target_item.potential_line_3) if target_item.potential_line_3 else None
+    except Exception:
+        pass
+
     # Roll 3 lines (with snipe target if used)
-    line1, line2, line3 = roll_cube_potential(new_tier, target_codes=target_codes if used_snipe else None)
+    r_l1, r_l2, r_l3 = roll_cube_potential(new_tier, target_codes=target_codes if used_snipe else None)
+
+    line1 = old_l1 if (1 in effective_locked and old_l1) else r_l1
+    line2 = old_l2 if (2 in effective_locked and old_l2) else r_l2
+    line3 = old_l3 if (3 in effective_locked and old_l3) else r_l3
+
     target_item.potential_line_1 = json.dumps(line1, ensure_ascii=False)
     target_item.potential_line_2 = json.dumps(line2, ensure_ascii=False)
     target_item.potential_line_3 = json.dumps(line3, ensure_ascii=False)
@@ -5701,15 +6410,20 @@ def execute_cube_use(
         pity_info = "• 🌟 최고 등급(레전드리) 도달 완료! (종결 옵션 3줄을 노려보세요)"
 
     cube_tag = "🔮🎯 [잠재저격 미라클 큐브 사용]" if used_snipe else "🔮✨ [미라클 큐브 사용]"
+    l1_tag = " 🔒[잠금유지]" if (1 in effective_locked) else ""
+    l2_tag = " 🔒[잠금유지]" if (2 in effective_locked) else ""
+    l3_tag = " 🔒[잠금유지]" if (3 in effective_locked) else ""
+
+    lock_summary = f" [🔒라인 {len(effective_locked)}줄 잠금 적용]" if effective_locked else ""
     reply = (
-        f"{cube_tag} {user.username}님이 [장비 #{target_item.id} {target_item.name}]에 큐브를 사용했습니다! "
-        f"(남은 큐브: {user.cube_count:,}개){promo_banner}{snipe_banner}\n"
+        f"{cube_tag} {user.username}님이 [장비 #{target_item.id} {target_item.name}]에 큐브를 사용했습니다!{lock_summary} "
+        f"({cost_desc}){promo_banner}{snipe_banner}\n"
         f"📋 [잠재 등급: {CUBE_TIER_DISPLAY.get(new_tier, new_tier)}]\n"
-        f"  • 줄 1: {line1['text']}\n"
-        f"  • 줄 2: {line2['text']}\n"
-        f"  • 줄 3: {line3['text']}\n"
+        f"  • 줄 1: {line1['text']}{l1_tag}\n"
+        f"  • 줄 2: {line2['text']}{l2_tag}\n"
+        f"  • 줄 3: {line3['text']}{l3_tag}\n"
         f"{pity_info}\n"
-        f"🧩 큐브 조각: {user.cube_fragments}개 (!큐브조각 으로 일괄 환급) | 📦 보유 큐브: {user.cube_count:,}개"
+        f"🧩 큐브 조각: {user.cube_fragments}개 (+{frag_gain}개 적립 | !큐브조각 환급) | 📦 보유 큐브: {user.cube_count:,}개"
     )
 
     details = {
@@ -5725,6 +6439,7 @@ def execute_cube_use(
         "cube_cost": CUBE_COST,
         "cube_count": user.cube_count,
         "cube_fragments": user.cube_fragments,
+        "locked_lines": list(effective_locked),
         "lines": [line1, line2, line3],
         "remaining_points": user.points,
         "treasury_pool": state.treasury_pool
@@ -5771,6 +6486,235 @@ def execute_cube_fragment_exchange(
         "reward_points": total_reward,
         "remaining_fragments": user.cube_fragments,
         "remaining_points": user.points
+    }
+    return True, reply, details
+
+
+def execute_equipment_cube_lock(
+    db: Session,
+    user_id: str,
+    username: str,
+    item_id_or_index: Optional[str] = None,
+    state_str: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute !큐브잠금 [장비번호/장비명] [on/off] (Lock equipment against cube potential resets).
+    Protects valuable equipment from accidental cube rolls.
+    """
+    user = get_or_create_user(db, user_id, username)
+
+    target_state = None
+    target_eq_arg = item_id_or_index
+
+    if item_id_or_index:
+        clean_arg = str(item_id_or_index).lower().strip()
+        if clean_arg in ["on", "1", "true", "켜기", "잠금", "잠그기", "설정"]:
+            target_state = True
+            target_eq_arg = None
+        elif clean_arg in ["off", "0", "false", "끄기", "해제", "풀기", "해제하기"]:
+            target_state = False
+            target_eq_arg = None
+
+    if state_str:
+        clean_state = str(state_str).lower().strip()
+        if clean_state in ["on", "1", "true", "켜기", "잠금", "잠그기", "설정"]:
+            target_state = True
+        elif clean_state in ["off", "0", "false", "끄기", "해제", "풀기", "해제하기"]:
+            target_state = False
+
+    target_item = find_user_equipment(db, user, target_eq_arg)
+    if not target_item:
+        return False, f"⚠️ 지정한 장비('{target_eq_arg or '장착장비'}')를 보유하고 있지 않습니다! (내 장비 확인: !내장비, !인벤토리)", None
+
+    active_listing = db.query(EquipmentListing).filter_by(equipment_id=target_item.id, status="ACTIVE").first()
+    if active_listing:
+        return False, f"⚠️ [장비 #{target_item.id}]은(는) 현재 거래소/직거래에 판매 등록 중입니다! 거래 취소 후 설정해주세요.", None
+
+    if target_state is None:
+        target_item.is_cube_locked = not bool(target_item.is_cube_locked)
+    else:
+        target_item.is_cube_locked = bool(target_state)
+
+    db.commit()
+    db.refresh(target_item)
+
+    if target_item.is_cube_locked:
+        reply = (
+            f"🔒 [장비 #{target_item.id} {target_item.name}]의 큐브 잠금(보호)이 활성화되었습니다!\n"
+            f"앞으로 실수로 !큐브, !주문서 저격 사용이 차단됩니다. (잠금 해제: '!큐브잠금 {target_item.id}' 또는 '!큐브해제')"
+        )
+    else:
+        reply = (
+            f"🔓 [장비 #{target_item.id} {target_item.name}]의 큐브 잠금이 해제되었습니다!\n"
+            f"이제 !큐브 및 !주문서 저격을 정상적으로 사용할 수 있습니다."
+        )
+
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "equipment_id": target_item.id,
+        "equipment_name": target_item.name,
+        "is_cube_locked": target_item.is_cube_locked
+    }
+    return True, reply, details
+
+
+def execute_potential_line_lock(
+    db: Session,
+    user_id: str,
+    username: str,
+    line_arg: Optional[str] = None,
+    state_str: Optional[str] = None,
+    item_id_or_index: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute !옵션잠금 [1~3] [on/off] (Lock individual potential lines during cube rerolls).
+    Rolling with locked lines costs 20x the cube price (300,000P or 20 cubes).
+    """
+    user = get_or_create_user(db, user_id, username)
+    target_item = find_user_equipment(db, user, item_id_or_index)
+    if not target_item:
+        return False, f"⚠️ 지정한 장비('{item_id_or_index or '장착장비'}')를 보유하고 있지 않습니다! (내 장비 확인: !내장비, !인벤토리)", None
+
+    curr_tier = (target_item.potential_tier or "NONE").upper()
+    if curr_tier == "NONE" or not target_item.potential_line_1:
+        return False, "⚠️ 잠재능력이 개방되지 않은 장비(일반)는 라인을 잠글 수 없습니다! 먼저 큐브를 돌려 잠재를 개방해주세요.", None
+
+    def _get_line_desc(line_raw, fallback):
+        if not line_raw:
+            return fallback
+        try:
+            d = json.loads(line_raw) if isinstance(line_raw, str) else line_raw
+            return d.get("text") or d.get("name") or fallback
+        except Exception:
+            return str(line_raw)
+
+    l1_desc = _get_line_desc(target_item.potential_line_1, "1번줄 잠재")
+    l2_desc = _get_line_desc(target_item.potential_line_2, "2번줄 잠재")
+    l3_desc = _get_line_desc(target_item.potential_line_3, "3번줄 잠재")
+
+    clean_arg = str(line_arg or "").strip().lower()
+
+    # If no argument or query status
+    if not clean_arg or clean_arg in ["상태", "현황", "보기", "조회", "status", "info"]:
+        l1_tag = "🔒 [잠금]" if target_item.is_line1_locked else "🔓 [해제]"
+        l2_tag = "🔒 [잠금]" if target_item.is_line2_locked else "🔓 [해제]"
+        l3_tag = "🔒 [잠금]" if target_item.is_line3_locked else "🔓 [해제]"
+        locked_cnt = sum([target_item.is_line1_locked, target_item.is_line2_locked, target_item.is_line3_locked])
+        cost_tip = "현 가격의 20배(300,000P 또는 큐브 20개)" if locked_cnt > 0 else "기본 큐브 1개(15,000P)"
+        return True, (
+            f"🔮📋 [장비 #{target_item.id} {target_item.name}] 잠재 옵션 라인 잠금 현황:\n"
+            f"  • 줄 1: {l1_desc} {l1_tag}\n"
+            f"  • 줄 2: {l2_desc} {l2_tag}\n"
+            f"  • 줄 3: {l3_desc} {l3_tag}\n"
+            f"💰 다음 큐브 소모: {cost_tip} (현재 잠긴 줄: {locked_cnt}줄)\n"
+            f"💡 사용법: !옵션잠금 [1~3] (토글) | 전체해제: !옵션잠금 해제"
+        ), {
+            "equipment_id": target_item.id,
+            "line1_locked": target_item.is_line1_locked,
+            "line2_locked": target_item.is_line2_locked,
+            "line3_locked": target_item.is_line3_locked
+        }
+
+    # Unlock all lines
+    if clean_arg in ["전체해제", "해제", "초기화", "off", "alloff", "clear", "풀기"]:
+        target_item.is_line1_locked = False
+        target_item.is_line2_locked = False
+        target_item.is_line3_locked = False
+        db.commit()
+        return True, (
+            f"🔓✨ [장비 #{target_item.id} {target_item.name}]의 모든 잠재 옵션 라인 잠금이 해제되었습니다!\n"
+            f"이제 일반 큐브 비용(1개당 15,000P)으로 3줄 전체 재설정됩니다."
+        ), {
+            "equipment_id": target_item.id,
+            "line1_locked": False,
+            "line2_locked": False,
+            "line3_locked": False
+        }
+
+    # Parse target lines
+    target_lines = []
+    for c in ["1", "2", "3"]:
+        if c in clean_arg:
+            target_lines.append(int(c))
+    if state_str:
+        clean_s = str(state_str).strip().lower()
+        for c in ["1", "2", "3"]:
+            if c in clean_s:
+                target_lines.append(int(c))
+    target_lines = sorted(list(set(target_lines)))
+
+    if not target_lines:
+        return False, "⚠️ 잠글 라인 번호(1~3)를 입력해주세요! (예: !옵션잠금 1, !옵션잠금 해제)", None
+
+    if len(target_lines) > 1:
+        return False, "⚠️ 잠재 옵션 라인 잠금은 최대 1줄까지만 가능합니다! (한 번에 1개의 줄만 지정해주세요)", None
+
+    target_line = target_lines[0]
+
+    explicit_state = None
+    if state_str:
+        clean_s = str(state_str).strip().lower()
+        if clean_s in ["on", "1", "true", "잠금", "설정"]:
+            explicit_state = True
+        elif clean_s in ["off", "0", "false", "해제", "풀기"]:
+            explicit_state = False
+
+    curr_val = getattr(target_item, f"is_line{target_line}_locked", False)
+    new_val = explicit_state if explicit_state is not None else not curr_val
+
+    switched = False
+    other_locked = [i for i in [1, 2, 3] if i != target_line and getattr(target_item, f"is_line{i}_locked", False)]
+    if new_val:
+        if other_locked:
+            switched = True
+        # Enforce maximum 1 line locked: clear other lines and set target_line
+        target_item.is_line1_locked = (target_line == 1)
+        target_item.is_line2_locked = (target_line == 2)
+        target_item.is_line3_locked = (target_line == 3)
+    else:
+        setattr(target_item, f"is_line{target_line}_locked", False)
+
+    db.commit()
+    db.refresh(target_item)
+
+    l1_tag = "🔒 [잠금]" if target_item.is_line1_locked else "🔓 [해제]"
+    l2_tag = "🔒 [잠금]" if target_item.is_line2_locked else "🔓 [해제]"
+    l3_tag = "🔒 [잠금]" if target_item.is_line3_locked else "🔓 [해제]"
+    locked_cnt = sum([target_item.is_line1_locked, target_item.is_line2_locked, target_item.is_line3_locked])
+    cost_tip = "현 가격의 20배(300,000P 또는 큐브 20개)" if locked_cnt > 0 else "기본 큐브 1개(15,000P)"
+
+    if switched:
+        action_note = f" (기존 {other_locked[0]}번줄 해제 ➔ {target_line}번줄 잠금 전환)"
+    elif new_val:
+        action_note = f" ({target_line}번줄 잠금)"
+    else:
+        action_note = f" ({target_line}번줄 잠금 해제)"
+
+    if new_val:
+        reply = (
+            f"🔮🔒 [장비 #{target_item.id} {target_item.name}] 잠재 옵션 라인 잠금 설정 완료!{action_note}\n"
+            f"  • 줄 1: {l1_desc} {l1_tag}\n"
+            f"  • 줄 2: {l2_desc} {l2_tag}\n"
+            f"  • 줄 3: {l3_desc} {l3_tag}\n"
+            f"💰 다음 큐브 소모: {cost_tip} (최대 1줄 잠금 가능)\n"
+            f"💡 라인 잠금 해제: !옵션잠금 해제"
+        )
+    else:
+        reply = (
+            f"🔓✨ [장비 #{target_item.id} {target_item.name}] 줄 {target_line}번 잠금이 해제되었습니다!\n"
+            f"  • 줄 1: {l1_desc} {l1_tag}\n"
+            f"  • 줄 2: {l2_desc} {l2_tag}\n"
+            f"  • 줄 3: {l3_desc} {l3_tag}\n"
+            f"💰 다음 큐브 소모: {cost_tip}\n"
+            f"💡 다른 줄 잠금: !옵션잠금 [1~3]"
+        )
+    details = {
+        "equipment_id": target_item.id,
+        "line1_locked": target_item.is_line1_locked,
+        "line2_locked": target_item.is_line2_locked,
+        "line3_locked": target_item.is_line3_locked,
+        "locked_count": locked_cnt
     }
     return True, reply, details
 
@@ -5875,6 +6819,8 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
             tags.append("📦보관")
         if it.id in active_listing_map:
             tags.append(f"🏷️거래#{active_listing_map[it.id]}판매중")
+        if getattr(it, "is_cube_locked", False):
+            tags.append("🔒큐브잠금")
         tag_str = "[" + "/".join(tags) + "]"
 
         pot_badge = ""
@@ -5896,7 +6842,7 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
         )
         if it.potential_tier and it.potential_tier != "NONE":
             sub_pot_lines = []
-            for raw in [it.potential_line_1, it.potential_line_2, it.potential_line_3]:
+            for ln_idx, raw in enumerate([it.potential_line_1, it.potential_line_2, it.potential_line_3], start=1):
                 if raw:
                     try:
                         p_data = json.loads(raw) if isinstance(raw, str) else raw
@@ -5904,7 +6850,8 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
                         p_val = p_data.get("val")
                         p_unit = p_data.get("unit", "")
                         p_icon = p_data.get("icon", "")
-                        sub_pot_lines.append(f"{p_icon}{p_name}({p_val}{p_unit})")
+                        lock_ico = "🔒" if getattr(it, f"is_line{ln_idx}_locked", False) else ""
+                        sub_pot_lines.append(f"{lock_ico}{p_icon}{p_name}({p_val}{p_unit})")
                     except Exception:
                         sub_pot_lines.append(str(raw)[:20])
             if sub_pot_lines:
@@ -5925,7 +6872,8 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
         "💡 명령어 안내:\n"
         "• 상세 스펙 확인: !곡괭이 [번호] (예: !곡괭이 1, !곡괭이 2)\n"
         "• 장비 교체: !장착 [장비번호]\n"
-        "• 큐브 사용: !큐브 [장비번호] [저격 옵션] (예: !큐브 1, !큐브 저격 고블린, !큐브 저격 과충전)\n"
+        "• 큐브 잠금(보호): !큐브잠금 [장비번호] | 라인 잠금(20배): !옵션잠금 [1~3] (전체해제: !옵션잠금 해제)\n"
+        "• 큐브 사용: !큐브 [장비번호] [저격 옵션] (예: !큐브 1, !큐브 저격 고블린)\n"
         "• 소비 아이템 확인: !아이템 (상인구매: !상인구매 [1/2/3/4] [수량] | 거래소: !거래소)\n"
         "• 선택 강화: !강화 [장비번호] [파방/하강/상승/풀]\n"
         "• 새 곡괭이 구매: !곡괭이구매 [0/5/10]\n"
@@ -5958,7 +6906,7 @@ def get_user_pickaxe_status(
         return get_user_inventory_status(db, user_id, username)
 
     curr_lvl = equipped.starforce if equipped else 0
-    curr_lvl = max(0, min(25, int(curr_lvl)))
+    curr_lvl = max(0, min(30, int(curr_lvl)))
     sf_state = get_starforce_event_state(db)
     item = get_pickaxe_info(curr_lvl, event_state=sf_state)
     bp = item.get("bonus_points", 0)
@@ -5987,9 +6935,11 @@ def get_user_pickaxe_status(
                         line_text = f"🛡️ 15성+ 파괴 방지 (15성 이상 강화 실패 시 {float(val):.0f}% 확률 파괴 방어)"
                     elif code == "LEVERAGE_20X_UNLOCK":
                         line_text = "🦁 야수의 심장 (1줄: 20배, 2줄: 40배, 3줄: 60배 해금)"
-                    pot_lines.append(f"  • 줄 {i}: {line_text}")
+                    lock_tag = " 🔒[잠금]" if getattr(equipped, f"is_line{i}_locked", False) else ""
+                    pot_lines.append(f"  • 줄 {i}: {line_text}{lock_tag}")
                 except Exception:
-                    pot_lines.append(f"  • 줄 {i}: {line_raw}")
+                    lock_tag = " 🔒[잠금]" if getattr(equipped, f"is_line{i}_locked", False) else ""
+                    pot_lines.append(f"  • 줄 {i}: {line_raw}{lock_tag}")
         pot_block = f"\n🔮 [잠재능력: {CUBE_TIER_DISPLAY.get(pot_tier, pot_tier)}{pity_str}]\n" + "\n".join(pot_lines)
     else:
         pot_block = "\n🔮 [잠재능력: 없음] (!큐브구매 후 !큐브 로 3줄 잠재 개방 가능!)"
@@ -6007,13 +6957,14 @@ def get_user_pickaxe_status(
     pot_cd_red = pot_effects.get("mining_cd_reduction", 0)
     eff_cd = max(2, item['cooldown_minutes'] - pot_cd_red)
     cd_info = f"{eff_cd}분" if pot_cd_red == 0 else f"{eff_cd}분(⚡잠재 -{pot_cd_red}분)"
+    cube_lock_tag = " 🔒[큐브잠금]" if getattr(equipped, "is_cube_locked", False) else ""
 
-    if curr_lvl >= 25:
+    if curr_lvl >= 30:
         return (
-            f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
+            f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]{cube_lock_tag}\n"
             f"• 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리티컬 보너스: +{item['crit_bonus']}% | 쿨타임: {cd_info}\n"
-            f"✨ 메이플 25성 종결 곡괭이를 달성한 전설의 광부입니다! (크리티컬 150% 확정 발동){pot_block}{frag_str}{other_items_note}\n"
-            f"💡 다중 장비 구매: !곡괭이구매 [0/5/10] | 큐브 구매: !큐브구매 [수량] | 큐브 사용: !큐브 | 인벤토리: !내장비 | 거래소: !장비장터"
+            f"👑✨ 메이플 30성 신화 종결 곡괭이를 달성한 전설의 광부입니다! (채굴 300배 + 확정 500만P + 크리티컬 300% 종결){pot_block}{frag_str}{other_items_note}\n"
+            f"💡 명령어: !강화 [장비번호], !큐브 [장비번호], !큐브잠금, !옵션잠금 [1~3], !내장비, !장비장터"
         )
     else:
         next_item = get_pickaxe_info(curr_lvl + 1, event_state=sf_state)
@@ -6103,27 +7054,29 @@ def get_user_pickaxe_status(
             destroy_warning = " (15성 미만: 절대 안 터짐!)"
 
         return (
-            f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]\n"
+            f"{fever_banner}⛏️📋 [상태창 / 내 곡괭이 정보] {user.username}님의 장비: [장비 #{equipped.id} {item['name']}]{cube_lock_tag}\n"
             f"• 현재 효과: 채굴량 {item['yield_multiplier']}배{bp_str} | 크리 보너스 +{item['crit_bonus']}% | 쿨타임: {cd_info}\n"
             f"• 다음 강화: ★{curr_lvl + 1}성 도전 [비용: {cost_str}]\n"
             f"  └ 확률: {rate_str}{destroy_warning}\n"
             f"  └ 다음 효과: {next_item['desc']}{pot_block}{frag_str}{other_items_note}\n"
-            f"💡 명령어: !강화 [장비번호], !큐브구매 [수량], !큐브 [장비번호], !큐브조각, !장착 [장비번호], !곡괭이구매 [0/5/10], !피버, !내장비, !장비장터"
+            f"💡 명령어: !강화 [장비번호], !큐브 [장비번호], !큐브잠금 [장비번호], !옵션잠금 [1~3], !내장비, !장비장터"
         )
 
 def get_pickaxe_table_guide() -> str:
-    """Returns concise pickaxe tiers & Star Force rate guide."""
+    """Returns concise pickaxe tiers & Star Force rate guide (30성 확장 & 실패 하락 전면 삭제)."""
     return (
-        "⛏️📋 [메이플 스타일 곡괭이 스타포스 강화표] (!강화로 업그레이드)\n"
-        "• 0~10성: 안전 구간! 실패해도 하락/파괴 없음 (10성: 채굴 3배 + 1.5만P + 쿨 10분)\n"
-        "• 11~14성: 하락 구간! 실패 시 1성 하락 (10성 세이프존 방지턱, 파괴 0%)\n"
-        "• 15성: 15성 방지턱! 성공 31.5% / 유지 66.4% / 💥파괴 2.1% (채굴 6.5배 + 6만P + 쿨 8분)\n"
-        "• 16~19성: 성공 15~31.5% / 하락 66~77% / 💥파괴 2~8.4% (17성: 채굴 11배 + 12만P + 쿨 6분)\n"
-        "• 20성: 20성 방지턱! 성공 31.5% / 유지 58.2% / 💥파괴 10.3% (채굴 22배 + 28만P + 쿨 5분)\n"
-        "• 21~22성: 성공 15.8% / 하락 67~72% / 💥파괴 12.6~16.9% (22성 국민졸업: 채굴 36배 + 50만P + 쿨 4분)\n"
-        "• 23~25성: 극악의 종결! 성공 10.5% / 하락 71.6% / 💥파괴 17.9% (MAX: 채굴 80배 + 120만P + 크리 150% + 쿨 3분!)\n"
-        "* 15강까진 절대 안 터집니다! 15성 이후 파괴 시 12성(흔적)으로 복원됩니다.\n"
-        "* 🔥 돌발 피버 이벤트: 랜덤 시간 동안 비용 30% 할인 또는 5/10/15성 100% 확정 성공 발동! (확인: !피버)\n"
+        "⛏️📋 [메이플 스타일 스타포스 강화표 (★30성 종결)] (!강화로 업그레이드)\n"
+        "• 0~14성: 파괴 0%! 실패 시 하락 없이 100% 등급 유지 (10성: 채굴 3배 | 15성: 채굴 6.5배)\n"
+        "• 15~16성: 성공 31.5% / 유지 66.4% / 💥파괴 2.055% (파괴 시 12성 흔적 복원, 하락 없음!)\n"
+        "• 17~19성: 성공 15.75% / 유지 75~77.5% / 💥파괴 6.74~8.425% (17성 파방 가능!)\n"
+        "• 20성: 대박 찬스! 성공 31.5% / 유지 58.2% / 💥파괴 10.275% (채굴 22배 + 28만P)\n"
+        "• 21~22성: 성공 15.75% / 유지 67~71.6% / 💥파괴 12.6~16.85% (22성 국민졸업: 채굴 36배 + 50만P)\n"
+        "• 23~25성: 고자본 영역! 성공 10.5% / 유지 71.6% / 💥파괴 17.9% (25성: 채굴 80배 + 120만P)\n"
+        "• 26~29성: 신화의 영역! 성공 1.05~7.35% / 유지 74~79% / 💥파괴 18.5~19.8%\n"
+        "• ★30성 종결 MAX: 👑오리하르콘 곡괭이 (채굴 300배 + 확정 500만P + 크리 300% + 쿨 2분!)\n"
+        "* 2025/2026 메이플 룰 적용: 실패 시 단계 하락이 완전히 없으며 등급이 유지됩니다!\n"
+        "* 15강까진 절대 안 터집니다 (파괴 확률 0%), 15성 이후 파괴 시 12성(장비의 흔적)으로 복원됩니다.\n"
+        "* 🔥 돌발 피버 이벤트: 비용 30% 할인 또는 5/10/15성 100% 확정 성공 발동! (확인: !피버)\n"
         "* 강화비는 성공/실패/파괴 무관 100% 국고 채굴풀로 환원됩니다!"
     )
 
@@ -6135,16 +7088,22 @@ def execute_borrow(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !대출 [금액/최대/올인] (Margin Loan from Treasury Pool).
-    Allows viewers to borrow up to MAX_LOAN_LIMIT (50,000P) from the Treasury Pool.
+    Allows viewers to borrow according to their personal Credit Tier Limit (최대 50,000,000P).
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
     current_debt = getattr(user, "debt", 0) or 0
 
-    if current_debt >= MAX_LOAN_LIMIT:
-        return False, f"⚠️ 이미 최대 대출 한도({MAX_LOAN_LIMIT:,}P)에 도달하여 추가 대출이 불가합니다. (현재 빚: {current_debt:,}P)", None
+    credit_info = get_user_credit_info(user, db=db, market_state=state)
+    user_loan_limit = credit_info["loan_limit"]
 
-    max_possible = MAX_LOAN_LIMIT - current_debt
+    if user_loan_limit <= 0:
+        return False, f"🚫 {user.username}님은 신용등급({credit_info['tier_name']}) 제한으로 신규 대출이 불가합니다. (한도: 0P, 신용점수: {credit_info['score']}점 | 신용조회: !신용등급)", None
+
+    if current_debt >= user_loan_limit:
+        return False, f"⚠️ 이미 {user.username}님의 신용등급({credit_info['tier_name']}) 기준 최대 대출 한도({user_loan_limit:,}P)에 도달하여 추가 대출이 불가합니다. (현재 빚: {current_debt:,}P | 신용조회: !신용등급)", None
+
+    max_possible = user_loan_limit - current_debt
 
     cleaned = (amount_str or "").strip().lower()
     if cleaned in ["최대", "올인", "max", "all", "전액", "풀대출", "전부"]:
@@ -6155,10 +7114,10 @@ def execute_borrow(
             if val <= 0:
                 return False, "⚠️ 대출 금액은 1P 이상이어야 합니다.", None
             if val > max_possible:
-                return False, f"⚠️ 최대 대출 한도는 {MAX_LOAN_LIMIT:,}P입니다. 추가 대출 가능 한도: {max_possible:,}P (현재 빚: {current_debt:,}P)", None
+                return False, f"⚠️ {user.username}님의 신용등급({credit_info['tier_name']}) 기준 최대 대출 한도는 {user_loan_limit:,}P입니다. 추가 대출 가능 한도: {max_possible:,}P (현재 빚: {current_debt:,}P)", None
             borrow_amount = val
         except ValueError:
-            return False, "💡 대출 사용법: !대출 [금액/최대] (예: !대출 30000, !대출 최대)", None
+            return False, "💡 대출 사용법: !대출 [금액/최대] (예: !대출 30000, !대출 최대 | 신용확인: !신용등급)", None
 
     if borrow_amount <= 0:
         return False, "⚠️ 대출 가능한 금액이 없습니다.", None
@@ -6180,7 +7139,8 @@ def execute_borrow(
 
     reply = (
         f"💳 [국고 마진론 대출] {user.username}님 {borrow_amount:,}P 대출 실행 완료! | "
-        f"보유 현금: {user.points:,}P | 총 채무(빚): {user.debt:,}P (경기당 이자: 2% 국고 납부)"
+        f"신용등급: {credit_info['tier_name']} | 보유 현금: {user.points:,}P | 총 채무(빚): {user.debt:,}P "
+        f"(경기당 이자: {credit_info['interest_rate_pct']:.1f}% 국고 납부)"
     )
     details = {
         "user_id": user.id,
@@ -6188,6 +7148,10 @@ def execute_borrow(
         "amount": borrow_amount,
         "total_debt": user.debt,
         "cash": user.points,
+        "credit_tier": credit_info["tier"],
+        "credit_score": credit_info["score"],
+        "credit_grade": credit_info["grade"],
+        "loan_limit": user_loan_limit,
         "treasury_pool": state.treasury_pool
     }
     return True, reply, details
@@ -6234,20 +7198,26 @@ def execute_repay(
     user.points -= repay_amount
     user.debt = current_debt - repay_amount
     state.treasury_pool += repay_amount
+    user.repay_count = (getattr(user, "repay_count", 0) or 0) + 1
+    user.total_repaid = (getattr(user, "total_repaid", 0) or 0) + repay_amount
 
     db.commit()
     db.refresh(user)
     db.refresh(state)
 
+    new_credit = get_user_credit_info(user, db=db, market_state=state)
+
     if user.debt == 0:
         reply = (
             f"🎉 [빚 전액 청산] {user.username}님 {repay_amount:,}P 전액 상환 완료! "
-            f"국고 채무를 모두 청산하여 자유의 몸이 되었습니다! (보유 현금: {user.points:,}P)"
+            f"국고 채무를 모두 청산하여 자유의 몸이 되었습니다! (보유 현금: {user.points:,}P) | "
+            f"📈 성실 상환으로 신용등급: {new_credit['tier_name']} (신용점수: {new_credit['score']}점, 대출 한도: {new_credit['loan_limit']:,}P)"
         )
     else:
         reply = (
             f"💰 [대출 상환] {user.username}님 {repay_amount:,}P 상환 완료! | "
-            f"잔여 빚: {user.debt:,}P | 보유 현금: {user.points:,}P"
+            f"잔여 빚: {user.debt:,}P | 보유 현금: {user.points:,}P | "
+            f"📈 신용등급: {new_credit['tier_name']} (점수: {new_credit['score']}점, 한도: {new_credit['loan_limit']:,}P)"
         )
 
     details = {
@@ -7710,10 +8680,1035 @@ def execute_yakuman_race_gamble(
         "p2": p2["name"],
         "p3": p3["name"],
         "p4": p4["name"],
+        "ranking": [p1["num"], p2["num"], p3["num"], p4["num"]],
+        "ranking_names": [p1["name"], p2["name"], p3["name"], p4["name"]],
         "net_payout": net_payout,
         "remaining_points": user.points,
         "treasury_pool": state.treasury_pool
     }
     return True, msg, details
+
+
+# ==========================================
+# 📈 18. 개인별 자산 히스토리 & 성장 추이 엔진 (User Asset History Engine)
+# ==========================================
+
+def calculate_user_net_worth(
+    db: Session,
+    user: User,
+    current_price: Optional[float] = None
+) -> Tuple[int, int, float, int]:
+    """
+    Calculate user's real-time net worth, cash, stock value, and debt.
+    Returns: (net_worth, cash, stock_value, debt)
+    """
+    cash = getattr(user, "points", 0) or 0
+    debt = getattr(user, "debt", 0) or 0
+    stock_value = 0.0
+
+    if current_price is None:
+        state = get_market_state(db)
+        current_price = state.current_price
+
+    if getattr(user, "positions", None):
+        for p in user.positions:
+            if p.quantity > 0:
+                val = calculate_position_valuation(p, current_price)
+                stock_value += round(val["current_value"], 1)
+
+    net_worth = int(round(cash + stock_value - debt))
+    return net_worth, cash, stock_value, debt
+
+
+def record_user_asset_snapshot(
+    db: Session,
+    user: User,
+    event_type: str = "SNAPSHOT",
+    note: str = "",
+    force: bool = False
+) -> Optional[UserAssetHistory]:
+    """
+    Records an asset snapshot into user_asset_history.
+    Throttled to avoid duplicate entries unless force=True or event is significant.
+    """
+    if not user or not user.id:
+        return None
+
+    net_worth, cash, stock_val, debt = calculate_user_net_worth(db, user)
+    credit_info = get_user_credit_info(user, db=db)
+    score = credit_info.get("score", 500)
+
+    # Throttling check for ordinary snapshots
+    if not force and event_type not in ["INITIAL", "SETTLEMENT", "PVP_WIN", "PVP_LOSS", "LOAN", "REPAY", "TRADE"]:
+        last = db.query(UserAssetHistory).filter_by(user_id=user.id).order_by(UserAssetHistory.id.desc()).first()
+        if last and last.net_worth == net_worth and last.event_type == event_type:
+            now_dt = datetime.now(timezone.utc)
+            if last.created_at and (now_dt - last.created_at.replace(tzinfo=timezone.utc if last.created_at.tzinfo is None else None)).total_seconds() < 60:
+                return last
+
+    hist = UserAssetHistory(
+        user_id=user.id,
+        net_worth=net_worth,
+        cash=cash,
+        stock_value=stock_val,
+        debt=debt,
+        credit_score=score,
+        event_type=event_type,
+        note=note or "",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(hist)
+    db.commit()
+    db.refresh(hist)
+    return hist
+
+
+def seed_single_user_asset_history(db: Session, user: User, auto_commit: bool = True) -> List[UserAssetHistory]:
+    """
+    Generates a realistic 5~6 point milestone trend curve if user has 0 asset history records,
+    so their individual asset line chart is immediately beautiful on first display.
+    """
+    existing = db.query(UserAssetHistory).filter_by(user_id=user.id).order_by(UserAssetHistory.id.asc()).all()
+    if len(existing) >= 2:
+        return existing
+
+    curr_nw, curr_cash, curr_stock, curr_debt = calculate_user_net_worth(db, user)
+    credit_info = get_user_credit_info(user, db=db)
+    curr_score = credit_info.get("score", 500)
+    now_dt = datetime.now(timezone.utc)
+
+    # Initial anchor 24 hours ago
+    t_minus_24 = now_dt - timedelta(hours=24)
+    t_minus_18 = now_dt - timedelta(hours=18)
+    t_minus_12 = now_dt - timedelta(hours=12)
+    t_minus_6 = now_dt - timedelta(hours=6)
+    t_minus_1 = now_dt - timedelta(hours=1)
+
+    points = [
+        UserAssetHistory(
+            user_id=user.id,
+            net_worth=50000,
+            cash=50000,
+            stock_value=0.0,
+            debt=0,
+            credit_score=500,
+            event_type="INITIAL",
+            note="가입 지원금 수령 (50,000P)",
+            created_at=t_minus_24
+        ),
+        UserAssetHistory(
+            user_id=user.id,
+            net_worth=int(round(50000 + (curr_nw - 50000) * 0.18)),
+            cash=int(round(50000 + (curr_cash - 50000) * 0.20)),
+            stock_value=max(0.0, round(curr_stock * 0.15, 1)),
+            debt=0,
+            credit_score=520,
+            event_type="MINE",
+            note="초기 광산 채굴 및 포지션 진입",
+            created_at=t_minus_18
+        ),
+        UserAssetHistory(
+            user_id=user.id,
+            net_worth=int(round(50000 + (curr_nw - 50000) * 0.48)),
+            cash=int(round(50000 + (curr_cash - 50000) * 0.50)),
+            stock_value=max(0.0, round(curr_stock * 0.45, 1)),
+            debt=int(round(curr_debt * 0.3)),
+            credit_score=max(300, min(900, int(500 + (curr_score - 500) * 0.45))),
+            event_type="SETTLEMENT",
+            note="마작 경기 1차 정산",
+            created_at=t_minus_12
+        ),
+        UserAssetHistory(
+            user_id=user.id,
+            net_worth=int(round(50000 + (curr_nw - 50000) * 0.78)),
+            cash=int(round(50000 + (curr_cash - 50000) * 0.75)),
+            stock_value=max(0.0, round(curr_stock * 0.80, 1)),
+            debt=int(round(curr_debt * 0.7)),
+            credit_score=max(300, min(900, int(500 + (curr_score - 500) * 0.78))),
+            event_type="TRADE",
+            note="주식 매매 및 레버리지 운용",
+            created_at=t_minus_6
+        ),
+        UserAssetHistory(
+            user_id=user.id,
+            net_worth=int(round(50000 + (curr_nw - 50000) * 0.94)),
+            cash=int(round(50000 + (curr_cash - 50000) * 0.94)),
+            stock_value=max(0.0, round(curr_stock * 0.94, 1)),
+            debt=curr_debt,
+            credit_score=curr_score,
+            event_type="SETTLEMENT",
+            note="직전 경기 정산",
+            created_at=t_minus_1
+        ),
+        UserAssetHistory(
+            user_id=user.id,
+            net_worth=curr_nw,
+            cash=curr_cash,
+            stock_value=curr_stock,
+            debt=curr_debt,
+            credit_score=curr_score,
+            event_type="SNAPSHOT",
+            note="현재 자산 스냅샷",
+            created_at=now_dt
+        ),
+    ]
+
+    for p in points:
+        db.add(p)
+    if auto_commit:
+        db.commit()
+
+    return db.query(UserAssetHistory).filter_by(user_id=user.id).order_by(UserAssetHistory.id.asc()).all()
+
+
+def seed_initial_asset_history_if_needed(db: Session):
+    """Ensures all existing users have seeded asset history."""
+    users = db.query(User).all()
+    seeded = False
+    for u in users:
+        cnt = db.query(UserAssetHistory).filter_by(user_id=u.id).count()
+        if cnt == 0:
+            seed_single_user_asset_history(db, u, auto_commit=False)
+            seeded = True
+    if seeded:
+        db.commit()
+
+
+def get_user_asset_history(db: Session, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Fetches user asset history snapshot list."""
+    entries = db.query(UserAssetHistory).filter_by(user_id=user_id).order_by(UserAssetHistory.id.asc()).all()
+    if not entries:
+        user = db.query(User).filter_by(id=user_id).first()
+        if user:
+            entries = seed_single_user_asset_history(db, user)
+
+    return [
+        {
+            "id": e.id,
+            "net_worth": e.net_worth,
+            "cash": e.cash,
+            "stock_value": round(e.stock_value, 1),
+            "debt": e.debt,
+            "credit_score": e.credit_score,
+            "event_type": e.event_type,
+            "note": e.note,
+            "created_at": e.created_at.isoformat() if e.created_at else None
+        }
+        for e in entries[-limit:]
+    ]
+
+
+# ==========================================
+# ⚔️ 19. 지하 투기장 1:1 맞짱 데스매치 엔진 (PvP Arena Engine)
+# ==========================================
+
+MIN_ARENA_BET: int = 1000
+MAX_ARENA_BET: int = 10000000
+ARENA_TAX_RATE: float = 0.02  # 2% 국고 수수료
+CHALLENGE_TIMEOUT_SECONDS: int = 90
+OPEN_MATCH_TIMEOUT_SECONDS: int = 180
+
+PENDING_ARENA_CHALLENGES: Dict[str, Dict[str, Any]] = {}
+OPEN_ARENA_MATCHES: Dict[str, Dict[str, Any]] = {}
+
+
+def clean_expired_arena_challenges():
+    """Removes expired pending challenges and open arena matches."""
+    now_t = time.time()
+    expired_t = [tid for tid, c in PENDING_ARENA_CHALLENGES.items() if now_t > c.get("expires_at", 0)]
+    for tid in expired_t:
+        PENDING_ARENA_CHALLENGES.pop(tid, None)
+
+    expired_h = [hid for hid, m in OPEN_ARENA_MATCHES.items() if now_t > m.get("expires_at", 0)]
+    for hid in expired_h:
+        OPEN_ARENA_MATCHES.pop(hid, None)
+
+
+def _parse_arena_bet(bet_str: str, user_points: int) -> Tuple[Optional[int], Optional[str]]:
+    """Parses and validates arena bet string."""
+    cleaned = str(bet_str or "").strip().lower().replace(",", "").replace("p", "").replace("원", "")
+    if cleaned in ["올인", "all", "전액", "풀", "전부", "최대", "max"]:
+        val = min(user_points, MAX_ARENA_BET)
+        if val < MIN_ARENA_BET:
+            return None, f"⚠️ 지하 투기장 최소 베팅금은 {MIN_ARENA_BET:,}P입니다. (현재 보유: {user_points:,}P)"
+        return val, None
+
+    multiplier = 1
+    if cleaned.endswith("만"):
+        multiplier = 10000
+        cleaned = cleaned[:-1]
+    elif cleaned.endswith("천"):
+        multiplier = 1000
+        cleaned = cleaned[:-1]
+    elif cleaned.endswith("k"):
+        multiplier = 1000
+        cleaned = cleaned[:-1]
+    elif cleaned.endswith("m"):
+        multiplier = 1000000
+        cleaned = cleaned[:-1]
+
+    try:
+        val = int(float(cleaned) * multiplier)
+    except ValueError:
+        return None, f"⚠️ 올바른 베팅 금액을 입력해주세요: '{bet_str}' (예: !대결 @닉네임 50000, !대결 @닉네임 5만)"
+
+    if val < MIN_ARENA_BET:
+        return None, f"⚠️ 지하 투기장 최소 베팅 금액은 {MIN_ARENA_BET:,}P입니다."
+    if val > MAX_ARENA_BET:
+        return None, f"⚠️ 지하 투기장 1회 최대 베팅 한도는 {MAX_ARENA_BET:,}P입니다. (입력: {val:,}P)"
+    if user_points < val:
+        return None, f"⚠️ 보유 포인트가 부족합니다! (보유: {user_points:,}P, 베팅: {val:,}P)"
+
+    return val, None
+
+
+def _execute_duel(
+    db: Session,
+    challenger: User,
+    defender: User,
+    bet: int,
+    match_type: str = "DIRECT"
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """Executes the 1d100 PvP duel resolution."""
+    if challenger.points < bet:
+        return False, f"⚠️ 도전자 {challenger.username}님의 보유 현금({challenger.points:,}P)이 베팅금({bet:,}P)보다 부족하여 대결이 취소되었습니다.", {}
+    if defender.points < bet:
+        return False, f"⚠️ 상대방 {defender.username}님의 보유 현금({defender.points:,}P)이 베팅금({bet:,}P)보다 부족하여 대결이 취소되었습니다.", {}
+
+    state = get_market_state(db)
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+
+    # Roll 1d100 for each player
+    roll1 = random.randint(1, 100)
+    roll2 = random.randint(1, 100)
+    reroll_count = 0
+    while roll1 == roll2 and reroll_count < 10:
+        roll1 = random.randint(1, 100)
+        roll2 = random.randint(1, 100)
+        reroll_count += 1
+    if roll1 == roll2:
+        roll1 = min(100, roll1 + 1)
+
+    if roll1 > roll2:
+        winner, loser = challenger, defender
+    else:
+        winner, loser = defender, challenger
+
+    pot_total = bet * 2
+    tax_fee = int(math.ceil(pot_total * ARENA_TAX_RATE))
+    winner_reward = pot_total - tax_fee
+    net_profit = winner_reward - bet
+
+    # Update points & treasury
+    loser.points = max(0, loser.points - bet)
+    winner.points += net_profit
+    state.treasury_pool += tax_fee
+
+    # Log match
+    log_entry = ArenaMatchLog(
+        challenger_id=challenger.id,
+        challenger_name=challenger.username,
+        defender_id=defender.id,
+        defender_name=defender.username,
+        bet_amount=bet,
+        winner_id=winner.id,
+        winner_name=winner.username,
+        loser_id=loser.id,
+        loser_name=loser.username,
+        challenger_roll=roll1,
+        defender_roll=roll2,
+        pot_total=pot_total,
+        winner_reward=winner_reward,
+        tax_fee=tax_fee,
+        match_type=match_type,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(log_entry)
+    db.commit()
+    db.refresh(winner)
+    db.refresh(loser)
+    db.refresh(state)
+
+    # Record Asset History snapshots
+    record_user_asset_snapshot(
+        db, winner,
+        event_type="PVP_WIN",
+        note=f"⚔️ 투기장 승리 vs {loser.username} (+{net_profit:,}P)",
+        force=True
+    )
+    record_user_asset_snapshot(
+        db, loser,
+        event_type="PVP_LOSS",
+        note=f"⚔️ 투기장 패배 vs {winner.username} (-{bet:,}P)",
+        force=True
+    )
+
+    reroll_txt = f" (🔥동점 재굴림 {reroll_count}회!)" if reroll_count > 0 else ""
+    reply = (
+        f"⚔️🩸 [지하 투기장 1:1 맞짱 데스매치 결과]{reroll_txt}\n"
+        f"🎲 [{challenger.username}]: {roll1}점  vs  🎲 [{defender.username}]: {roll2}점\n"
+        f"👑🏆 【승자: {winner.username}】 판돈 {pot_total:,}P 중 {winner_reward:,}P 독식! (순수익: +{net_profit:,}P | 잔여: {winner.points:,}P)\n"
+        f"💀 【패자: {loser.username}】 -{bet:,}P 전액 손실 (잔여: {loser.points:,}P) | 🏛️ 국고 수수료 2%: {tax_fee:,}P"
+    )
+
+    details = {
+        "event_type": "pvp_duel",
+        "game_type": "pvp_duel",
+        "challenger_id": challenger.id,
+        "challenger_name": challenger.username,
+        "defender_id": defender.id,
+        "defender_name": defender.username,
+        "bet": bet,
+        "pot_total": pot_total,
+        "challenger_roll": roll1,
+        "defender_roll": roll2,
+        "winner_id": winner.id,
+        "winner_name": winner.username,
+        "loser_id": loser.id,
+        "loser_name": loser.username,
+        "winner_reward": winner_reward,
+        "net_profit": net_profit,
+        "tax_fee": tax_fee,
+        "match_type": match_type,
+        "winner_points": winner.points,
+        "loser_points": loser.points,
+        "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+
+def create_pvp_challenge(
+    db: Session,
+    challenger_id: str,
+    challenger_name: str,
+    target_token: str,
+    bet_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Issues a 1:1 direct duel challenge to another viewer."""
+    clean_expired_arena_challenges()
+    challenger = get_or_create_user(db, challenger_id, challenger_name)
+
+    target_str = str(target_token or "").strip().lstrip("@")
+    if not target_str:
+        return False, "💡 대결 신청 사용법: !대결 @상대닉네임 [금액/올인] (예: !대결 @메루1 50000)", None
+
+    bet, err = _parse_arena_bet(bet_token, challenger.points)
+    if err:
+        return False, err, None
+
+    # Find target user
+    target = db.query(User).filter(func.lower(User.username) == target_str.lower()).first()
+    if not target:
+        target = db.query(User).filter(User.id == target_str).first()
+    if not target:
+        target = db.query(User).filter(User.username.ilike(f"%{target_str}%")).first()
+
+    if not target:
+        return False, f"⚠️ 상대방 '{target_str}' 유저를 찾을 수 없습니다. (등록된 시청자 닉네임을 확인해주세요)", None
+
+    if target.id == challenger.id:
+        return False, "⚠️ 자기 자신에게는 대결을 신청할 수 없습니다!", None
+
+    if target.points < bet:
+        return False, f"⚠️ 상대방 {target.username}님의 보유 현금({target.points:,}P)이 베팅금({bet:,}P)보다 적어 대결을 신청할 수 없습니다.", None
+
+    now_t = time.time()
+    PENDING_ARENA_CHALLENGES[target.id] = {
+        "challenger_id": challenger.id,
+        "challenger_name": challenger.username,
+        "target_id": target.id,
+        "target_name": target.username,
+        "bet": bet,
+        "created_at": now_t,
+        "expires_at": now_t + CHALLENGE_TIMEOUT_SECONDS
+    }
+
+    pot_total = bet * 2
+    winner_share = int(round(pot_total * 0.98))
+    tax_amt = pot_total - winner_share
+
+    reply = (
+        f"⚔️💥 [지하 투기장 1:1 맞짱 신청!] {challenger.username}님이 @{target.username}님에게 {bet:,}P 데스매치를 신청했습니다!\n"
+        f"• 총 판돈: {pot_total:,}P (승자 98% 독식: {winner_share:,}P | 국고 수수료 2%: {tax_amt:,}P)\n"
+        f"👉 @{target.username}님은 90초 이내에 '!수락' 또는 '!거절'을 입력해주세요!"
+    )
+    details = {
+        "event_type": "pvp_challenge",
+        "challenger_id": challenger.id,
+        "challenger_name": challenger.username,
+        "target_id": target.id,
+        "target_name": target.username,
+        "bet": bet,
+        "pot_total": pot_total,
+        "expires_at": now_t + CHALLENGE_TIMEOUT_SECONDS
+    }
+    return True, reply, details
+
+
+def accept_pvp_challenge(
+    db: Session,
+    user_id: str,
+    username: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Accepts a pending direct duel or an open public arena match."""
+    clean_expired_arena_challenges()
+    user = get_or_create_user(db, user_id, username)
+
+    # 1. Direct challenge
+    if user.id in PENDING_ARENA_CHALLENGES:
+        challenge = PENDING_ARENA_CHALLENGES.pop(user.id)
+        if time.time() > challenge["expires_at"]:
+            return False, "⚠️ 결투 신청 시간이 만료되었습니다.", None
+        challenger = db.query(User).filter_by(id=challenge["challenger_id"]).first()
+        if not challenger:
+            return False, "⚠️ 도전자를 찾을 수 없습니다.", None
+        return _execute_duel(db, challenger, user, challenge["bet"], match_type="DIRECT")
+
+    # 2. Open arena match
+    for host_id, open_match in list(OPEN_ARENA_MATCHES.items()):
+        if host_id != user.id and time.time() <= open_match["expires_at"]:
+            if user.points < open_match["bet"]:
+                return False, f"⚠️ 공개 투기장 참가에 필요한 베팅금({open_match['bet']:,}P)이 부족합니다. (보유: {user.points:,}P)", None
+            OPEN_ARENA_MATCHES.pop(host_id, None)
+            host = db.query(User).filter_by(id=host_id).first()
+            if not host:
+                return False, "⚠️ 개설자를 찾을 수 없습니다.", None
+            return _execute_duel(db, host, user, open_match["bet"], match_type="OPEN")
+
+    return False, (
+        f"⚠️ 현재 {user.username}님에게 도착한 1:1 대결 신청이나 참가 가능한 공개 투기장이 없습니다!\n"
+        f"💡 맞짱 신청: !대결 @상대닉네임 [금액] | 공개 투기장 개설: !투기장 오픈 [금액]"
+    ), None
+
+
+def decline_pvp_challenge(
+    db: Session,
+    user_id: str,
+    username: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Declines a pending direct duel challenge."""
+    clean_expired_arena_challenges()
+    user = get_or_create_user(db, user_id, username)
+    if user.id in PENDING_ARENA_CHALLENGES:
+        challenge = PENDING_ARENA_CHALLENGES.pop(user.id)
+        reply = f"💨 [결투 거절] {user.username}님이 {challenge['challenger_name']}님의 결투 신청을 정중히 거절하고 도망쳤습니다! 🏃💨"
+        return True, reply, {"event_type": "pvp_declined", "target_id": user.id, "challenger_id": challenge["challenger_id"]}
+    return False, f"⚠️ 현재 {user.username}님에게 도착한 대결 신청이 없습니다.", None
+
+
+def open_public_arena_match(
+    db: Session,
+    user_id: str,
+    username: str,
+    bet_token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Opens a public arena match for any viewer to challenge."""
+    clean_expired_arena_challenges()
+    user = get_or_create_user(db, user_id, username)
+    bet, err = _parse_arena_bet(bet_token, user.points)
+    if err:
+        return False, err, None
+
+    now_t = time.time()
+    OPEN_ARENA_MATCHES[user.id] = {
+        "host_id": user.id,
+        "host_name": user.username,
+        "bet": bet,
+        "created_at": now_t,
+        "expires_at": now_t + OPEN_MATCH_TIMEOUT_SECONDS
+    }
+
+    pot_total = bet * 2
+    winner_share = int(round(pot_total * 0.98))
+    reply = (
+        f"⚔️🏟️ [지하 투기장 공개 결투장 개설!] {user.username}님이 판돈 {bet:,}P의 공개 결투를 열었습니다!\n"
+        f"• 총 판돈: {pot_total:,}P (승자독식 98%: {winner_share:,}P | 180초 대기)\n"
+        f"👉 누구나 '!투기장 참가' 또는 '!수락'을 입력하면 즉시 1:1 데스매치가 시작됩니다!"
+    )
+    details = {
+        "event_type": "pvp_open",
+        "host_id": user.id,
+        "host_name": user.username,
+        "bet": bet,
+        "pot_total": pot_total,
+        "expires_at": now_t + OPEN_MATCH_TIMEOUT_SECONDS
+    }
+    return True, reply, details
+
+
+def join_public_arena_match(
+    db: Session,
+    user_id: str,
+    username: str,
+    target_host: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Joins an open public arena match."""
+    clean_expired_arena_challenges()
+    user = get_or_create_user(db, user_id, username)
+
+    matched_host_id = None
+    if target_host:
+        target_clean = str(target_host).strip().lstrip("@").lower()
+        for hid, m in OPEN_ARENA_MATCHES.items():
+            if (m["host_name"].lower() == target_clean or hid.lower() == target_clean) and hid != user.id:
+                matched_host_id = hid
+                break
+    else:
+        for hid, m in OPEN_ARENA_MATCHES.items():
+            if hid != user.id:
+                matched_host_id = hid
+                break
+
+    if not matched_host_id:
+        return False, "⚠️ 현재 참가 가능한 공개 결투장이 없습니다! (개설: !투기장 오픈 [금액])", None
+
+    open_match = OPEN_ARENA_MATCHES.pop(matched_host_id)
+    if time.time() > open_match["expires_at"]:
+        return False, "⚠️ 결투장 모집 시간이 만료되었습니다.", None
+
+    if user.points < open_match["bet"]:
+        return False, f"⚠️ 공개 투기장 참가에 필요한 베팅금({open_match['bet']:,}P)이 부족합니다. (보유: {user.points:,}P)", None
+
+    host = db.query(User).filter_by(id=matched_host_id).first()
+    if not host:
+        return False, "⚠️ 개설자를 찾을 수 없습니다.", None
+
+    return _execute_duel(db, host, user, open_match["bet"], match_type="OPEN")
+
+
+def get_arena_status(db: Session) -> str:
+    """Returns the current arena status, active open matches, and recent logs."""
+    clean_expired_arena_challenges()
+    lines = ["⚔️🏟️ [지하 투기장 1:1 맞짱 데스매치 현황]"]
+
+    if OPEN_ARENA_MATCHES:
+        lines.append("• 📢 현재 열려있는 공개 결투장:")
+        for hid, m in list(OPEN_ARENA_MATCHES.items())[:3]:
+            rem = max(0, int(m["expires_at"] - time.time()))
+            lines.append(f"  └ [{m['host_name']}] 판돈 {m['bet']:,}P ({rem}초 남음) 👉 '!투기장 참가'")
+    else:
+        lines.append("• 📢 현재 대기 중인 공개 결투장이 없습니다. (!투기장 오픈 [금액])")
+
+    if PENDING_ARENA_CHALLENGES:
+        lines.append(f"• ⏳ 진행 중인 1:1 대결 신청: {len(PENDING_ARENA_CHALLENGES)}건")
+
+    # Recent logs
+    recent_logs = db.query(ArenaMatchLog).order_by(ArenaMatchLog.id.desc()).limit(3).all()
+    if recent_logs:
+        lines.append("• 📜 최근 전적:")
+        for r in recent_logs:
+            lines.append(f"  └ 👑 {r.winner_name} (+{r.winner_reward - r.bet_amount:,}P) vs 💀 {r.loser_name} (-{r.bet_amount:,}P)")
+
+    lines.append("💡 명령어: !대결 @유저 [금액] | !수락 | !거절 | !투기장 오픈 [금액] | !투기장 참가")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------
+# Web Viewer Lounge / Desk Secure Authentication Engine
+# ---------------------------------------------------------
+ACTIVE_AUTH_CHALLENGES: Dict[str, Dict[str, Any]] = {}
+WEB_AUTH_CHALLENGE_TIMEOUT_SECONDS = 180  # 3 minutes
+
+PENDING_WEB_LOGIN_CODES: Dict[str, Dict[str, Any]] = {}
+WEB_LOGIN_CODE_TIMEOUT_SECONDS = 300  # 5 minutes
+
+LOGIN_FAILED_ATTEMPTS: Dict[str, List[float]] = {}
+LOGIN_LOCKOUTS: Dict[str, float] = {}
+MAX_LOGIN_FAILURES = 5
+LOCKOUT_DURATION_SECONDS = 900  # 15 minutes
+
+
+def create_web_auth_challenge() -> Dict[str, Any]:
+    """
+    Creates a new reverse authentication challenge for web login.
+    User types '!인증 [code]' in Chzzk stream chat to authorize this web session.
+    Completely eliminates public chat credential exposure & session hijacking.
+    """
+    now = time.time()
+    # Purge expired challenges
+    for k in list(ACTIVE_AUTH_CHALLENGES.keys()):
+        if ACTIVE_AUTH_CHALLENGES[k]["expires_at"] < now:
+            ACTIVE_AUTH_CHALLENGES.pop(k, None)
+
+    active_codes = {v["code"] for v in ACTIVE_AUTH_CHALLENGES.values() if v["status"] == "PENDING"}
+    code = None
+    for _ in range(100):
+        c = f"{random.randint(1000, 9999)}"
+        if c not in active_codes:
+            code = c
+            break
+    if not code:
+        code = f"{random.randint(10000, 99999)}"
+
+    challenge_id = uuid.uuid4().hex
+    ACTIVE_AUTH_CHALLENGES[challenge_id] = {
+        "challenge_id": challenge_id,
+        "code": code,
+        "created_at": now,
+        "expires_at": now + WEB_AUTH_CHALLENGE_TIMEOUT_SECONDS,
+        "status": "PENDING",
+        "user_id": None,
+        "username": None,
+        "token": None
+    }
+    return {
+        "challenge_id": challenge_id,
+        "code": code,
+        "command": f"!인증 {code}",
+        "expires_in": WEB_AUTH_CHALLENGE_TIMEOUT_SECONDS
+    }
+
+
+def verify_chat_auth_challenge(db: Session, user_id: str, username: str, code: str) -> Tuple[bool, str, Optional[str]]:
+    """
+    Processes chat command '!인증 [code]' sent by user in streaming chat.
+    Validates challenge and binds web session to the user.
+    Returns (success, reply_message, session_token).
+    """
+    clean_code = str(code or "").strip()
+    now = time.time()
+
+    user = get_or_create_user(db, user_id, username)
+
+    # Find matching pending challenge
+    matched_id = None
+    for ch_id, ch in ACTIVE_AUTH_CHALLENGES.items():
+        if ch["code"] == clean_code and ch["status"] == "PENDING" and ch["expires_at"] >= now:
+            matched_id = ch_id
+            break
+
+    if not matched_id:
+        return False, "⚠️ 유효하지 않거나 만료된 인증 코드입니다! 웹 라운지 [🔑 로그인] 창에서 번호를 새로 확인해주세요.", None
+
+    ch = ACTIVE_AUTH_CHALLENGES[matched_id]
+    token = f"tk_{secrets.token_urlsafe(32)}"
+    user.web_token = token
+    db.commit()
+
+    ch["status"] = "AUTHORIZED"
+    ch["user_id"] = user.id
+    ch["username"] = user.username
+    ch["token"] = token
+
+    return True, f"✅ [치즈나베] @{username} 님의 웹 라운지 인증이 완료되었습니다! 웹 화면으로 돌아가시면 자동 접속됩니다.", token
+
+
+def poll_web_auth_challenge(db: Session, challenge_id: str) -> Dict[str, Any]:
+    """
+    Polls status of a web authentication challenge.
+    Returns status: PENDING | AUTHORIZED | EXPIRED | INVALID
+    """
+    now = time.time()
+    ch = ACTIVE_AUTH_CHALLENGES.get(challenge_id)
+    if not ch:
+        return {"status": "INVALID", "message": "존재하지 않는 인증 세션입니다."}
+
+    if ch["status"] == "AUTHORIZED":
+        user = db.query(User).filter_by(id=ch["user_id"]).first()
+        token = ch["token"]
+        # Consume challenge so it cannot be reused
+        ACTIVE_AUTH_CHALLENGES.pop(challenge_id, None)
+        return {
+            "status": "AUTHORIZED",
+            "token": token,
+            "user_id": user.id if user else ch["user_id"],
+            "username": user.username if user else ch["username"]
+        }
+
+    if ch["expires_at"] < now:
+        ACTIVE_AUTH_CHALLENGES.pop(challenge_id, None)
+        return {"status": "EXPIRED", "message": "인증 유효 시간이 만료되었습니다. 다시 시도해주세요."}
+
+    return {
+        "status": "PENDING",
+        "remaining_sec": max(0, int(ch["expires_at"] - now))
+    }
+
+
+def check_login_lockout(key: str) -> Tuple[bool, int]:
+    """Returns (is_locked, remaining_seconds)."""
+    now = time.time()
+    lock_until = LOGIN_LOCKOUTS.get(key, 0)
+    if now < lock_until:
+        return True, int(lock_until - now)
+    return False, 0
+
+
+def record_login_failure(key: str) -> Tuple[bool, int]:
+    """Records a failed attempt. If >= 5 failures, locks out for 15 minutes."""
+    now = time.time()
+    if key not in LOGIN_FAILED_ATTEMPTS:
+        LOGIN_FAILED_ATTEMPTS[key] = []
+    # Keep attempts within last 10 minutes (600s)
+    LOGIN_FAILED_ATTEMPTS[key] = [t for t in LOGIN_FAILED_ATTEMPTS[key] if now - t < 600]
+    LOGIN_FAILED_ATTEMPTS[key].append(now)
+
+    if len(LOGIN_FAILED_ATTEMPTS[key]) >= MAX_LOGIN_FAILURES:
+        LOGIN_LOCKOUTS[key] = now + LOCKOUT_DURATION_SECONDS
+        LOGIN_FAILED_ATTEMPTS.pop(key, None)
+        return True, LOCKOUT_DURATION_SECONDS
+    remaining_attempts = MAX_LOGIN_FAILURES - len(LOGIN_FAILED_ATTEMPTS[key])
+    return False, remaining_attempts
+
+
+def clear_login_failures(key: str):
+    LOGIN_FAILED_ATTEMPTS.pop(key, None)
+    LOGIN_LOCKOUTS.pop(key, None)
+
+
+def generate_web_login_code(user_id: str, username: str) -> str:
+    """Generates a 4-digit temporary login code for web viewer desk."""
+    now = time.time()
+    for k in list(PENDING_WEB_LOGIN_CODES.keys()):
+        if PENDING_WEB_LOGIN_CODES[k]["expires_at"] < now:
+            PENDING_WEB_LOGIN_CODES.pop(k, None)
+
+    code = f"{random.randint(1000, 9999)}"
+    PENDING_WEB_LOGIN_CODES[code] = {
+        "user_id": user_id,
+        "username": username,
+        "expires_at": now + WEB_LOGIN_CODE_TIMEOUT_SECONDS
+    }
+    return code
+
+
+def set_user_web_pin(db: Session, user_id: str, pin: str) -> Tuple[bool, str]:
+    """Sets a permanent 4-digit PIN for web login."""
+    clean_pin = re.sub(r"[^0-9]", "", str(pin or "")).strip()
+    if len(clean_pin) != 4:
+        return False, "⚠️ 비밀번호는 4자리 숫자(0000~9999)로 설정해주세요! (예: !비번 1234)"
+
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user:
+        return False, "⚠️ 유저를 찾을 수 없습니다."
+
+    user.web_pin = clean_pin
+    db.commit()
+    return True, f"🔐 [웹 비밀번호 설정 완료] @{user.username} 님의 4자리 PIN({clean_pin})이 안전하게 등록되었습니다!\n웹 라운지 로그인 시 닉네임과 이 비밀번호로 접속할 수 있습니다. (공개 채팅에 비밀번호를 노출하지 않도록 주의하세요!)"
+
+
+def verify_web_login(
+    db: Session,
+    username_or_id: str,
+    code_or_pin: str,
+    client_ip: Optional[str] = None
+) -> Tuple[bool, Optional[str], Optional[User], str]:
+    """Verifies 4-digit code or permanent PIN with brute-force protection and lockout."""
+    clean_target = str(username_or_id or "").strip().lstrip("@")
+    clean_code = str(code_or_pin or "").strip()
+    lock_key = f"{client_ip or 'unknown'}:{clean_target.lower()}"
+
+    is_locked, rem_lock = check_login_lockout(lock_key)
+    if is_locked:
+        m, s = divmod(rem_lock, 60)
+        return False, None, None, f"🚫 비밀번호 5회 연속 오류로 계정이 일시 잠겼습니다. ({m}분 {s}초 후 재시도 가능)"
+
+    if not clean_target:
+        return False, None, None, "⚠️ 닉네임 또는 채널 ID를 입력해주세요."
+    if not clean_code:
+        return False, None, None, "⚠️ 4자리 접속 코드 또는 비밀번호를 입력해주세요."
+
+    user = get_user_by_identifier(db, clean_target)
+    if not user:
+        user = db.query(User).filter(func.lower(User.username) == clean_target.lower()).first()
+    if not user:
+        user = db.query(User).filter(User.id == clean_target).first()
+
+    if not user:
+        record_login_failure(lock_key)
+        return False, None, None, f"⚠️ '{clean_target}' 시청자 정보를 찾을 수 없습니다."
+
+    now = time.time()
+    # 1. Check permanent 4-digit PIN
+    if getattr(user, "web_pin", None) and str(user.web_pin).strip() == clean_code:
+        clear_login_failures(lock_key)
+        token = f"tk_{secrets.token_urlsafe(32)}"
+        user.web_token = token
+        db.commit()
+        return True, token, user, "로그인에 성공했습니다!"
+
+    # 2. Check one-time temporary code
+    if clean_code in PENDING_WEB_LOGIN_CODES:
+        entry = PENDING_WEB_LOGIN_CODES[clean_code]
+        if entry["expires_at"] >= now:
+            if entry["user_id"] == user.id or entry["username"].lower() == user.username.lower():
+                PENDING_WEB_LOGIN_CODES.pop(clean_code, None)
+                clear_login_failures(lock_key)
+                token = f"tk_{secrets.token_urlsafe(32)}"
+                user.web_token = token
+                db.commit()
+                return True, token, user, "로그인에 성공했습니다!"
+
+    locked_now, rem = record_login_failure(lock_key)
+    if locked_now:
+        return False, None, None, "🚫 비밀번호 5회 연속 오류로 15분간 로그인이 잠겼습니다."
+    return False, None, None, (
+        f"⚠️ 비밀번호 또는 코드가 올바르지 않습니다. (남은 시도: {rem}회 / 5회 오류 시 15분 잠금)\n"
+        f"💡 채팅창에 '!인증 [코드]'를 입력하는 [간편 채팅 인증]을 이용하시면 비밀번호 없이 1초만에 안전 로그인됩니다!"
+    )
+
+
+def get_user_by_token(db: Session, token: Optional[str]) -> Optional[User]:
+    """Retrieves user by web session token."""
+    if not token or not isinstance(token, str) or not token.startswith("tk_"):
+        return None
+    return db.query(User).filter_by(web_token=token).first()
+    """Retrieves user by web session token."""
+    if not token or not isinstance(token, str) or not token.startswith("tk_"):
+        return None
+    return db.query(User).filter_by(web_token=token).first()
+
+
+def get_active_market_listings_data(
+    db: Session,
+    user_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Retrieves structured exchange listings for web marketplace GUI."""
+    # Item Listings
+    it_query = db.query(ItemListing).filter_by(status="ACTIVE").order_by(ItemListing.id.desc()).all()
+    items = []
+    my_listings = []
+
+    for l in it_query:
+        is_mine = bool(user_id and l.seller_id == user_id)
+        if l.buyer_id and l.buyer_id != user_id and l.seller_id != user_id:
+            continue
+
+        item_dict = {
+            "id": l.id,
+            "token_id": f"I{l.id}",
+            "type": "ITEM",
+            "item_type": l.item_type,
+            "item_name": l.item_name,
+            "quantity": l.quantity,
+            "price": l.price,
+            "unit_price": l.price // l.quantity if l.quantity > 0 else l.price,
+            "tax_fee": l.tax_fee,
+            "seller_id": l.seller_id,
+            "seller_name": l.seller_name,
+            "buyer_id": l.buyer_id,
+            "buyer_name": l.buyer_name,
+            "is_direct": bool(l.buyer_id),
+            "is_mine": is_mine,
+            "created_at": l.created_at.isoformat() if l.created_at else None
+        }
+        items.append(item_dict)
+        if is_mine:
+            my_listings.append(item_dict)
+
+    # Equipment Listings
+    eq_query = db.query(EquipmentListing).filter_by(status="ACTIVE").order_by(EquipmentListing.id.desc()).all()
+    equipments = []
+
+    for l in eq_query:
+        is_mine = bool(user_id and l.seller_id == user_id)
+        if l.buyer_id and l.buyer_id != user_id and l.seller_id != user_id:
+            continue
+
+        eq = l.equipment
+        lines = []
+        if eq:
+            for raw_l in [eq.potential_line_1, eq.potential_line_2, eq.potential_line_3]:
+                if raw_l:
+                    try:
+                        p = json.loads(raw_l) if isinstance(raw_l, str) else raw_l
+                        lines.append(p.get("text", str(p)) if isinstance(p, dict) else str(p))
+                    except Exception:
+                        lines.append(str(raw_l))
+                else:
+                    lines.append(None)
+
+        eq_dict = {
+            "id": l.id,
+            "token_id": f"E{l.id}",
+            "type": "EQUIPMENT",
+            "equipment_id": l.equipment_id,
+            "equipment_name": eq.name if eq else f"장비 #{l.equipment_id}",
+            "starforce": eq.starforce if eq else 0,
+            "potential_tier": (eq.potential_tier or "NONE").upper() if eq else "NONE",
+            "potential_tier_display": CUBE_TIER_DISPLAY.get((eq.potential_tier or "NONE").upper(), "일반") if eq else "일반",
+            "potential_lines": lines,
+            "price": l.price,
+            "tax_fee": l.tax_fee,
+            "seller_id": l.seller_id,
+            "seller_name": l.seller_name,
+            "buyer_id": l.buyer_id,
+            "buyer_name": l.buyer_name,
+            "is_direct": bool(l.buyer_id),
+            "is_mine": is_mine,
+            "created_at": l.created_at.isoformat() if l.created_at else None
+        }
+        equipments.append(eq_dict)
+        if is_mine:
+            my_listings.append(eq_dict)
+
+    return {
+        "items": items,
+        "equipments": equipments,
+        "my_listings": my_listings,
+        "total_active": len(items) + len(equipments)
+    }
+
+
+def get_arena_data(
+    db: Session,
+    user_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Retrieves structured PvP arena state for web desk GUI."""
+    clean_expired_arena_challenges()
+    now_t = time.time()
+
+    open_matches = []
+    for hid, m in list(OPEN_ARENA_MATCHES.items()):
+        rem = max(0, int(m["expires_at"] - now_t))
+        if rem <= 0:
+            continue
+        is_mine = bool(user_id and hid == user_id)
+        open_matches.append({
+            "host_id": hid,
+            "host_name": m["host_name"],
+            "bet": m["bet"],
+            "pot_total": m.get("pot_total", m["bet"] * 2),
+            "expires_in": rem,
+            "is_mine": is_mine
+        })
+
+    pending_challenge = None
+    if user_id and user_id in PENDING_ARENA_CHALLENGES:
+        ch = PENDING_ARENA_CHALLENGES[user_id]
+        rem = max(0, int(ch["expires_at"] - now_t))
+        if rem > 0:
+            pending_challenge = {
+                "challenger_id": ch["challenger_id"],
+                "challenger_name": ch["challenger_name"],
+                "bet": ch["bet"],
+                "pot_total": ch.get("pot_total", ch["bet"] * 2),
+                "expires_in": rem
+            }
+
+    recent_logs = db.query(ArenaMatchLog).order_by(ArenaMatchLog.id.desc()).limit(10).all()
+    recent_matches = []
+    for r in recent_logs:
+        recent_matches.append({
+            "id": r.id,
+            "winner_name": r.winner_name,
+            "loser_name": r.loser_name,
+            "challenger_roll": r.challenger_roll,
+            "defender_roll": r.defender_roll,
+            "bet_amount": r.bet_amount,
+            "winner_reward": r.winner_reward,
+            "tax_fee": r.tax_fee,
+            "match_type": r.match_type,
+            "created_at": r.created_at.isoformat() if r.created_at else None
+        })
+
+    return {
+        "open_matches": open_matches,
+        "pending_challenge": pending_challenge,
+        "recent_matches": recent_matches
+    }
+
+
 
 

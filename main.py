@@ -2,12 +2,13 @@ import os
 import json
 import time
 import asyncio
-from typing import Set, Optional, Dict, Any, List, Tuple
+from typing import Set, Optional, Dict, Any, List, Tuple, Union
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Body, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Body, Query, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
 import httpx
 import websockets
@@ -17,7 +18,9 @@ import uvicorn
 import re
 import socket
 import struct
+import ipaddress
 from database import init_db, get_db, SessionLocal
+from sqlalchemy.orm import Session
 from models import User, Position, MarketState, ProductType, DonationRecord
 import db_backup
 import trading_engine as te
@@ -225,9 +228,206 @@ def serialize_market_state(state) -> Dict[str, Any]:
                 "name": "📉 하강방지권",
                 "price": getattr(state, "merchant_downgrade_price", 35000) or 35000,
                 "stock": getattr(state, "merchant_downgrade_stock", 8) or 0,
+            },
+            "snipe": {
+                "name": "🎯 잠재저격주문서",
+                "price": getattr(state, "merchant_snipe_price", 500000) or 500000,
+                "stock": getattr(state, "merchant_snipe_stock", 3) or 0,
             }
         }
     }
+    return res
+
+def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: Optional[Session] = None) -> Dict[str, Any]:
+    """Serializes a single user's assets, positions, equipment, items, and asset history for inspection."""
+    # 1. Stock positions & valuation
+    positions = []
+    total_stock_value = 0.0
+    for p in (u.positions or []):
+        if p.quantity > 0:
+            val = te.calculate_position_valuation(p, state.current_price)
+            cur_val = round(val["current_value"], 1)
+            total_stock_value += cur_val
+            p_name = p.product_type.value if hasattr(p.product_type, "value") else str(p.product_type)
+            positions.append({
+                "product_type": p_name,
+                "quantity": p.quantity,
+                "entry_price": p.entry_price,
+                "invested_cash": p.invested_cash,
+                "current_value": cur_val,
+                "unit_price": round(val["unit_price"], 1),
+                "unrealized_pnl": round(val["unrealized_pnl"], 1),
+                "pnl_pct": round(val["pnl_pct"], 2)
+            })
+
+    cash = u.points
+    debt = getattr(u, "debt", 0) or 0
+    net_worth = int(round(cash + total_stock_value - debt))
+
+    # 2. Equipments & Potentials
+    equipments = []
+    equipped_item = None
+    sf_state = te.get_starforce_event_state(db) if db else None
+    user_eq_list = te.ensure_user_equipment(db, u) if db else (u.equipments or [])
+    for eq in user_eq_list:
+        pot_tier = (eq.potential_tier or "NONE").upper()
+        lines = []
+        for raw_l in [eq.potential_line_1, eq.potential_line_2, eq.potential_line_3]:
+            if raw_l:
+                try:
+                    parsed = json.loads(raw_l) if isinstance(raw_l, str) else raw_l
+                    if isinstance(parsed, dict):
+                        lines.append(parsed.get("text", str(parsed)))
+                    else:
+                        lines.append(str(parsed))
+                except Exception:
+                    lines.append(str(raw_l))
+            else:
+                lines.append(None)
+
+        sf_info = te.get_pickaxe_info(eq.starforce or 0, event_state=sf_state)
+        pot_eff = te.get_equipment_potential_effects(eq)
+        pot_discount_pct = min(50.0, float(pot_eff.get("starforce_discount_pct", 0.0)))
+        upg_cost = sf_info["upgrade_cost"]
+        if pot_discount_pct > 0:
+            upg_cost = max(100, int(round(upg_cost * (1.0 - pot_discount_pct / 100.0))))
+
+        eq_dict = {
+            "id": eq.id,
+            "name": eq.name,
+            "starforce": eq.starforce,
+            "is_equipped": eq.is_equipped,
+            "is_cube_locked": getattr(eq, "is_cube_locked", False) or False,
+            "is_line1_locked": getattr(eq, "is_line1_locked", False) or False,
+            "is_line2_locked": getattr(eq, "is_line2_locked", False) or False,
+            "is_line3_locked": getattr(eq, "is_line3_locked", False) or False,
+            "potential_tier": pot_tier,
+            "potential_tier_display": te.CUBE_TIER_DISPLAY.get(pot_tier, pot_tier),
+            "potential_lines": lines,
+            "pity_count": getattr(eq, "pity_count", 0) or 0,
+            "info": sf_info,
+            "upgrade_cost": upg_cost,
+            "effects": pot_eff
+        }
+        equipments.append(eq_dict)
+        if eq.is_equipped:
+            equipped_item = eq_dict
+
+    # 3. Items & Consumables
+    auto_until = getattr(u, "auto_mining_until", 0.0) or 0.0
+    items = {
+        "shield_scroll_count": getattr(u, "shield_scroll_count", 0) or 0,
+        "boost_scroll_count": getattr(u, "boost_scroll_count", 0) or 0,
+        "downgrade_scroll_count": getattr(u, "downgrade_scroll_count", 0) or 0,
+        "snipe_scroll_count": getattr(u, "snipe_scroll_count", 0) or 0,
+        "cube_count": getattr(u, "cube_count", 0) or 0,
+        "cube_fragments": getattr(u, "cube_fragments", 0) or 0,
+        "arm_shield": getattr(u, "arm_shield", True),
+        "arm_downgrade": getattr(u, "arm_downgrade", True),
+        "arm_boost": getattr(u, "arm_boost", False),
+        "arm_snipe": getattr(u, "arm_snipe", False),
+        "auto_mining_active": bool(auto_until > now),
+        "auto_mining_remaining_sec": max(0, int(auto_until - now))
+    }
+
+    # Mining Status & Cooldown
+    eq_item_obj = te.get_user_equipped_item(db, u) if db else None
+    eq_lvl = eq_item_obj.starforce if eq_item_obj else getattr(u, "pickaxe_level", 0) or 0
+    eq_lvl = max(0, min(30, int(eq_lvl)))
+    p_info = te.get_pickaxe_info(eq_lvl, event_state=sf_state)
+    pot_eff_equipped = te.get_equipment_potential_effects(eq_item_obj) if eq_item_obj else {}
+    pot_cd_red = pot_eff_equipped.get("mining_cd_reduction", 0)
+    heavy_cd_add = pot_eff_equipped.get("heavy_mining_cd_add", 0)
+    effective_cd_min = max(2, p_info["cooldown_minutes"] - pot_cd_red + heavy_cd_add)
+    cooldown_sec = effective_cd_min * 60
+
+    remaining_cd_sec = 0
+    if u.last_mined_at:
+        last_t = u.last_mined_at if u.last_mined_at.tzinfo else u.last_mined_at.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - last_t).total_seconds()
+        if elapsed < cooldown_sec:
+            remaining_cd_sec = int(cooldown_sec - elapsed)
+
+    mining_status = {
+        "can_mine": remaining_cd_sec <= 0,
+        "remaining_cd_sec": remaining_cd_sec,
+        "effective_cd_min": effective_cd_min,
+        "pickaxe_level": eq_lvl,
+        "pickaxe_name": p_info["name"],
+        "yield_multiplier": round(p_info["yield_multiplier"] + pot_eff_equipped.get("yield_boost", 0.0), 2),
+        "crit_bonus": round(p_info.get("crit_bonus", 0.0) + pot_eff_equipped.get("crit_boost", 0.0), 1),
+        "bonus_points": p_info.get("bonus_points", 0) + pot_eff_equipped.get("bonus_cash", 0),
+        "treasury_pool": float(getattr(state, "treasury_pool", 0.0) or 0.0)
+    }
+
+    credit_info = te.get_user_credit_info(u, market_state=state)
+
+    # 4. Asset History
+    history_entries = []
+    hist_records = getattr(u, "asset_history", None)
+    if (not hist_records or len(hist_records) < 2) and db:
+        hist_records = te.seed_single_user_asset_history(db, u)
+    for h in (hist_records or []):
+        history_entries.append({
+            "id": h.id,
+            "net_worth": h.net_worth,
+            "cash": h.cash,
+            "stock_value": round(h.stock_value, 1),
+            "debt": h.debt,
+            "credit_score": h.credit_score,
+            "event_type": h.event_type,
+            "note": h.note,
+            "created_at": h.created_at.isoformat() if h.created_at else None
+        })
+
+    max_lev = te.get_user_max_leverage_multiplier(db, u) if db else 10
+    beast_cnt = 0
+    if max_lev >= 60:
+        beast_cnt = 3
+    elif max_lev >= 40:
+        beast_cnt = 2
+    elif max_lev >= 20:
+        beast_cnt = 1
+
+    return {
+        "id": u.id,
+        "username": u.username,
+        "points": u.points,
+        "cash": cash,
+        "debt": debt,
+        "net_worth": net_worth,
+        "stock_value": round(total_stock_value, 1),
+        "total_mined": getattr(u, "total_mined", 0.0) or 0.0,
+        "credit": credit_info,
+        "max_leverage_multiplier": max_lev,
+        "beast_heart_count": beast_cnt,
+        "positions": positions,
+        "equipments": equipments,
+        "equipped_item": equipped_item,
+        "items": items,
+        "mining": mining_status,
+        "asset_history": history_entries[-30:]
+    }
+
+def get_all_users_inspector_data(db) -> List[Dict[str, Any]]:
+    """Returns inspector data for all non-dummy registered viewers, sorted by net_worth descending."""
+    state = te.get_market_state(db)
+    now = time.time()
+    users = db.query(User).all()
+    res = []
+    for u in users:
+        uid_lower = (u.id or "").lower()
+        uname_lower = (u.username or "").lower()
+        if (
+            any(uid_lower.startswith(p) for p in ("fresh_", "test_", "viewer_", "strictly_", "dummy_", "sim_", "bug_", "user_temp", "u_"))
+            or any(uname_lower.startswith(p) for p in ("테스터", "유저_", "새유저", "철통잠금", "더미", "테스트", "임시유저", "임시"))
+            or uname_lower in ("테스트유저", "시청자1", "타이머만료유저", "후원테스터", "마진유저", "임시유저")
+            or uid_lower in ("user_temp_123", "u_매수_10x_올인")
+        ):
+            continue
+        res.append(serialize_user_inspector_data(u, state, now, db=db))
+
+    res.sort(key=lambda x: x["net_worth"], reverse=True)
     return res
 
 def sync_docs_market_state(state):
@@ -250,6 +450,33 @@ def sync_docs_market_state(state):
                 json.dump(payload, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+def sync_docs_users_state(db):
+    """Save latest public viewers ranking and inspection data to docs/users_state.json for GitHub Pages."""
+    try:
+        docs_dir = os.path.join(os.path.dirname(__file__), "docs")
+        if os.path.exists(docs_dir):
+            users_data = get_all_users_inspector_data(db)
+            payload = {
+                "success": True,
+                "users": users_data,
+                "count": len(users_data),
+                "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            json_path = os.path.join(docs_dir, "users_state.json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def sync_all_docs(db, state=None):
+    """Convenience helper to sync both market_state.json and users_state.json."""
+    if state is None:
+        state = te.get_market_state(db)
+    sync_docs_market_state(state)
+    sync_docs_users_state(db)
+
+latest_tunnel_url: Optional[str] = None
 
 # ---------------------------------------------------------
 # WebSocket Connection Manager for OBS & Admin Panels
@@ -833,16 +1060,20 @@ async def process_tracker_update(data: Dict[str, Any], source: str = "poll", for
                 if rank is None:
                     if delta >= 40:
                         rank = 1
-                    elif 0 <= delta < 40:
+                    elif -35 <= delta < 40:
                         rank = 2
                     else:
                         rank = 3
 
+                # Method C: Sanity check for Mahjong Soul rank point rules
+                # 1st place always gains +40pt or more.
+                # 2nd place in Sanma (0 Uma) typically ranges from -35pt to +39pt.
+                # 3rd place (last in Sanma) suffers severe penalty (<= -40pt).
                 if 0 <= delta < 40 and rank in (3, 4):
                     rank = 2
                 elif delta >= 40 and rank != 1:
                     rank = 1
-                elif delta < 0 and rank in (1, 2):
+                elif delta <= -45 and rank in (1, 2):
                     rank = 3
 
                 # For 3-player mahjong (Sanma), max rank is 3
@@ -900,7 +1131,7 @@ async def process_tracker_update(data: Dict[str, Any], source: str = "poll", for
                     liq_chat = f"🚨 [마진콜 경고] 총 {liq_count}건의 레버리지/인버스 포지션이 강제 청산되었습니다!"
                     asyncio.create_task(dispatch_chat_notice(liq_chat, fallback_bot=bot_instance))
 
-                sync_docs_market_state(state)
+                sync_all_docs(db, state)
                 await manager.broadcast({
                     "type": "settlement",
                     **settle_res,
@@ -1108,6 +1339,16 @@ async def lifespan(app: FastAPI):
     init_db()
     print("✅ 데이터베이스 초기화 완료 (SQLite: stoke_mahjong.db)")
 
+    # Sync initial GitHub Pages docs snapshot (market_state.json & users_state.json)
+    try:
+        db_init = SessionLocal()
+        te.seed_initial_asset_history_if_needed(db_init)
+        sync_all_docs(db_init)
+        db_init.close()
+        print("📁 공식 웹 가이드 스냅샷(market_state.json, users_state.json) 동기화 완료")
+    except Exception as e:
+        print(f"⚠️ 초기 스냅샷 생성 오류: {e}")
+
     # 2. Run Chzzk Official Session Worker, Unofficial Bot & Mahjong Tracker Sync in Background
     bot_task = asyncio.create_task(bot_instance.run())
     session_task = asyncio.create_task(session_worker.run())
@@ -1136,6 +1377,109 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def is_admin_access_allowed(request: Request) -> bool:
+    """Checks whether the request is allowed to access admin routes (localhost/streamer PC only)."""
+    # 1. Any Cloudflare Tunnel headers -> definitely external public tunnel!
+    if any(h in request.headers for h in ("cf-connecting-ip", "cf-ray", "cf-visitor", "cf-ipcountry", "cdn-loop")):
+        return False
+
+    # 2. Any forwarded proxy headers -> definitely external proxy!
+    if any(h in request.headers for h in ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded")):
+        return False
+
+    # 3. Host header check (must be localhost, 127.0.0.1, testserver, ::1, or private LAN/WSL IP)
+    host_raw = (request.headers.get("host") or "").split(":")[0].lower()
+    if host_raw not in ("localhost", "127.0.0.1", "testserver", "::1"):
+        try:
+            h_ip = ipaddress.ip_address(host_raw)
+            if not (h_ip.is_loopback or h_ip.is_private or h_ip.is_link_local):
+                return False
+        except ValueError:
+            return False
+
+    # 4. Client IP check (must be loopback, private LAN/WSL host gateway, or testclient)
+    client_ip = request.client.host if request.client else ""
+    if client_ip in ("127.0.0.1", "::1", "testclient", "localhost", "testserver"):
+        return True
+
+    try:
+        c_ip = ipaddress.ip_address(client_ip)
+        if c_ip.is_loopback or c_ip.is_private or c_ip.is_link_local:
+            return True
+        if getattr(c_ip, "ipv4_mapped", None):
+            mapped = c_ip.ipv4_mapped
+            if mapped.is_loopback or mapped.is_private or mapped.is_link_local:
+                return True
+    except ValueError:
+        pass
+
+    return False
+
+ADMIN_PROTECTED_EXACT = {
+    "/admin",
+    "/api/casino/open",
+    "/api/casino/close",
+    "/api/lottery/open",
+    "/api/lottery/close",
+    "/api/merchant/open",
+    "/api/merchant/close",
+    "/api/chzzk/set-tokens",
+    "/api/chzzk/exchange-code",
+    "/api/chzzk/send-test",
+    "/api/chzzk/subscribe-donation",
+    "/api/chzzk/donation",
+    "/api/tracker/push",
+    "/api/chat/command",
+    "/api/transfer",
+}
+
+ADMIN_PROTECTED_PREFIXES = (
+    "/admin/",
+    "/api/admin/",
+)
+
+@app.middleware("http")
+async def block_external_admin_middleware(request: Request, call_next):
+    path = request.url.path
+    if path in ADMIN_PROTECTED_EXACT or path.startswith(ADMIN_PROTECTED_PREFIXES):
+        if not is_admin_access_allowed(request):
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "success": False,
+                        "detail": "🚫 관리자/제어 API는 외부 접근이 원천 차단되어 있습니다. (스트리머 로컬 전용)"
+                    }
+                )
+            return HTMLResponse(
+                status_code=403,
+                content="""<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>403 접근 차단</title>
+    <style>
+        body { background: #0b0f19; color: #f87171; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 36px; border-radius: 14px; border: 2px solid #ef4444; text-align: center; max-width: 520px; box-shadow: 0 20px 40px rgba(0,0,0,0.7); }
+        h1 { font-size: 20px; margin-bottom: 12px; color: #ef4444; }
+        p { font-size: 14px; color: #94a3b8; line-height: 1.6; }
+        .badge { display: inline-block; background: rgba(239, 68, 68, 0.2); color: #f87171; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 11px; margin-bottom: 14px; }
+        a { display: inline-block; margin-top: 20px; padding: 10px 22px; background: #38bdf8; color: #0f172a; text-decoration: none; border-radius: 8px; font-weight: 800; font-size: 14px; }
+        a:hover { background: #0284c7; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge">SECURITY SHIELD</div>
+        <h1>🚫 403 Forbidden: 관리자 페이지 접근 차단</h1>
+        <p>관리자 제어판 및 관리 API는 보안을 위해 <strong>외부 인터넷 접근이 원천 봉쇄</strong>되어 있습니다.<br>스트리머 본인의 로컬 PC(localhost)에서만 접근 가능합니다.</p>
+        <a href="/">시청자 가이드 & 스펙 조회로 이동</a>
+    </div>
+</body>
+</html>"""
+            )
+    return await call_next(request)
 
 # ---------------------------------------------------------
 # Request Models
@@ -1189,12 +1533,136 @@ class MerchantOpenRequest(BaseModel):
     duration_minutes: Optional[int] = 10
     merchant_name: Optional[str] = "신비상인"
 
+class WebLoginRequest(BaseModel):
+    username: str
+    code: str
+
+class WebSetPinRequest(BaseModel):
+    token: Optional[str] = None
+    pin: str
+
+class WebTransferRequest(BaseModel):
+    token: str
+    target_name: str
+    amount: str
+
+class WebExchangeBuyRequest(BaseModel):
+    token: str
+    listing_token: str
+
+class WebExchangeSellItemRequest(BaseModel):
+    token: str
+    item_type: str
+    quantity: int
+    price: int
+    target_buyer: Optional[str] = None
+
+class WebExchangeSellEquipmentRequest(BaseModel):
+    token: str
+    equipment_id: int
+    price: int
+    target_buyer: Optional[str] = None
+
+class WebExchangeCancelRequest(BaseModel):
+    token: str
+    listing_token: str
+
+class WebArenaOpenRequest(BaseModel):
+    token: str
+    bet: str
+
+class WebArenaJoinRequest(BaseModel):
+    token: str
+    host_id: Optional[str] = None
+
+class WebArenaChallengeRequest(BaseModel):
+    token: str
+    target_name: str
+    bet: str
+
+class WebArenaActionRequest(BaseModel):
+    token: str
+
+class WebStockTradeRequest(BaseModel):
+    token: str
+    action: str  # "BUY" or "SELL"
+    product_type: str
+    quantity: Optional[int] = None
+    is_all_in: Optional[bool] = False
+
+class WebMineRequest(BaseModel):
+    token: str
+
+class WebEquipRequest(BaseModel):
+    token: str
+    equipment_id: int
+
+class WebEnhanceRequest(BaseModel):
+    token: str
+    equipment_id: Optional[int] = None
+    use_shield: Optional[bool] = None
+    use_boost: Optional[bool] = None
+    use_downgrade: Optional[bool] = None
+
+class WebCubeUseRequest(BaseModel):
+    token: str
+    equipment_id: Optional[int] = None
+    target_keyword: Optional[str] = None
+    use_snipe: Optional[bool] = False
+    lock_lines: Optional[List[int]] = None
+
+class WebCubeBuyRequest(BaseModel):
+    token: str
+    count: int = 1
+
+class WebCubeFragmentExchangeRequest(BaseModel):
+    token: str
+
+class WebCubeLockToggleRequest(BaseModel):
+    token: str
+    equipment_id: Optional[int] = None
+
+class WebCubeLineLockRequest(BaseModel):
+    token: str
+    equipment_id: Optional[int] = None
+    line_arg: str
+    state: Optional[str] = None
+
+class WebMerchantBuyRequest(BaseModel):
+    token: str
+    item_key: str
+    quantity: Optional[Union[int, str]] = "1"
+
+class WebCasinoSlotRequest(BaseModel):
+    token: str
+    bet: Union[int, str]
+
+class WebCasinoDiceRequest(BaseModel):
+    token: str
+    choice: str
+    bet: Union[int, str]
+
+class WebCasinoRaceRequest(BaseModel):
+    token: str
+    runner: str
+    bet: Union[int, str]
+
+class WebCasinoMahjongRequest(BaseModel):
+    token: str
+    choice: str
+    bet: Union[int, str]
+
+class WebLotteryBuyRequest(BaseModel):
+    token: str
+    count: Optional[Union[int, str]] = 1
+    lottery_type: Optional[str] = "basic"
+
+
 # ---------------------------------------------------------
 # Web Views & OBS Overlay
 # ---------------------------------------------------------
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
-@app.get("/", response_class=HTMLResponse)
 @app.get("/overlay", response_class=HTMLResponse)
 async def get_overlay():
     """Serves the OBS Browser Source Overlay (Supports ?mode=stock or ?mode=mahjong)."""
@@ -1238,6 +1706,7 @@ async def get_admin():
 
 DOCS_DIR = os.path.join(os.path.dirname(__file__), "docs")
 
+@app.get("/", response_class=HTMLResponse)
 @app.get("/guide", response_class=HTMLResponse)
 async def get_guide():
     """Serves the Viewer Web Guide (matching GitHub Pages)."""
@@ -1246,6 +1715,39 @@ async def get_guide():
         with open(guide_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse(content="<h1>가이드 페이지 준비 중입니다.</h1>")
+
+@app.get("/market_state.json")
+@app.get("/docs/market_state.json")
+async def get_market_state_json():
+    """Serves static market_state.json snapshot for web guide."""
+    path = os.path.join(DOCS_DIR, "market_state.json")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="application/json")
+    return JSONResponse(status_code=404, content={"detail": "market_state.json not found"})
+
+@app.get("/users_state.json")
+@app.get("/docs/users_state.json")
+async def get_users_state_json():
+    """Serves static users_state.json snapshot for web guide."""
+    path = os.path.join(DOCS_DIR, "users_state.json")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="application/json")
+    return JSONResponse(status_code=404, content={"detail": "users_state.json not found"})
+
+@app.get("/mystery_merchant.jpg")
+@app.get("/docs/mystery_merchant.jpg")
+async def get_mystery_merchant_img():
+    """Serves mystery merchant hooded portrait."""
+    path = os.path.join(DOCS_DIR, "mystery_merchant.jpg")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="image/jpeg")
+    return JSONResponse(status_code=404, content={"detail": "mystery_merchant.jpg not found"})
+
+TILES_DIR = os.path.join(DOCS_DIR, "tiles")
+if os.path.exists(TILES_DIR):
+    from starlette.staticfiles import StaticFiles
+    app.mount("/tiles", StaticFiles(directory=TILES_DIR), name="tiles")
+    app.mount("/docs/tiles", StaticFiles(directory=TILES_DIR), name="docs_tiles")
 
 # ---------------------------------------------------------
 # Chzzk OpenAPI & Authentication Endpoints
@@ -1586,109 +2088,78 @@ async def api_grant_points(req: GrantPointsRequest, db=Depends(get_db)):
     }
 
 @app.get("/api/admin/users")
+@app.get("/api/users")
 async def api_admin_users(db=Depends(get_db)):
-    """GET /api/admin/users - Returns list of all registered viewers with complete assets, equipment, and items."""
+    """GET /api/users & /api/admin/users - Returns list of all registered viewers with complete assets, equipment, and items."""
+    users_data = get_all_users_inspector_data(db)
+    return {"success": True, "users": users_data}
+
+@app.get("/api/user/{user_id_or_username}")
+async def api_get_single_user(user_id_or_username: str, db=Depends(get_db)):
+    """GET /api/user/{user_id_or_username} - Returns detailed asset, position, equipment, and item breakdown for a single viewer."""
+    target = (user_id_or_username or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="유저 ID 또는 닉네임을 입력해주세요.")
+    
+    user = te.get_user_by_identifier(db, target)
+    if not user:
+        # Case-insensitive username search
+        user = db.query(User).filter(User.username.ilike(target)).first()
+    if not user:
+        user = db.query(User).filter(User.id.ilike(target)).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail=f"시청자 '{target}' 정보를 찾을 수 없습니다.")
+    
     state = te.get_market_state(db)
     now = time.time()
-    users = db.query(User).all()
-    res = []
-    for u in users:
-        uid_lower = (u.id or "").lower()
-        uname_lower = (u.username or "").lower()
-        if (
-            any(uid_lower.startswith(p) for p in ("fresh_", "test_", "viewer_", "strictly_", "dummy_", "sim_", "bug_", "user_temp", "u_"))
-            or any(uname_lower.startswith(p) for p in ("테스터", "유저_", "새유저", "철통잠금", "더미", "테스트", "임시유저", "임시"))
-            or uname_lower in ("테스트유저", "시청자1", "타이머만료유저", "후원테스터", "마진유저", "임시유저")
-            or uid_lower in ("user_temp_123", "u_매수_10x_올인")
-        ):
-            continue
+    user_data = serialize_user_inspector_data(user, state, now, db=db)
+    return {
+        "success": True,
+        **user_data,
+        "user": user_data
+    }
 
-        # 1. Stock positions & valuation
-        positions = []
-        total_stock_value = 0.0
-        for p in (u.positions or []):
-            if p.quantity > 0:
-                val = te.calculate_position_valuation(p, state.current_price)
-                cur_val = round(val["current_value"], 1)
-                total_stock_value += cur_val
-                p_name = p.product_type.value if hasattr(p.product_type, "value") else str(p.product_type)
-                positions.append({
-                    "product_type": p_name,
-                    "quantity": p.quantity,
-                    "entry_price": p.entry_price,
-                    "invested_cash": p.invested_cash,
-                    "current_value": cur_val,
-                    "unit_price": round(val["unit_price"], 1),
-                    "unrealized_pnl": round(val["unrealized_pnl"], 1),
-                    "pnl_pct": round(val["pnl_pct"], 2)
-                })
+@app.get("/api/user/{user_id_or_username}/asset-history")
+async def api_get_user_asset_history(user_id_or_username: str, db=Depends(get_db)):
+    """GET /api/user/{user_id_or_username}/asset-history - Returns historical asset snapshot progression for charts."""
+    target = (user_id_or_username or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="유저 ID 또는 닉네임을 입력해주세요.")
 
-        cash = u.points
-        debt = getattr(u, "debt", 0) or 0
-        net_worth = int(round(cash + total_stock_value - debt))
+    user = te.get_user_by_identifier(db, target)
+    if not user:
+        user = db.query(User).filter(User.username.ilike(target)).first()
+    if not user:
+        user = db.query(User).filter(User.id.ilike(target)).first()
 
-        # 2. Equipments & Potentials
-        equipments = []
-        equipped_item = None
-        for eq in (u.equipments or []):
-            pot_tier = (eq.potential_tier or "NONE").upper()
-            lines = []
-            for raw_l in [eq.potential_line_1, eq.potential_line_2, eq.potential_line_3]:
-                if raw_l:
-                    try:
-                        parsed = json.loads(raw_l) if isinstance(raw_l, str) else raw_l
-                        if isinstance(parsed, dict):
-                            lines.append(parsed.get("text", str(parsed)))
-                        else:
-                            lines.append(str(parsed))
-                    except Exception:
-                        lines.append(str(raw_l))
-                else:
-                    lines.append(None)
+    if not user:
+        raise HTTPException(status_code=404, detail=f"시청자 '{target}' 정보를 찾을 수 없습니다.")
 
-            eq_dict = {
-                "id": eq.id,
-                "name": eq.name,
-                "starforce": eq.starforce,
-                "is_equipped": eq.is_equipped,
-                "potential_tier": pot_tier,
-                "potential_tier_display": te.CUBE_TIER_DISPLAY.get(pot_tier, pot_tier),
-                "potential_lines": lines,
-                "pity_count": getattr(eq, "pity_count", 0) or 0
-            }
-            equipments.append(eq_dict)
-            if eq.is_equipped:
-                equipped_item = eq_dict
+    history = te.get_user_asset_history(db, user.id)
+    return {
+        "success": True,
+        "user_id": user.id,
+        "username": user.username,
+        "history": history
+    }
 
-        # 3. Items & Consumables
-        auto_until = getattr(u, "auto_mining_until", 0.0) or 0.0
-        items = {
-            "shield_scroll_count": getattr(u, "shield_scroll_count", 0) or 0,
-            "boost_scroll_count": getattr(u, "boost_scroll_count", 0) or 0,
-            "downgrade_scroll_count": getattr(u, "downgrade_scroll_count", 0) or 0,
-            "cube_count": getattr(u, "cube_count", 0) or 0,
-            "cube_fragments": getattr(u, "cube_fragments", 0) or 0,
-            "auto_mining_active": bool(auto_until > now),
-            "auto_mining_remaining_sec": max(0, int(auto_until - now))
-        }
+class TunnelUrlRequest(BaseModel):
+    url: str
 
-        res.append({
-            "id": u.id,
-            "username": u.username,
-            "points": u.points,
-            "cash": cash,
-            "debt": debt,
-            "net_worth": net_worth,
-            "stock_value": round(total_stock_value, 1),
-            "total_mined": getattr(u, "total_mined", 0.0) or 0.0,
-            "positions": positions,
-            "equipments": equipments,
-            "equipped_item": equipped_item,
-            "items": items
-        })
+@app.get("/api/tunnel")
+async def api_get_tunnel():
+    """GET /api/tunnel - Returns current active Cloudflare Tunnel URL if set."""
+    return {"success": True, "tunnel_url": latest_tunnel_url}
 
-    res.sort(key=lambda x: x["net_worth"], reverse=True)
-    return {"success": True, "users": res}
+@app.post("/api/admin/tunnel")
+async def api_set_tunnel(req: TunnelUrlRequest):
+    """POST /api/admin/tunnel - Sets or updates the active Cloudflare Tunnel URL."""
+    global latest_tunnel_url
+    clean_url = req.url.strip().rstrip("/")
+    latest_tunnel_url = clean_url
+    print(f"🌐 [Cloudflare Tunnel] 외부 터널 주소 갱신: {latest_tunnel_url}")
+    return {"success": True, "tunnel_url": latest_tunnel_url}
 
 @app.post("/api/admin/reset-market")
 async def api_reset_market(db=Depends(get_db)):
@@ -1780,6 +2251,593 @@ async def api_transfer(req: TransferRequest, db=Depends(get_db)):
         "recent_trades": list(recent_trades)
     })
     return {"success": True, "reply": reply, "details": details}
+
+
+# ---------------------------------------------------------
+# Web Desk & Interactive Lounge Endpoints
+# ---------------------------------------------------------
+def authenticate_web_user(db: Session, token: Optional[str]) -> User:
+    """Helper to authenticate user via web session token."""
+    if not token:
+        raise HTTPException(status_code=401, detail="인증 토큰이 누락되었습니다. 먼저 웹 로그인을 진행해주세요.")
+    user = te.get_user_by_token(db, token)
+    if not user:
+        raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 로그인 세션입니다. 다시 로그인해주세요.")
+    return user
+
+
+@app.post("/api/web/auth/challenge")
+async def api_web_auth_challenge():
+    """Generates a reverse authentication challenge for secure chat login (prevents account hijacking)."""
+    res = te.create_web_auth_challenge()
+    return {"success": True, **res}
+
+
+@app.get("/api/web/auth/poll")
+async def api_web_auth_poll(challenge_id: str, db=Depends(get_db)):
+    """Polls reverse authentication status."""
+    res = te.poll_web_auth_challenge(db, challenge_id)
+    if res.get("status") == "AUTHORIZED":
+        user = db.query(User).filter_by(web_token=res["token"]).first()
+        state = te.get_market_state(db)
+        now = time.time()
+        user_data = serialize_user_inspector_data(user, state, now, db=db) if user else None
+        return {
+            "success": True,
+            "status": "AUTHORIZED",
+            "token": res["token"],
+            "user": user_data
+        }
+    return {"success": True, **res}
+
+
+@app.post("/api/web/login")
+async def api_web_login(req: WebLoginRequest, request: Request, db=Depends(get_db)):
+    """Logs in viewer with 4-digit temporary code or permanent PIN with brute-force protection."""
+    client_ip = request.client.host if request.client else "unknown"
+    ok, token, user, msg = te.verify_web_login(db, req.username, req.code, client_ip=client_ip)
+    if not ok or not user or not token:
+        raise HTTPException(status_code=400, detail=msg)
+    state = te.get_market_state(db)
+    now = time.time()
+    user_data = serialize_user_inspector_data(user, state, now, db=db)
+    return {
+        "success": True,
+        "token": token,
+        "message": msg,
+        "user": user_data
+    }
+
+
+@app.post("/api/web/user/set-pin")
+async def api_web_user_set_pin(
+    req: WebSetPinRequest,
+    x_web_token: Optional[str] = Header(None, alias="x-web-token"),
+    db=Depends(get_db)
+):
+    """Sets or changes permanent 4-digit PIN securely from web interface without chat leaking."""
+    eff_token = req.token or x_web_token
+    user = authenticate_web_user(db, eff_token)
+    ok, msg = te.set_user_web_pin(db, user.id, req.pin)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "message": msg}
+
+
+@app.get("/api/web/me")
+async def api_web_me(
+    token: Optional[str] = None,
+    x_web_token: Optional[str] = Header(None, alias="x-web-token"),
+    authorization: Optional[str] = Header(None),
+    db=Depends(get_db)
+):
+    """Returns profile & wallet status for authenticated web session."""
+    eff_token = token or x_web_token
+    if not eff_token and authorization and authorization.startswith("Bearer "):
+        eff_token = authorization.split(" ")[1].strip()
+    user = authenticate_web_user(db, eff_token)
+    state = te.get_market_state(db)
+    now = time.time()
+    user_data = serialize_user_inspector_data(user, state, now, db=db)
+    return {"success": True, "user": user_data}
+
+
+@app.post("/api/web/logout")
+async def api_web_logout(
+    token: Optional[str] = Body(None, embed=True),
+    x_web_token: Optional[str] = Header(None, alias="x-web-token"),
+    db=Depends(get_db)
+):
+    """Invalidates active web session token."""
+    eff = token or x_web_token
+    if eff:
+        user = te.get_user_by_token(db, eff)
+        if user:
+            user.web_token = None
+            db.commit()
+    return {"success": True, "message": "로그아웃되었습니다."}
+
+
+@app.post("/api/web/transfer")
+async def api_web_transfer(req: WebTransferRequest, db=Depends(get_db)):
+    """P2P wire transfer from Web Lounge."""
+    user = authenticate_web_user(db, req.token)
+    success, reply, details = te.execute_transfer(
+        db, user.id, user.username, req.target_name, req.amount
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=reply)
+
+    event = {"type": "account_transfer", "data": details}
+    record_trade_event(event)
+    leaderboard = te.get_leaderboard(db, top_n=3)
+    state = te.get_market_state(db)
+    await manager.broadcast({
+        **event,
+        "leaderboard": leaderboard,
+        "market_state": serialize_market_state(state),
+        "recent_trades": list(recent_trades)
+    })
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db, state)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.get("/api/web/exchange/listings")
+async def api_web_exchange_listings(
+    token: Optional[str] = None,
+    x_web_token: Optional[str] = Header(None, alias="x-web-token"),
+    db=Depends(get_db)
+):
+    """Returns active marketplace listings (items & equipments) for web GUI."""
+    eff_token = token or x_web_token
+    user = te.get_user_by_token(db, eff_token) if eff_token else None
+    data = te.get_active_market_listings_data(db, user_id=user.id if user else None)
+    return {"success": True, **data}
+
+
+@app.post("/api/web/exchange/buy")
+async def api_web_exchange_buy(req: WebExchangeBuyRequest, db=Depends(get_db)):
+    """Buys item or equipment from marketplace."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_buy_exchange(db, user.id, user.username, req.listing_token)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/exchange/sell-item")
+async def api_web_exchange_sell_item(req: WebExchangeSellItemRequest, db=Depends(get_db)):
+    """Registers consumable scroll or cube for sale on exchange."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_list_item(
+        db, user.id, user.username, req.item_type, str(req.quantity), str(req.price), target_buyer_token=req.target_buyer
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/exchange/sell-equipment")
+async def api_web_exchange_sell_equipment(req: WebExchangeSellEquipmentRequest, db=Depends(get_db)):
+    """Registers pickaxe equipment for sale on exchange."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_list_equipment(
+        db, user.id, user.username, str(req.equipment_id), str(req.price), target_buyer_token=req.target_buyer
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/exchange/cancel")
+async def api_web_exchange_cancel(req: WebExchangeCancelRequest, db=Depends(get_db)):
+    """Cancels active listing and returns item to seller inventory."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_cancel_exchange(db, user.id, user.username, req.listing_token)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.get("/api/web/arena/status")
+async def api_web_arena_status(
+    token: Optional[str] = None,
+    x_web_token: Optional[str] = Header(None, alias="x-web-token"),
+    db=Depends(get_db)
+):
+    """Returns live arena state, open matches, and recent logs."""
+    eff_token = token or x_web_token
+    user = te.get_user_by_token(db, eff_token) if eff_token else None
+    data = te.get_arena_data(db, user_id=user.id if user else None)
+    return {"success": True, **data}
+
+
+@app.post("/api/web/arena/open")
+async def api_web_arena_open(req: WebArenaOpenRequest, db=Depends(get_db)):
+    """Opens a public arena match."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.open_public_arena_match(db, user.id, user.username, req.bet)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    return {"success": True, "reply": reply, "details": details}
+
+
+@app.post("/api/web/arena/join")
+async def api_web_arena_join(req: WebArenaJoinRequest, db=Depends(get_db)):
+    """Joins an open public arena match."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.join_public_arena_match(db, user.id, user.username, target_host=req.host_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/arena/challenge")
+async def api_web_arena_challenge(req: WebArenaChallengeRequest, db=Depends(get_db)):
+    """Challenges a specific user to a 1:1 duel."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.create_pvp_challenge(db, user.id, user.username, req.target_name, req.bet)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    return {"success": True, "reply": reply, "details": details}
+
+
+@app.post("/api/web/arena/accept")
+async def api_web_arena_accept(req: WebArenaActionRequest, db=Depends(get_db)):
+    """Accepts pending duel or open arena match."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.accept_pvp_challenge(db, user.id, user.username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/arena/decline")
+async def api_web_arena_decline(req: WebArenaActionRequest, db=Depends(get_db)):
+    """Declines pending duel challenge."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.decline_pvp_challenge(db, user.id, user.username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    return {"success": True, "reply": reply, "details": details}
+
+
+@app.post("/api/web/trade/stock")
+async def api_web_trade_stock(req: WebStockTradeRequest, db=Depends(get_db)):
+    """Executes stock buy or sell order from web desk."""
+    user = authenticate_web_user(db, req.token)
+    p_type = te.parse_product_type(req.product_type)
+    if not p_type:
+        raise HTTPException(status_code=400, detail=f"유효하지 않은 종목입니다: '{req.product_type}'")
+
+    action = (req.action or "").strip().upper()
+    if action == "BUY":
+        qty_token = "올인" if req.is_all_in else str(req.quantity or 1)
+        ok, reply, event = te.execute_buy(db, user.id, user.username, req.product_type, qty_token)
+    elif action == "SELL":
+        qty_token = "전량" if req.is_all_in else str(req.quantity or 1)
+        ok, reply, event = te.execute_sell(db, user.id, user.username, req.product_type, qty_token)
+    else:
+        raise HTTPException(status_code=400, detail="action은 'BUY' 또는 'SELL'이어야 합니다.")
+
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+
+    if event:
+        record_trade_event(event)
+        leaderboard = te.get_leaderboard(db, top_n=3)
+        state = te.get_market_state(db)
+        await manager.broadcast({
+            **event,
+            "leaderboard": leaderboard,
+            "market_state": serialize_market_state(state),
+            "recent_trades": list(recent_trades)
+        })
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "user": user_data}
+
+
+@app.post("/api/web/mining/mine")
+async def api_web_mining_mine(req: WebMineRequest, db=Depends(get_db)):
+    """Executes Proof of Watch mining from Web Lounge."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_mining(db, user.id, user.username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    if reply:
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    state = te.get_market_state(db)
+    leaderboard = te.get_leaderboard(db, top_n=3)
+    await manager.broadcast({
+        "type": "mining_result",
+        "data": details,
+        "leaderboard": leaderboard,
+        "market_state": serialize_market_state(state)
+    })
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/equipment/equip")
+async def api_web_equipment_equip(req: WebEquipRequest, db=Depends(get_db)):
+    """Equips designated pickaxe equipment from Web Lounge."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_equip_item(db, user.id, user.username, str(req.equipment_id))
+    if not ok and "이미" not in reply:
+        raise HTTPException(status_code=400, detail=reply)
+    state = te.get_market_state(db)
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/enhancement/upgrade")
+async def api_web_enhancement_upgrade(req: WebEnhanceRequest, db=Depends(get_db)):
+    """Executes MapleStory Starforce enhancement from Web Lounge."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_pickaxe_upgrade(
+        db, user.id, user.username,
+        item_id_or_index=str(req.equipment_id) if req.equipment_id else None,
+        use_shield=req.use_shield,
+        use_boost=req.use_boost,
+        use_downgrade=req.use_downgrade
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    if reply:
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    state = te.get_market_state(db)
+    leaderboard = te.get_leaderboard(db, top_n=3)
+    await manager.broadcast({
+        "type": "starforce_upgrade",
+        "data": details,
+        "leaderboard": leaderboard,
+        "market_state": serialize_market_state(state)
+    })
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/cube/use")
+async def api_web_cube_use(req: WebCubeUseRequest, db=Depends(get_db)):
+    """Executes Miracle Cube potential reset from Web Lounge."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_cube_use(
+        db, user.id, user.username,
+        item_id_or_index=str(req.equipment_id) if req.equipment_id else None,
+        target_keyword=req.target_keyword,
+        use_snipe=bool(req.use_snipe),
+        lock_lines=req.lock_lines
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    if reply:
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    state = te.get_market_state(db)
+    await manager.broadcast({
+        "type": "cube_used",
+        "data": details,
+        "market_state": serialize_market_state(state)
+    })
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/cube/buy")
+async def api_web_cube_buy(req: WebCubeBuyRequest, db=Depends(get_db)):
+    """Purchases Miracle Cubes from Web Lounge."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_buy_cubes(db, user.id, user.username, str(req.count))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    state = te.get_market_state(db)
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/cube/fragment-exchange")
+async def api_web_cube_fragment_exchange(req: WebCubeFragmentExchangeRequest, db=Depends(get_db)):
+    """Exchanges 10 Cube Fragments for 15,000P refund."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_cube_fragment_exchange(db, user.id, user.username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    state = te.get_market_state(db)
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/cube/lock-toggle")
+async def api_web_cube_lock_toggle(req: WebCubeLockToggleRequest, db=Depends(get_db)):
+    """Toggles cube lock (safety protection) on equipment."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_equipment_cube_lock(db, user.id, user.username, str(req.equipment_id) if req.equipment_id else None)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    state = te.get_market_state(db)
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.post("/api/web/cube/line-lock")
+async def api_web_cube_line_lock(req: WebCubeLineLockRequest, db=Depends(get_db)):
+    """Locks or unlocks specific potential line on equipment."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_potential_line_lock(
+        db, user.id, user.username,
+        line_arg=req.line_arg,
+        state_str=req.state,
+        item_id_or_index=str(req.equipment_id) if req.equipment_id else None
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    state = te.get_market_state(db)
+    sync_all_docs(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data}
+
+
+@app.get("/api/web/cube/snipe-options")
+async def api_web_cube_snipe_options():
+    """Returns available options and full guide for the Snipe Scroll (잠재저격주문서)."""
+    return {
+        "success": True,
+        "options": te.get_snipe_options_data(),
+        "guide_text": te.get_snipe_options_guide_text()
+    }
+
+
+@app.get("/api/web/merchant/status")
+async def api_web_merchant_status(db=Depends(get_db)):
+    """Current Mysterious Merchant status and items for Web GUI."""
+    m_state = te.get_merchant_state(db)
+    if not m_state.get("is_active"):
+        for item in m_state.get("items", {}).values():
+            item["price"] = "???"
+            item["stock"] = "???"
+    return {"success": True, "merchant": m_state}
+
+
+@app.post("/api/web/merchant/buy")
+async def api_web_merchant_buy(req: WebMerchantBuyRequest, db=Depends(get_db)):
+    """Buys scroll item from Mysterious Merchant via Web GUI."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_buy_merchant_item(db, user.id, user.username, req.item_key, str(req.quantity or 1))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "merchant": te.get_merchant_state(db)}
+
+
+@app.get("/api/web/casino/status")
+async def api_web_casino_status(db=Depends(get_db)):
+    """Current Casino status and Treasury pool for Web GUI."""
+    c_state = te.get_casino_state(db)
+    return {"success": True, "casino": c_state}
+
+
+@app.post("/api/web/casino/slot")
+async def api_web_casino_slot(req: WebCasinoSlotRequest, db=Depends(get_db)):
+    """Plays 3-reel slot gamble via Web GUI."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_slot_gamble(db, user.id, user.username, str(req.bet))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "casino": te.get_casino_state(db)}
+
+
+@app.post("/api/web/casino/dice")
+async def api_web_casino_dice(req: WebCasinoDiceRequest, db=Depends(get_db)):
+    """Plays 2-dice gamble via Web GUI."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_dice_gamble(db, user.id, user.username, req.choice, str(req.bet))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "casino": te.get_casino_state(db)}
+
+
+@app.post("/api/web/casino/race")
+async def api_web_casino_race(req: WebCasinoRaceRequest, db=Depends(get_db)):
+    """Plays Yakuman 4-Greats race gamble via Web GUI."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_yakuman_race_gamble(db, user.id, user.username, req.runner, str(req.bet))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "casino": te.get_casino_state(db)}
+
+
+@app.post("/api/web/casino/mahjong")
+async def api_web_casino_mahjong(req: WebCasinoMahjongRequest, db=Depends(get_db)):
+    """Plays Mahjong tile guess gamble via Web GUI."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_mahjong_tile_gamble(db, user.id, user.username, req.choice, str(req.bet))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "casino": te.get_casino_state(db)}
+
+
+@app.get("/api/web/lottery/status")
+async def api_web_lottery_status(db=Depends(get_db)):
+    """Current Lottery event status for Web GUI."""
+    l_state = te.get_lottery_event_state(db)
+    return {"success": True, "lottery": l_state}
+
+
+@app.post("/api/web/lottery/buy")
+async def api_web_lottery_buy(req: WebLotteryBuyRequest, db=Depends(get_db)):
+    """Buys and scratches lottery tickets via Web GUI."""
+    user = authenticate_web_user(db, req.token)
+    try:
+        cnt = int(req.count or 1)
+    except (ValueError, TypeError):
+        cnt = 1
+    ok, reply, details = te.execute_buy_lottery(db, user.id, user.username, count=cnt, lottery_type=req.lottery_type or "basic")
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "lottery": te.get_lottery_event_state(db)}
+
+
 
 @app.get("/api/market/state")
 async def api_market_state(db=Depends(get_db)):
@@ -2002,42 +3060,18 @@ async def api_get_leaderboard(top_n: int = 3, db=Depends(get_db)):
     return te.get_leaderboard(db, top_n=top_n)
 
 @app.get("/api/buyers")
+@app.get("/api/web/buyers")
 async def api_get_buyers(limit: int = 100, db=Depends(get_db)):
     """GET /api/buyers - Returns real-time list of current buyers/shareholders with positions, valuation, and market breakdown."""
     data = te.get_current_buyers(db, limit=limit)
+    if "summary" in data:
+        data["summary"]["free_trading_remaining"] = get_free_trading_remaining()
     return {
         "success": True,
         **data,
         "recent_trades": list(recent_trades)
     }
 
-@app.get("/api/user/{user_id}")
-async def api_get_user(user_id: str, db=Depends(get_db)):
-    user = db.query(User).filter_by(id=user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    state = te.get_market_state(db)
-
-    positions = []
-    for p in user.positions:
-        if p.quantity > 0:
-            val = te.calculate_position_valuation(p, state.current_price)
-            positions.append({
-                "product_type": p.product_type.value,
-                "quantity": p.quantity,
-                "entry_price": p.entry_price,
-                "invested_cash": p.invested_cash,
-                "current_value": val["current_value"],
-                "pnl": val["unrealized_pnl"],
-                "pnl_pct": val["pnl_pct"]
-            })
-
-    return {
-        "id": user.id,
-        "username": user.username,
-        "points": user.points,
-        "positions": positions
-    }
 
 # ---------------------------------------------------------
 # Chzzk Donation & DB Safety / Backup Endpoints

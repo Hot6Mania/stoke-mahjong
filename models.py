@@ -63,6 +63,10 @@ class User(Base):
     arm_boost = Column(Boolean, default=False, nullable=False)
     arm_downgrade = Column(Boolean, default=True, nullable=False)
     arm_snipe = Column(Boolean, default=False, nullable=False)
+    repay_count = Column(Integer, default=0, nullable=False)
+    total_repaid = Column(Integer, default=0, nullable=False)
+    web_pin = Column(String, nullable=True)
+    web_token = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     positions = relationship("Position", back_populates="user", cascade="all, delete-orphan")
@@ -71,6 +75,7 @@ class User(Base):
     bankruptcy_applications = relationship("BankruptcyApplication", back_populates="user", cascade="all, delete-orphan")
     donations = relationship("DonationRecord", back_populates="user", cascade="all, delete-orphan")
     equipment_listings = relationship("EquipmentListing", foreign_keys="EquipmentListing.seller_id", back_populates="seller", cascade="all, delete-orphan")
+    asset_history = relationship("UserAssetHistory", foreign_keys="UserAssetHistory.user_id", back_populates="user", cascade="all, delete-orphan", order_by="UserAssetHistory.id")
 
 class Position(Base):
     __tablename__ = "positions"
@@ -186,6 +191,10 @@ class UserEquipment(Base):
     potential_line_2 = Column(String, nullable=True) # e.g. "MINING_BONUS_CASH:60000"
     potential_line_3 = Column(String, nullable=True) # e.g. "CASINO_SLOT_BOOST:50"
     pity_count = Column(Integer, default=0, nullable=False) # 등급 상승 보장 카운터
+    is_cube_locked = Column(Boolean, default=False, nullable=False) # 실수 방지용 큐브 잠금
+    is_line1_locked = Column(Boolean, default=False, nullable=False) # 1번줄 옵션 잠금 (20배 비용)
+    is_line2_locked = Column(Boolean, default=False, nullable=False) # 2번줄 옵션 잠금 (20배 비용)
+    is_line3_locked = Column(Boolean, default=False, nullable=False) # 3번줄 옵션 잠금 (20배 비용)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="equipments")
@@ -228,4 +237,43 @@ class ItemListing(Base):
     resolved_at = Column(DateTime, nullable=True)
 
     seller = relationship("User", foreign_keys=[seller_id])
+
+
+class UserAssetHistory(Base):
+    __tablename__ = "user_asset_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    net_worth = Column(Integer, default=0, nullable=False)
+    cash = Column(Integer, default=0, nullable=False)
+    stock_value = Column(Float, default=0.0, nullable=False)
+    debt = Column(Integer, default=0, nullable=False)
+    credit_score = Column(Integer, default=500, nullable=False)
+    event_type = Column(String, default="SNAPSHOT", nullable=False)  # INITIAL, SETTLEMENT, TRADE, MINE, PVP_WIN, PVP_LOSS, LOAN, SNAPSHOT
+    note = Column(String, default="", nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    user = relationship("User", foreign_keys=[user_id], back_populates="asset_history")
+
+
+class ArenaMatchLog(Base):
+    __tablename__ = "arena_match_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    challenger_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    challenger_name = Column(String, nullable=False)
+    defender_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    defender_name = Column(String, nullable=False)
+    bet_amount = Column(Integer, nullable=False)
+    winner_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    winner_name = Column(String, nullable=False)
+    loser_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    loser_name = Column(String, nullable=False)
+    challenger_roll = Column(Integer, nullable=False)
+    defender_roll = Column(Integer, nullable=False)
+    pot_total = Column(Integer, nullable=False)
+    winner_reward = Column(Integer, nullable=False)
+    tax_fee = Column(Integer, default=0, nullable=False)
+    match_type = Column(String, default="DIRECT", nullable=False)  # DIRECT or OPEN
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
