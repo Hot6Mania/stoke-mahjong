@@ -4743,6 +4743,75 @@ def test_scroll_arm_toggle_safe_against_cube(db_session):
     assert u.cube_count == 5
 
 
+def test_special_snipe_and_bank_debt_and_lottery_buff(db_session):
+    u = te.get_or_create_user(db_session, "user_snipe_test", "저격테스터")
+    u.points = 5000000
+    u.debt = 500000
+    db_session.commit()
+
+    # 1. Flexible get_user_bank_info calls
+    info1 = te.get_user_bank_info(db_session, u)
+    info2 = te.get_user_bank_info(u, db=db_session)
+    assert info1["debt"] == 500000
+    assert info2["debt"] == 500000
+    assert "limit" in info1["credit"]
+    assert "available" in info1["credit"]
+    assert "rate_pct" in info1["credit"]
+    assert info1["credit"]["limit"] >= 1000000
+
+    # 2. Add special snipe scroll and verify chat display
+    te.add_user_special_snipe_scroll(u, "HEAVY_MINING", 2, db=db_session)
+    db_session.refresh(u)
+    assert te.get_user_special_snipe_scrolls(u).get("HEAVY_MINING") == 2
+
+    r_scroll, _ = ch.handle_chat_command(db_session, u.id, u.username, "!주문서")
+    assert "과충전 채굴 전용 저격주문서" in r_scroll
+    assert "2장" in r_scroll
+
+    r_bag, _ = ch.handle_chat_command(db_session, u.id, u.username, "!가방")
+    assert "과충전 채굴 전용 저격주문서" in r_bag
+    assert "2장" in r_bag
+
+    r_inven, _ = ch.handle_chat_command(db_session, u.id, u.username, "!내장비")
+    assert "과충전" in r_inven
+
+    # 3. Test !주문서 전체 on excludes arm_snipe
+    u.arm_snipe = False
+    db_session.commit()
+    r_all_on, _ = ch.handle_chat_command(db_session, u.id, u.username, "!주문서 전체 on")
+    db_session.refresh(u)
+    assert u.arm_shield is True
+    assert u.arm_downgrade is True
+    assert u.arm_boost is True
+    assert u.arm_snipe is False  # Snipe is excluded from '전체 on'
+    assert "저격 제외" in r_all_on
+
+    # 4. Merchant Special Snipe Scroll Pricing & Guide
+    state = te.get_market_state(db_session)
+    state.merchant_is_open = True
+    state.merchant_end_time = time.time() + 600
+    state.merchant_special_snipe_code = "HEAVY_MINING"
+    state.merchant_special_snipe_name = "🌋 과충전 채굴 전용 저격주문서"
+    state.merchant_special_snipe_desc = "큐브 사용 시 1줄 88% 확정급 저격!"
+    state.merchant_special_snipe_price = 2200000
+    state.merchant_special_snipe_stock = 2
+    db_session.commit()
+
+    m_guide = te.get_merchant_guide(db_session)
+    assert "5. 🌟 🌋 과충전 채굴 전용 저격주문서" in m_guide
+    assert "2,200,000P" in m_guide
+
+    # 5. Lottery Buff Verification
+    for l_key in ["basic", "silver", "gold"]:
+        tiers = te.LOTTERY_SPECS[l_key]["tiers"]
+        assert len(tiers) == 7  # 1등~6등 + 꽝
+        dud_tier = [t for t in tiers if t["prize"] == 0][0]
+        assert dud_tier["prob"] < 0.50  # Dud rate is under 50%
+        payback_tier = [t for t in tiers if t["tier"] == 6][0]
+        assert payback_tier["prize"] > 0
+        assert "50%" in payback_tier["name"] or "페이백" in payback_tier["name"]
+
+
 
 
 

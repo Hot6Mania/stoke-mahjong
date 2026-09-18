@@ -429,6 +429,7 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
         "equipments": equipments,
         "equipped_item": equipped_item,
         "items": items,
+        "special_snipe_scrolls": te.get_user_special_snipe_scrolls(u) if hasattr(te, "get_user_special_snipe_scrolls") else {},
         "mining": mining_status,
         "asset_history": history_entries[-30:]
     }
@@ -2975,7 +2976,7 @@ async def api_web_bank_info(
     """Fetches Central Bank account details (demand deposit, savings, fund, insurance, loan)."""
     eff_token = token or x_web_token
     user = authenticate_web_user(db, eff_token)
-    info = te.get_user_bank_info(user, db=db)
+    info = te.get_user_bank_info(db, user)
     return {"success": True, "bank": info}
 
 
@@ -2989,7 +2990,7 @@ async def api_web_bank_deposit(req: WebBankDepositRequest, db=Depends(get_db)):
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/withdraw")
@@ -3002,7 +3003,7 @@ async def api_web_bank_withdraw(req: WebBankWithdrawRequest, db=Depends(get_db))
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/savings/open")
@@ -3016,7 +3017,7 @@ async def api_web_bank_savings_open(req: WebBankSavingsOpenRequest, db=Depends(g
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/savings/cancel")
@@ -3029,7 +3030,7 @@ async def api_web_bank_savings_cancel(req: WebBankSavingsCancelRequest, db=Depen
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/fund/buy")
@@ -3042,7 +3043,7 @@ async def api_web_bank_fund_buy(req: WebBankFundBuyRequest, db=Depends(get_db)):
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/fund/sell")
@@ -3055,7 +3056,7 @@ async def api_web_bank_fund_sell(req: WebBankFundSellRequest, db=Depends(get_db)
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/insurance/buy")
@@ -3068,7 +3069,7 @@ async def api_web_bank_insurance_buy(req: WebBankInsuranceBuyRequest, db=Depends
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/loan/borrow")
@@ -3081,7 +3082,7 @@ async def api_web_bank_loan_borrow(req: WebBankLoanBorrowRequest, db=Depends(get
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 @app.post("/api/web/bank/loan/repay")
@@ -3094,7 +3095,7 @@ async def api_web_bank_loan_repay(req: WebBankLoanRepayRequest, db=Depends(get_d
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
-    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(db, user)}
 
 
 

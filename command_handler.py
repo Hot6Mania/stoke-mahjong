@@ -78,6 +78,7 @@ from trading_engine import (
     execute_buy_merchant_item,
     get_merchant_guide,
     get_user_item_inventory,
+    get_user_special_snipe_scrolls,
     MERCHANT_ITEMS,
     toggle_user_scroll_arm,
     execute_list_item,
@@ -807,6 +808,25 @@ def handle_chat_command(
         f_cnt = getattr(user, "cube_fragments", 0) or 0
         m_state = get_merchant_state(db)
         m_status = "🛒 [신비상인 마을 체류중!]" if m_state.get("is_active") else "🔒 [신비상인 부재중]"
+
+        special_scrolls = get_user_special_snipe_scrolls(user)
+        special_lines = []
+        special_names = {
+            "DIVIDEND_BOOST_PCT": "📈 배당금 증폭 전용 저격주문서",
+            "MINING_CD_RESET": "⚡ 쿨타임 초기화 전용 저격주문서",
+            "STARFORCE_SUCCESS_BOOST": "⭐ 성공률 증가 전용 저격주문서",
+            "GOBLIN_JACKPOT_CHANCE": "👹 황금 고블린 전용 저격주문서",
+            "MINING_YIELD_BOOST": "⛏️ 채굴량 증폭 전용 저격주문서",
+            "MINING_BONUS_CASH": "🪙 확정 현금 전용 저격주문서",
+            "MAHJONG_TILE_BOOST": "🀄 마작 화료 전용 저격주문서",
+            "HEAVY_MINING": "🌋 과충전 채굴 전용 저격주문서",
+            "STARFORCE_DISCOUNT": "🔨 강화비 할인 전용 저격주문서",
+        }
+        for scode, scnt in special_scrolls.items():
+            sname = special_names.get(scode, f"🎯 {scode} 전용 저격주문서")
+            special_lines.append(f"• 🌟 {sname}: {scnt:,}장 (1줄 88% 확정급! 사용: !주문서 저격 {scode} / !주문서 전용 {scode})")
+        sp_block = ("\n" + "\n".join(special_lines)) if special_lines else ""
+
         msg = (
             f"🎒 [{user.username}님의 소비 아이템 보따리]\n"
             f"• 🛡️ 파괴방어권: {s_cnt:,}장 (15성+ 실패 시 폭발 파괴 100% 방어)\n"
@@ -814,9 +834,9 @@ def handle_chat_command(
             f"• 📉 하강방지권: {d_cnt:,}장 (스타포스 실패 시 등급 하락 100% 방어)\n"
             f"• 🎯 잠재저격주문서: {snipe_cnt:,}장 (!큐브 저격 [옵션] 사용 시 원하는 옵션 35% 저격 + 가중치 3.5배)\n"
             f"• 🔮 미라클 큐브: {c_cnt:,}개 (!큐브 [번호] 사용)\n"
-            f"• 🧩 큐브 조각: {f_cnt:,}개 (10개당 15,000P 환급)\n"
+            f"• 🧩 큐브 조각: {f_cnt:,}개 (10개당 15,000P 환급){sp_block}\n"
             f"💡 주문서 사용법: 강화 시 직접 지정하여 사용합니다. (예: !강화 파방, !강화 하강, !강화 상승, !강화 풀 | 상시 설정: !주문서)\n"
-            f"💡 신비상인 구매: !상인구매 [1/2/3/4] [수량] ({m_status}) | 유저 거래소: !거래소, !아이템판매"
+            f"💡 신비상인 구매: !상인구매 [1/2/3/4/5] [수량] ({m_status}) | 유저 거래소: !거래소, !아이템판매"
         )
         return msg, None
 

@@ -1629,6 +1629,9 @@ def get_user_credit_info(
         "available_borrow": avail_val,
         "interest_rate": interest_val,
         "interest_rate_pct": round(interest_val * 100.0, 1),
+        "limit": limit_val,
+        "available": avail_val,
+        "rate_pct": round(interest_val * 100.0, 1),
         "debt": debt,
         "net_worth": net_worth,
         "cash": cash,
@@ -3218,55 +3221,64 @@ LOTTERY_SPECS: Dict[str, Dict[str, Any]] = {
         "tiers": [
             {
                 "tier": 1,
-                "name": "🥇 1등 (국고 잭팟)",
+                "name": "🥇 1등 (국고 잭팟 50배!)",
                 "icon": "👑",
                 "prize": 50000,
-                "prob": 0.004,  # 0.4% (50배 잭팟)
+                "prob": 0.003,  # 0.3% (50배 잭팟)
                 "badge": "1등(5만)",
                 "is_jackpot": True
             },
             {
                 "tier": 2,
-                "name": "🥈 2등 (국가 특별 지원금)",
+                "name": "🥈 2등 (특별 지원금 15배!)",
                 "icon": "✨",
-                "prize": 10000,
-                "prob": 0.020,  # 2.0% (10배 대박)
-                "badge": "2등(1만)",
+                "prize": 15000,
+                "prob": 0.012,  # 1.2% (15배 대박)
+                "badge": "2등(1.5만)",
                 "is_jackpot": True
             },
             {
                 "tier": 3,
-                "name": "🥉 3등 (행운 복지금)",
+                "name": "🥉 3등 (행운 복지금 5배!)",
                 "icon": "💎",
-                "prize": 4000,
-                "prob": 0.050,  # 5.0% (4배)
-                "badge": "3등(4천)",
+                "prize": 5000,
+                "prob": 0.040,  # 4.0% (5배)
+                "badge": "3등(5천)",
                 "is_jackpot": False
             },
             {
                 "tier": 4,
-                "name": "🌟 4등 (복지 장려금)",
+                "name": "🌟 4등 (복지 장려금 2배!)",
                 "icon": "🍀",
                 "prize": 2000,
-                "prob": 0.100,  # 10.0% (2배)
+                "prob": 0.090,  # 9.0% (2배)
                 "badge": "4등(2천)",
                 "is_jackpot": False
             },
             {
                 "tier": 5,
-                "name": "🎁 5등 (구매금액 환급)",
+                "name": "🎁 5등 (구매금액 100% 환급)",
                 "icon": "🎁",
                 "prize": 1000,
-                "prob": 0.180,  # 18.0% (1배 환급)
+                "prob": 0.160,  # 16.0% (1배 본전)
                 "badge": "5등(1천)",
                 "is_jackpot": False
             },
             {
                 "tier": 6,
-                "name": "💀 꽝 (국고 기부)",
+                "name": "🍀 6등 (행운의 페이백 50%)",
+                "icon": "🍀",
+                "prize": 500,
+                "prob": 0.200,  # 20.0% (0.5배 페이백)
+                "badge": "6등(5백)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 7,
+                "name": "💀 꽝 (다음 기회에!)",
                 "icon": "💀",
                 "prize": 0,
-                "prob": 0.646,  # 64.6% (손실 꽝)
+                "prob": 0.495,  # 49.5% (손실 꽝)
                 "badge": "꽝",
                 "is_jackpot": False
             }
@@ -3281,55 +3293,64 @@ LOTTERY_SPECS: Dict[str, Dict[str, Any]] = {
         "tiers": [
             {
                 "tier": 1,
-                "name": "🥇 1등 (50만 대박 잭팟!)",
+                "name": "🥇 1등 (50만 대박 잭팟 100배!)",
                 "icon": "👑",
                 "prize": 500000,
-                "prob": 0.002,  # 0.2% (100배 대박)
+                "prob": 0.0015,  # 0.15% (100배 대박)
                 "badge": "1등(50만)",
                 "is_jackpot": True
             },
             {
                 "tier": 2,
-                "name": "🥈 2등 (10만 특별금)",
+                "name": "🥈 2등 (10만 특별금 20배!)",
                 "icon": "✨",
                 "prize": 100000,
-                "prob": 0.015,  # 1.5% (20배)
+                "prob": 0.0085,  # 0.85% (20배)
                 "badge": "2등(10만)",
                 "is_jackpot": True
             },
             {
                 "tier": 3,
-                "name": "🥉 3등 (행운 복지금)",
+                "name": "🥉 3등 (행운 복지금 6배!)",
                 "icon": "💎",
                 "prize": 30000,
-                "prob": 0.040,  # 4.0% (6배)
+                "prob": 0.035,  # 3.5% (6배)
                 "badge": "3등(3만)",
                 "is_jackpot": False
             },
             {
                 "tier": 4,
-                "name": "🌟 4등 (복지 장려금)",
+                "name": "🌟 4등 (복지 장려금 2배!)",
                 "icon": "🍀",
                 "prize": 10000,
-                "prob": 0.060,  # 6.0% (2배)
+                "prob": 0.080,  # 8.0% (2배)
                 "badge": "4등(1만)",
                 "is_jackpot": False
             },
             {
                 "tier": 5,
-                "name": "🎁 5등 (구매금액 환급)",
+                "name": "🎁 5등 (구매금액 100% 환급)",
                 "icon": "🎁",
                 "prize": 5000,
-                "prob": 0.120,  # 12.0% (1배 환급)
+                "prob": 0.160,  # 16.0% (1배 본전)
                 "badge": "5등(5천)",
                 "is_jackpot": False
             },
             {
                 "tier": 6,
-                "name": "💀 꽝 (국고 기부)",
+                "name": "🍀 6등 (행운의 페이백 50%)",
+                "icon": "🍀",
+                "prize": 2500,
+                "prob": 0.240,  # 24.0% (0.5배 페이백)
+                "badge": "6등(2.5천)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 7,
+                "name": "💀 꽝 (다음 기회에!)",
                 "icon": "💀",
                 "prize": 0,
-                "prob": 0.763,  # 76.3% (손실 꽝)
+                "prob": 0.475,  # 47.5% (손실 꽝)
                 "badge": "꽝",
                 "is_jackpot": False
             }
@@ -3344,55 +3365,64 @@ LOTTERY_SPECS: Dict[str, Dict[str, Any]] = {
         "tiers": [
             {
                 "tier": 1,
-                "name": "👑 1등 (300만 초대박 잭팟!!)",
+                "name": "👑 1등 (500만 초대박 잭팟 250배!!)",
                 "icon": "👑",
-                "prize": 3000000,
-                "prob": 0.0005,  # 0.05% (150배 초대박)
-                "badge": "1등(300만)",
+                "prize": 5000000,
+                "prob": 0.0004,  # 0.04% (250배 초대박)
+                "badge": "1등(500만)",
                 "is_jackpot": True
             },
             {
                 "tier": 2,
-                "name": "🥈 2등 (60만 대박금)",
+                "name": "🥈 2등 (80만 대박금 40배!)",
                 "icon": "✨",
-                "prize": 600000,
-                "prob": 0.009,  # 0.9% (30배)
-                "badge": "2등(60만)",
+                "prize": 800000,
+                "prob": 0.0035,  # 0.35% (40배)
+                "badge": "2등(80만)",
                 "is_jackpot": True
             },
             {
                 "tier": 3,
-                "name": "🥉 3등 (15만 특별금)",
+                "name": "🥉 3등 (15만 특별금 7.5배!)",
                 "icon": "💎",
                 "prize": 150000,
-                "prob": 0.020,  # 2.0% (7.5배)
+                "prob": 0.025,  # 2.5% (7.5배)
                 "badge": "3등(15만)",
                 "is_jackpot": False
             },
             {
                 "tier": 4,
-                "name": "🌟 4등 (6만 장려금)",
+                "name": "🌟 4등 (5만 장려금 2.5배!)",
                 "icon": "🍀",
-                "prize": 60000,
-                "prob": 0.080,  # 8.0% (3배)
-                "badge": "4등(6만)",
+                "prize": 50000,
+                "prob": 0.075,  # 7.5% (2.5배)
+                "badge": "4등(5만)",
                 "is_jackpot": False
             },
             {
                 "tier": 5,
-                "name": "🎁 5등 (구매금액 환급)",
+                "name": "🎁 5등 (구매금액 100% 환급)",
                 "icon": "🎁",
                 "prize": 20000,
-                "prob": 0.160,  # 16.0% (1배 환급)
+                "prob": 0.170,  # 17.0% (1배 본전)
                 "badge": "5등(2만)",
                 "is_jackpot": False
             },
             {
                 "tier": 6,
-                "name": "💀 꽝 (국고 기부)",
+                "name": "🍀 6등 (행운의 페이백 50%)",
+                "icon": "🍀",
+                "prize": 10000,
+                "prob": 0.250,  # 25.0% (0.5배 페이백)
+                "badge": "6등(1만)",
+                "is_jackpot": False
+            },
+            {
+                "tier": 7,
+                "name": "💀 꽝 (다음 기회에!)",
                 "icon": "💀",
                 "prize": 0,
-                "prob": 0.7305,  # 73.05% (손실 꽝)
+                "prob": 0.4761,  # 47.61% (손실 꽝)
                 "badge": "꽝",
                 "is_jackpot": False
             }
@@ -3742,13 +3772,18 @@ def get_user_special_snipe_scrolls(user: User) -> Dict[str, int]:
     except Exception:
         return {}
 
-def add_user_special_snipe_scroll(user: User, code: str, count: int = 1) -> None:
+def add_user_special_snipe_scroll(user: User, code: str, count: int = 1, db: Optional[Session] = None) -> None:
     """Adds specific option sniper scrolls to user."""
     curr = get_user_special_snipe_scrolls(user)
     curr[code] = curr.get(code, 0) + max(1, int(count))
     user.special_snipe_scrolls = json.dumps(curr, ensure_ascii=False)
+    if db is not None:
+        try:
+            db.commit()
+        except Exception:
+            pass
 
-def consume_user_special_snipe_scroll(user: User, code: str) -> bool:
+def consume_user_special_snipe_scroll(user: User, code: str, db: Optional[Session] = None) -> bool:
     """Consumes 1 specific option sniper scroll if available."""
     curr = get_user_special_snipe_scrolls(user)
     if curr.get(code, 0) <= 0:
@@ -3757,6 +3792,11 @@ def consume_user_special_snipe_scroll(user: User, code: str) -> bool:
     if curr[code] <= 0:
         del curr[code]
     user.special_snipe_scrolls = json.dumps(curr, ensure_ascii=False)
+    if db is not None:
+        try:
+            db.commit()
+        except Exception:
+            pass
     return True
 
 def get_user_bank_data(user: User) -> Dict[str, Any]:
@@ -3799,15 +3839,15 @@ def roll_merchant_special_snipe(inflation_mult: float = 1.0) -> Tuple[Optional[s
         return None, None, None, 0, 0
 
     candidates = [
-        ("DIVIDEND_BOOST_PCT", "📈 배당금 증폭 전용 저격주문서", "큐브 사용 시 1줄 [배당금 증폭] 88% 확정급 저격!", 750000),
-        ("MINING_CD_RESET", "⚡ 쿨타임 초기화 전용 저격주문서", "큐브 사용 시 1줄 [쿨타임 즉시 초기화] 88% 확정급 저격!", 850000),
-        ("STARFORCE_SUCCESS_BOOST", "⭐ 성공률 증가 전용 저격주문서", "큐브 사용 시 1줄 [강화 성공률 증가] 88% 확정급 저격!", 900000),
-        ("GOBLIN_JACKPOT_CHANCE", "👹 황금 고블린 전용 저격주문서", "큐브 사용 시 1줄 [황금 고블린 잭팟] 88% 확정급 저격!", 800000),
-        ("MINING_YIELD_BOOST", "⛏️ 채굴량 증폭 전용 저격주문서", "큐브 사용 시 1줄 [주식 채굴량 배율] 88% 확정급 저격!", 700000),
-        ("MINING_BONUS_CASH", "🪙 확정 현금 전용 저격주문서", "큐브 사용 시 1줄 [채굴 확정 현금] 88% 확정급 저격!", 650000),
-        ("MAHJONG_TILE_BOOST", "🀄 마작 화료 전용 저격주문서", "큐브 사용 시 1줄 [마작패 화료 보너스] 88% 확정급 저격!", 650000),
-        ("HEAVY_MINING", "🌋 과충전 채굴 전용 저격주문서", "큐브 사용 시 1줄 [과충전 집중 채굴] 88% 확정급 저격!", 800000),
-        ("STARFORCE_DISCOUNT", "🔨 강화비 할인 전용 저격주문서", "큐브 사용 시 1줄 [스타포스 강화비 할인] 88% 확정급 저격!", 600000),
+        ("DIVIDEND_BOOST_PCT", "📈 배당금 증폭 전용 저격주문서", "큐브 사용 시 1줄 [배당금 증폭] 88% 확정급 저격!", 2400000),
+        ("MINING_CD_RESET", "⚡ 쿨타임 초기화 전용 저격주문서", "큐브 사용 시 1줄 [쿨타임 즉시 초기화] 88% 확정급 저격!", 2800000),
+        ("STARFORCE_SUCCESS_BOOST", "⭐ 성공률 증가 전용 저격주문서", "큐브 사용 시 1줄 [강화 성공률 증가] 88% 확정급 저격!", 2700000),
+        ("GOBLIN_JACKPOT_CHANCE", "👹 황금 고블린 전용 저격주문서", "큐브 사용 시 1줄 [황금 고블린 잭팟] 88% 확정급 저격!", 2500000),
+        ("MINING_YIELD_BOOST", "⛏️ 채굴량 증폭 전용 저격주문서", "큐브 사용 시 1줄 [주식 채굴량 배율] 88% 확정급 저격!", 2100000),
+        ("MINING_BONUS_CASH", "🪙 확정 현금 전용 저격주문서", "큐브 사용 시 1줄 [채굴 확정 현금] 88% 확정급 저격!", 1800000),
+        ("MAHJONG_TILE_BOOST", "🀄 마작 화료 전용 저격주문서", "큐브 사용 시 1줄 [마작패 화료 보너스] 88% 확정급 저격!", 1900000),
+        ("HEAVY_MINING", "🌋 과충전 채굴 전용 저격주문서", "큐브 사용 시 1줄 [과충전 집중 채굴] 88% 확정급 저격!", 2200000),
+        ("STARFORCE_DISCOUNT", "🔨 강화비 할인 전용 저격주문서", "큐브 사용 시 1줄 [스타포스 강화비 할인] 88% 확정급 저격!", 1800000),
     ]
     code, name, desc, base_price = random.choice(candidates)
     stock = random.randint(1, 3)
@@ -4225,13 +4265,22 @@ def get_merchant_guide(db: Session) -> str:
     rem = m_state["remaining_sec"]
     m = rem // 60
     s = rem % 60
+
+    special_line = ""
+    buy_guide = "!상인구매 [1/2/3/4] [수량] (예: !상인구매 4 1, !상인구매 저격 1)"
+    if "special" in items and items["special"].get("stock", 0) > 0:
+        sp = items["special"]
+        special_line = f"5. 🌟 {sp['name']} : {sp['price']:,}P (재고 {sp['stock']}개) - {sp['desc']}\n"
+        buy_guide = "!상인구매 [1/2/3/4/5] [수량] (예: !상인구매 5 1, !상인구매 전용 1)"
+
     return (
         f"🧞‍♂️✨ [신비상인의 비밀 보따리 상점] (남은 시간: {m}분 {s:02d}초)\n"
         f"1. 🛡️ 파괴방어권 : {items['shield']['price']:,}P (재고 {items['shield']['stock']}개) - 15성+ 폭발 파괴 100% 방어\n"
         f"2. ⚡ 강화확률상승권 : {items['boost']['price']:,}P (재고 {items['boost']['stock']}개) - 강화 성공률 +25% 곱연산 증폭\n"
         f"3. 📉 하강방지권 : {items['downgrade']['price']:,}P (재고 {items['downgrade']['stock']}개) - 실패 시 성수 하락 100% 방어\n"
         f"4. 🎯 잠재저격주문서 : {items['snipe']['price']:,}P (재고 {items['snipe']['stock']}개) - 큐브 사용 시 원하는 옵션 확률 대폭 증가 (1줄 35% 저격 + 전체 3.5배 가중치)\n"
-        f"💡 구매 명령어: !상인구매 [1/2/3/4] [수량] (예: !상인구매 4 1, !상인구매 저격 1)"
+        f"{special_line}"
+        f"💡 구매 명령어: {buy_guide}"
     )
 
 def get_user_item_inventory(db: Session, user: User) -> Dict[str, Any]:
@@ -6214,14 +6263,32 @@ def toggle_user_scroll_arm(
         d_arm = "🟢확정(ON)" if getattr(user, "arm_downgrade", True) else "🔴OFF"
         b_arm = "🟢ON" if getattr(user, "arm_boost", False) else "🔴OFF"
         snipe_arm = "🟢ON" if getattr(user, "arm_snipe", False) else "🔴OFF"
+
+        special_scrolls = get_user_special_snipe_scrolls(user)
+        special_txt = ""
+        if special_scrolls:
+            special_names = {
+                "DIVIDEND_BOOST_PCT": "📈 배당금 증폭 전용 저격주문서",
+                "MINING_CD_RESET": "⚡ 쿨타임 초기화 전용 저격주문서",
+                "STARFORCE_SUCCESS_BOOST": "⭐ 성공률 증가 전용 저격주문서",
+                "GOBLIN_JACKPOT_CHANCE": "👹 황금 고블린 전용 저격주문서",
+                "MINING_YIELD_BOOST": "⛏️ 채굴량 증폭 전용 저격주문서",
+                "MINING_BONUS_CASH": "🪙 확정 현금 전용 저격주문서",
+                "MAHJONG_TILE_BOOST": "🀄 마작 화료 전용 저격주문서",
+                "HEAVY_MINING": "🌋 과충전 채굴 전용 저격주문서",
+                "STARFORCE_DISCOUNT": "🔨 강화비 할인 전용 저격주문서",
+            }
+            sp_lines = [f"• {special_names.get(k, f'🎯 {k} 전용 저격주문서')}: {v:,}장" for k, v in special_scrolls.items()]
+            special_txt = "\n[🌟 보유 중인 특수 전용 저격주문서 (1줄 88% 확정급!)]\n" + "\n".join(sp_lines)
+
         reply = (
             f"📜 [{user.username}님의 주문서 상시 사용 설정 및 보유 현황]\n"
             f"• 🛡️ 파괴방어권: {s_arm} (보유: {s_cnt}장) [강화 시 자동 확정 사용 | 설정: !주문서 파방 on/off]\n"
             f"• 📉 하강방지권: {d_arm} (보유: {d_cnt}장) [강화 시 자동 확정 사용 | 설정: !주문서 하강 on/off]\n"
             f"• ⚡ 강화확률상승권: {b_arm} (보유: {b_cnt}장) [설정: !주문서 상승 on/off]\n"
-            f"• 🎯 잠재저격주문서: {snipe_arm} (보유: {snipe_cnt}장) [사용: !주문서 저격 [옵션명] | 설정: !주문서 저격 on/off]\n"
+            f"• 🎯 잠재저격주문서: {snipe_arm} (보유: {snipe_cnt}장) [사용: !주문서 저격 [옵션명] | 설정: !주문서 저격 on/off]{special_txt}\n"
             f"💡 저격 주문서 사용: `!주문서 저격 고블린`, `!주문서 저격 과충전`, `!주문서 저격 쿨초`, `!주문서 저격 크리`\n"
-            f"💡 강화 주문서 설정: `!주문서 파방 off`, `!주문서 하강 off`, `!주문서 상승 on`, `!주문서 전체 on`"
+            f"💡 강화 주문서 설정: `!주문서 파방 off`, `!주문서 하강 off`, `!주문서 상승 on`, `!주문서 전체 on` (⚠️ 저격은 전체 ON에서 자동 제외)"
         )
         return True, reply, {
             "arm_shield": bool(getattr(user, "arm_shield", True)),
@@ -6271,8 +6338,16 @@ def toggle_user_scroll_arm(
             stat = "🟢활성화(ON)" if target_state else "🔴비활성화(OFF)"
             return True, f"🎯 [잠재저격주문서 상시사용] 설정이 {stat}되었습니다. (보유: {getattr(user, 'snipe_scroll_count', 0)}장)", {"arm_snipe": target_state}
         elif state_str:
-            # User passed a keyword e.g. !주문서 저격 고블린 -> Direct usage of snipe scroll!
-            return execute_cube_use(db, user_id, username, target_keyword=state_str, use_snipe=True)
+            # User passed a keyword e.g. !주문서 저격 과충전 -> Direct usage of snipe scroll!
+            sp_code = None
+            u_specials = get_user_special_snipe_scrolls(user)
+            _, matched_codes = match_potential_target(state_str)
+            if matched_codes:
+                for c in matched_codes:
+                    if u_specials.get(c, 0) > 0:
+                        sp_code = c
+                        break
+            return execute_cube_use(db, user_id, username, target_keyword=state_str, use_snipe=True, special_snipe_code=sp_code)
         else:
             snipe_cnt = getattr(user, "snipe_scroll_count", 0) or 0
             return False, (
@@ -6282,16 +6357,45 @@ def toggle_user_scroll_arm(
                 f"• 상시 설정 토글: `!주문서 저격 on` / `!주문서 저격 off`"
             ), None
 
-    # 5. 📜 전체 (All)
+    # 4-1. 🌟 특수 전용 저격주문서 직접 사용 (!주문서 전용 [옵션])
+    elif clean_target in ["전용", "전용저격", "특수", "특수저격", "special"]:
+        if not state_str:
+            u_specials = get_user_special_snipe_scrolls(user)
+            if not u_specials:
+                return False, "⚠️ 현재 보유 중인 특수 전용 저격주문서가 없습니다! (신비상인 또는 거래소에서 구매 가능)", None
+            s_list = ", ".join([f"{k}({v}장)" for k, v in u_specials.items()])
+            return False, f"💡 [전용 저격주문서 사용법] `!주문서 전용 [옵션명]` (예: `!주문서 전용 과충전`, `!주문서 전용 고블린` | 보유 목록: {s_list})", None
+        _, matched_codes = match_potential_target(state_str)
+        sp_code = None
+        u_specials = get_user_special_snipe_scrolls(user)
+        if matched_codes:
+            for c in matched_codes:
+                if u_specials.get(c, 0) > 0:
+                    sp_code = c
+                    break
+        if not sp_code and state_str.upper() in u_specials:
+            sp_code = state_str.upper()
+        if not sp_code:
+            return False, f"⚠️ 입력하신 옵션('{state_str}')에 해당하는 전용 저격주문서를 보유하고 있지 않습니다! (보유: {list(u_specials.keys())})", None
+        return execute_cube_use(db, user_id, username, target_keyword=state_str, use_snipe=True, special_snipe_code=sp_code)
+
+    # 5. 📜 전체 (All) - Snipe / Special Snipe is strictly excluded from "전체 on"!
     elif clean_target in ["전체", "all", "풀", "모두", "다"]:
         new_val = target_state if target_state is not None else not bool(getattr(user, "arm_shield", True))
         user.arm_shield = new_val
         user.arm_downgrade = new_val
         user.arm_boost = new_val
-        user.arm_snipe = new_val
+        # Exclude snipe scroll from '전체 on' to prevent unintended burning
+        if not new_val:
+            user.arm_snipe = False
         db.commit()
-        stat = "🟢전체 활성화(ON)" if new_val else "🔴전체 비활성화(OFF)"
-        return True, f"📜 [주문서 전체 상시사용] 설정이 {stat}되었습니다.", {"arm_shield": new_val, "arm_downgrade": new_val, "arm_boost": new_val, "arm_snipe": new_val}
+        stat = "🟢강화 주문서 전체 활성화(ON, 저격 제외)" if new_val else "🔴전체 비활성화(OFF)"
+        return True, f"📜 [강화 주문서 전체 상시사용] 설정이 {stat}되었습니다. (⚠️ 잠재저격주문서는 원치 않는 소모를 방지하기 위해 전체 ON에서 제외됩니다)", {
+            "arm_shield": user.arm_shield,
+            "arm_downgrade": user.arm_downgrade,
+            "arm_boost": user.arm_boost,
+            "arm_snipe": user.arm_snipe
+        }
 
     else:
         if target_state is not None:
@@ -6300,7 +6404,14 @@ def toggle_user_scroll_arm(
         # Only if NOT an on/off toggle and user explicitly specified a potential target keyword (excluding generic starforce)
         matched_label, matched_codes = match_potential_target(clean_target)
         if matched_codes and clean_target not in ["강화", "스타포스", "starforce", "2", "상승"]:
-            return execute_cube_use(db, user_id, username, target_keyword=clean_target, use_snipe=True)
+            sp_code = None
+            u_specials = get_user_special_snipe_scrolls(user)
+            if matched_codes:
+                for c in matched_codes:
+                    if u_specials.get(c, 0) > 0:
+                        sp_code = c
+                        break
+            return execute_cube_use(db, user_id, username, target_keyword=clean_target, use_snipe=True, special_snipe_code=sp_code)
         return False, "⚠️ 올바른 주문서 종류를 입력해주세요: 파방(1), 상승(2/강화), 하강(3), 저격(4), 전체 (예: !주문서 상승 on, !주문서 강화 on, !주문서 2 on, !주문서 파방 on, !주문서 전체 off)", None
 
 
@@ -7401,6 +7512,21 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
     lines.append(
         f"📦 [소비 인벤토리] 🔮 큐브: {cube_cnt:,}개 | 🧩 조각: {frag_cnt:,}개 | 🛡️ 파방: {s_cnt:,}장 | ⚡ 상승: {b_cnt:,}장 | 📉 하강: {d_cnt:,}장 | 🎯 저격: {snipe_cnt:,}장 (!아이템)"
     )
+    special_scrolls = get_user_special_snipe_scrolls(user)
+    if special_scrolls:
+        special_names = {
+            "DIVIDEND_BOOST_PCT": "📈배당",
+            "MINING_CD_RESET": "⚡쿨초",
+            "STARFORCE_SUCCESS_BOOST": "⭐성공",
+            "GOBLIN_JACKPOT_CHANCE": "👹고블린",
+            "MINING_YIELD_BOOST": "⛏️채굴량",
+            "MINING_BONUS_CASH": "🪙현금",
+            "MAHJONG_TILE_BOOST": "🀄마작",
+            "HEAVY_MINING": "🌋과충전",
+            "STARFORCE_DISCOUNT": "🔨할인",
+        }
+        sp_parts = [f"{special_names.get(k, k)}:{v:,}장" for k, v in special_scrolls.items()]
+        lines.append(f"🌟 [전용 저격주문서 (88%확정)] {' | '.join(sp_parts)} (!주문서 전용 [옵션])")
     lines.append(
         "💡 명령어 안내:\n"
         "• 상세 스펙 확인: !곡괭이 [번호] (예: !곡괭이 1, !곡괭이 2)\n"
@@ -10282,19 +10408,36 @@ def get_arena_data(
 # Central Bank (치즈나베 중앙은행) System Functions
 # =====================================================================
 
-def get_user_bank_info(
-    db: Session,
-    user: User,
-    state: Optional[MarketState] = None
-) -> Dict[str, Any]:
-    """Returns aggregated central bank status for a user."""
-    if state is None:
-        state = get_market_state(db)
+def get_user_bank_info(*args, **kwargs) -> Dict[str, Any]:
+    """Returns aggregated central bank status for a user (accepts (db, user), (user, db=db), (db=db, user=user))."""
+    db = kwargs.get("db")
+    user = kwargs.get("user")
+    state = kwargs.get("state")
 
-    b_data = get_user_bank_data(user)
-    bank_balance = int(getattr(user, "bank_balance", 0) or 0)
-    debt = int(getattr(user, "debt", 0) or 0)
-    credit_info = get_user_credit_info(user, db=db, market_state=state)
+    for a in args:
+        if isinstance(a, User) or (hasattr(a, "username") and hasattr(a, "points")):
+            user = a
+        elif isinstance(a, MarketState) or hasattr(a, "current_price"):
+            state = a
+        elif hasattr(a, "query") and hasattr(a, "commit"):
+            db = a
+        elif db is None:
+            db = a
+        elif user is None:
+            user = a
+        elif state is None:
+            state = a
+
+    if state is None and db is not None:
+        try:
+            state = get_market_state(db)
+        except Exception:
+            pass
+
+    b_data = get_user_bank_data(user) if user else {}
+    bank_balance = int(getattr(user, "bank_balance", 0) or 0) if user else 0
+    debt = int(getattr(user, "debt", 0) or 0) if user else 0
+    credit_info = get_user_credit_info(user, db=db, market_state=state) if user else {}
 
     # 1. Savings
     sav = b_data.get("savings")
