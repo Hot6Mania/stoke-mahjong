@@ -20,6 +20,7 @@ from trading_engine import (
     execute_borrow,
     execute_repay,
     execute_treasury_donate,
+    calculate_user_bank_assets,
     get_user_credit_info,
     format_user_credit_report,
     execute_bankruptcy,
@@ -455,11 +456,26 @@ def handle_chat_command(
             pos_summaries.append(f"{p.product_type.value}: {qty_str}주 (평단 {int(round(p.entry_price)):,}P, {sign}{pnl_pct:.1f}%)")
 
         debt = getattr(user, "debt", 0) or 0
-        gross_assets = user.points + portfolio_val
+        bank_assets_info = calculate_user_bank_assets(user, market_state=state)
+        bank_bal = bank_assets_info["bank_balance"]
+        sav_bal = bank_assets_info["savings_balance"]
+        fund_val = bank_assets_info["fund_valuation"]
+        total_bank = bank_assets_info["total_bank_assets"]
+
+        gross_assets = user.points + total_bank + portfolio_val
         net_assets = gross_assets - debt
         total_pnl = net_assets - STARTING_POINTS
         sign = "+" if total_pnl >= 0 else ""
         total_pnl_pct = (total_pnl / float(STARTING_POINTS)) * 100.0
+
+        bank_parts = []
+        if bank_bal > 0:
+            bank_parts.append(f"예금 {bank_bal:,}P")
+        if sav_bal > 0:
+            bank_parts.append(f"적금 {sav_bal:,}P")
+        if fund_val > 0:
+            bank_parts.append(f"펀드 {fund_val:,}P")
+        bank_str = f" | 금융: {total_bank:,}P({', '.join(bank_parts)})" if bank_parts else ""
 
         div_str = f" | 누적배당: +{user.total_dividends:,}P" if getattr(user, "total_dividends", 0) > 0 else ""
         debt_str = f" | 빚(대출): {debt:,}P" if debt > 0 else ""
@@ -492,11 +508,11 @@ def handle_chat_command(
         if pos_summaries:
             pos_str = " | ".join(pos_summaries)
             reply = (
-                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{credit_str}{pickaxe_str}{am_str}{cube_str} | "
+                f"👤 [{user.username}] 현금: {user.points:,}P{debt_str}{bank_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{credit_str}{pickaxe_str}{am_str}{cube_str} | "
                 f"보유: [{pos_str}]"
             )
         else:
-            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{credit_str}{pickaxe_str}{am_str}{cube_str} | 보유 포지션이 없습니다."
+            reply = f"👤 [{user.username}] 현금: {user.points:,}P{debt_str}{bank_str} | 순자산: {net_assets:,}P ({sign}{total_pnl_pct:.1f}%){div_str}{credit_str}{pickaxe_str}{am_str}{cube_str} | 보유 포지션이 없습니다."
 
         return reply, None
 

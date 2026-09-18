@@ -2,7 +2,7 @@ import os
 import time
 import json
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -5200,6 +5200,121 @@ def test_credit_score_no_debt_penalty_on_borrow(db_session):
     assert info_after["factors"]["debt_penalty"] == 0
     # Score should remain stable because net worth is conserved!
     assert info_after["score"] == info_before["score"]
+
+
+def test_bank_assets_reflected_in_net_worth_and_credit(db_session):
+    """Verify that demand deposits, term savings, and funds are all included in net worth and credit score."""
+    uid = "test_wealthy_banker"
+    uname = "은행부자"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.points = 100000
+    u.bank_balance = 500000
+    b_data = {
+        "savings": {
+            "plan_name": "정기적금",
+            "total_deposited": 300000,
+            "target_rounds": 5,
+            "current_rounds": 3
+        },
+        "funds": {
+            "index": {"units": 100.0, "invested": 100000},
+            "dividend": {"units": 50.0, "invested": 50000}
+        }
+    }
+    te.save_user_bank_data(u, b_data)
+    db_session.commit()
+
+    state = te.get_market_state(db_session)
+    bank_assets = te.calculate_user_bank_assets(u, market_state=state)
+    assert bank_assets["bank_balance"] == 500000
+    assert bank_assets["savings_balance"] == 300000
+    assert bank_assets["fund_valuation"] == 150000
+    assert bank_assets["total_bank_assets"] == 950000
+
+    # Credit info net worth
+    credit_info = te.get_user_credit_info(u, db=db_session, market_state=state)
+    assert credit_info["net_worth"] == 1050000
+    assert credit_info["bank_assets"] == 950000
+    assert credit_info["bank_assets_breakdown"]["savings_balance"] == 300000
+
+    # calculate_user_net_worth helper
+    nw, cash, stock_val, debt = te.calculate_user_net_worth(db_session, u)
+    assert nw == 1050000
+    assert cash == 100000
+    assert debt == 0
+
+
+def test_auto_mining_does_not_drain_treasury(db_session):
+    """Verify that auto-mining produces system-minted base rewards without depleting the national treasury pool."""
+    uid = "auto_miner_safe"
+    uname = "자동채굴러"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.auto_mining_enabled = True
+    u.auto_mining_end_time = (datetime.now(timezone.utc) + timedelta(hours=3)).timestamp()
+    u.last_mined_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    u.debt = 0
+
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 1500000.0
+    db_session.commit()
+
+    tick = te.execute_auto_mining_tick(db_session, u)
+    assert tick is not None
+    assert tick["shares_awarded"] > 0
+
+    db_session.refresh(state)
+    # Treasury pool should NOT be depleted by auto mining!
+    assert state.treasury_pool == 1500000.0
+
+
+def test_auto_mining_indebted_repays_treasury(db_session):
+    """Verify that indebted user auto-mining pays down debt and adds the payout into treasury pool."""
+    uid = "auto_miner_debtor"
+    uname = "자동노역러"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.auto_mining_enabled = True
+    u.auto_mining_end_time = (datetime.now(timezone.utc) + timedelta(hours=3)).timestamp()
+    u.last_mined_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    u.debt = 500000
+
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 100000.0
+    db_session.commit()
+
+    tick = te.execute_auto_mining_tick(db_session, u)
+    assert tick is not None
+
+    db_session.refresh(u)
+    db_session.refresh(state)
+    assert u.debt < 500000
+    # Treasury pool should INCREASE by debt repayment amount!
+    assert state.treasury_pool > 100000.0
+
+
+def test_command_handler_myinfo_shows_bank_assets(db_session):
+    """Verify that !내정보 displays banking assets breakdown and includes it in net assets."""
+    uid = "myinfo_bank_tester"
+    uname = "자산확인러"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.points = 50000
+    u.bank_balance = 200000
+    b_data = {
+        "savings": {
+            "plan_name": "정기적금",
+            "total_deposited": 100000,
+            "target_rounds": 5,
+            "current_rounds": 2
+        }
+    }
+    te.save_user_bank_data(u, b_data)
+    db_session.commit()
+
+    reply, _ = ch.handle_chat_command(db_session, uid, uname, "!내정보")
+    assert "현금: 50,000P" in reply
+    assert "금융: 300,000P" in reply
+    assert "예금 200,000P" in reply
+    assert "적금 100,000P" in reply
+    assert "순자산: 350,000P" in reply
 
 
 

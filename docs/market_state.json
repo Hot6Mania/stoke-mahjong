@@ -54,88 +54,9 @@
       "stock": 0
     }
   },
-  "recent_activities": [
-    {
-      "id": 1789773807117,
-      "type": "casino",
-      "username": "CYTFT",
-      "user_id": null,
-      "title": "⭐ ★26성 강화 달성!",
-      "summary": "CYTFT님 [🔮 미스릴 곡괭이 (★26성)] 26강 달성!",
-      "badge": "⭐",
-      "outcome": "jackpot",
-      "timestamp": 1789773807.1176684,
-      "time_str": "08:23:27",
-      "details": {}
-    },
-    {
-      "id": 1789773587117,
-      "type": "lottery",
-      "username": "황금도박사",
-      "user_id": null,
-      "title": "🎫 금 복권 2등 당첨!",
-      "summary": "황금도박사님 당첨금 +1,000,000P 획득!",
-      "badge": "🎫",
-      "outcome": "jackpot",
-      "timestamp": 1789773587.1176684,
-      "time_str": "08:19:47",
-      "details": {}
-    },
-    {
-      "id": 1789773307117,
-      "type": "casino",
-      "username": "잭팟헌터",
-      "user_id": null,
-      "title": "🎰 슬롯 대박 잭팟!!",
-      "summary": "잭팟헌터님 777 잭팟 +3,500,000P 획득!!",
-      "badge": "🎰",
-      "outcome": "jackpot",
-      "timestamp": 1789773307.1176684,
-      "time_str": "08:15:07",
-      "details": {}
-    },
-    {
-      "id": 1789772977117,
-      "type": "starforce",
-      "username": "곡괭이장인",
-      "user_id": null,
-      "title": "🛡️✨ 절대 파방 성공",
-      "summary": "곡괭이장인님 100% 무적 방어로 폭발 차단!",
-      "badge": "🛡️",
-      "outcome": "win",
-      "timestamp": 1789772977.1176684,
-      "time_str": "08:09:37",
-      "details": {}
-    },
-    {
-      "id": 1789772527117,
-      "type": "trade",
-      "username": "주식대왕",
-      "user_id": null,
-      "title": "📈 주식 매수",
-      "summary": "주식대왕님 2,500주 매수 (5,850,000P)",
-      "badge": "📈",
-      "outcome": "trade",
-      "timestamp": 1789772527.1176684,
-      "time_str": "08:02:07",
-      "details": {}
-    },
-    {
-      "id": 1789771827117,
-      "type": "casino",
-      "username": "경마의신",
-      "user_id": null,
-      "title": "🏇 역만 경마 승리",
-      "summary": "경마의신님 1번마 대삼원 단승식 적중 (+720,000P)",
-      "badge": "🏇",
-      "outcome": "win",
-      "timestamp": 1789771827.1176684,
-      "time_str": "07:50:27",
-      "details": {}
-    }
-  ],
+  "recent_activities": [],
   "day_diff": 978,
   "day_diff_pct": 45.77,
   "total_users": 32,
-  "updated_at": "2026-09-19 08:26:23"
+  "updated_at": "2026-09-19 08:34:57"
 }

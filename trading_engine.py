@@ -1458,7 +1458,9 @@ def get_user_credit_info(
                 except Exception:
                     pass
 
-    net_worth = int(round(cash + stock_value - debt))
+    bank_assets_info = calculate_user_bank_assets(user, market_state=market_state)
+    total_bank_assets = bank_assets_info["total_bank_assets"]
+    net_worth = int(round(cash + total_bank_assets + stock_value - debt))
 
     # Factor 1: Net Worth score (-150 ~ +200)
     if net_worth >= 100000000:
@@ -1617,6 +1619,8 @@ def get_user_credit_info(
         "debt": debt,
         "net_worth": net_worth,
         "cash": cash,
+        "bank_assets": total_bank_assets,
+        "bank_assets_breakdown": bank_assets_info,
         "stock_value": stock_value,
         "factors": {
             "asset_score": asset_score,
@@ -4856,7 +4860,8 @@ def execute_auto_mining_tick(
     # 3. Dynamic Base Reward & Tier Roll
     state = get_market_state(db)
     current_price = state.current_price
-    target_cash = min(float(current_price), max(current_price * 0.2, state.treasury_pool * 0.05))
+    # Auto-mining base faucet is stable and independent of treasury drain
+    target_cash = min(float(current_price), max(current_price * 0.2, current_price * 0.35))
     base_shares = round(target_cash / current_price, 2)
     if base_shares <= 0.05:
         base_shares = 0.1
@@ -4871,6 +4876,7 @@ def execute_auto_mining_tick(
     if shares_awarded <= 0.05:
         shares_awarded = 0.05
 
+    # Heavy Mining (과집중/과충전) potential is fully supported in auto-mining
     heavy_reward_pct = pot_eff.get("heavy_mining_reward_pct", 0.0)
     if heavy_reward_pct > 0:
         heavy_mult = 1.0 + (heavy_reward_pct / 100.0)
@@ -4880,9 +4886,9 @@ def execute_auto_mining_tick(
     actual_cost = int(round(shares_awarded * current_price))
     total_mined_cost = actual_cost + total_bonus_cash
 
-    if getattr(state, "treasury_pool", None) is None:
-        state.treasury_pool = DEFAULT_TREASURY_POOL
-    state.treasury_pool = max(0.0, state.treasury_pool - total_mined_cost)
+    # Note: Auto-mining does NOT drain state.treasury_pool (system-minted base mining).
+    # Special potentials such as 황금 고블린 잭팟 (GOBLIN_JACKPOT_CHANCE) and 국고 털이범 (TREASURY_LOOT_PCT)
+    # are strictly disabled in auto-mining and can only be triggered via manual !채굴.
 
     # 4. Debt payoff or shares credit
     user_debt = getattr(user, "debt", 0) or 0
@@ -4890,6 +4896,8 @@ def execute_auto_mining_tick(
         total_payout = actual_cost + total_bonus_cash
         repay_amt = min(user_debt, total_payout)
         user.debt = user_debt - repay_amt
+        if getattr(state, "treasury_pool", None) is None:
+            state.treasury_pool = DEFAULT_TREASURY_POOL
         state.treasury_pool += repay_amt
         excess = total_payout - repay_amt
         if excess > 0:
@@ -9658,6 +9666,7 @@ def calculate_user_net_worth(
     debt = getattr(user, "debt", 0) or 0
     stock_value = 0.0
 
+    state = None
     if current_price is None:
         state = get_market_state(db)
         current_price = state.current_price
@@ -9668,7 +9677,10 @@ def calculate_user_net_worth(
                 val = calculate_position_valuation(p, current_price)
                 stock_value += round(val["current_value"], 1)
 
-    net_worth = int(round(cash + stock_value - debt))
+    bank_assets_info = calculate_user_bank_assets(user, market_state=state)
+    total_bank_assets = bank_assets_info["total_bank_assets"]
+
+    net_worth = int(round(cash + total_bank_assets + stock_value - debt))
     return net_worth, cash, stock_value, debt
 
 
@@ -10818,6 +10830,62 @@ def get_user_bank_info(*args, **kwargs) -> Dict[str, Any]:
         "available_funds": list(funds_portfolio.values()),
         "last_maturity_notice": b_data.get("last_maturity_notice"),
         "special_snipe_scrolls": get_user_special_snipe_scrolls(user)
+    }
+
+
+def calculate_user_bank_assets(user: Optional[User], market_state: Optional[MarketState] = None) -> Dict[str, int]:
+    """
+    Calculates a user's total banking and financial assets (demand deposit, installment savings, diversified funds).
+    Returns:
+        {
+            "bank_balance": int,       # 보통예금 잔액
+            "savings_balance": int,    # 정기적금 누적 불입액
+            "fund_valuation": int,     # 펀드 총 평가액
+            "total_bank_assets": int   # 금융자산 합계 (예금 + 적금 + 펀드)
+        }
+    """
+    if not user:
+        return {"bank_balance": 0, "savings_balance": 0, "fund_valuation": 0, "total_bank_assets": 0}
+
+    bank_balance = int(getattr(user, "bank_balance", 0) or 0)
+    b_data = get_user_bank_data(user)
+
+    # 1. Savings deposited
+    sav = b_data.get("savings")
+    savings_balance = 0
+    if sav and isinstance(sav, dict):
+        savings_balance = int(sav.get("total_deposited", 0) or 0)
+
+    # 2. Fund valuation
+    fund_valuation = 0
+    funds_dict = b_data.get("funds", {})
+    if isinstance(funds_dict, dict) and funds_dict:
+        try:
+            navs = get_all_fund_navs(market_state)
+        except Exception:
+            navs = {}
+        for fid, fdef in DIVERSIFIED_FUNDS.items():
+            u_hold = funds_dict.get(fid, {})
+            if isinstance(u_hold, dict):
+                u_units = float(u_hold.get("units", 0.0) or 0.0)
+                if u_units > 0:
+                    f_nav = float(navs.get(fid, fdef.get("initial_nav", 1000.0)))
+                    fund_valuation += int(round(u_units * f_nav))
+    else:
+        # Legacy single-fund fallback
+        legacy_units = float(b_data.get("fund_units", 0.0) or 0.0)
+        if legacy_units > 0:
+            nav = 1000.0
+            if market_state and getattr(market_state, "fund_nav", None):
+                nav = float(market_state.fund_nav)
+            fund_valuation = int(round(legacy_units * nav))
+
+    total_bank_assets = bank_balance + savings_balance + fund_valuation
+    return {
+        "bank_balance": bank_balance,
+        "savings_balance": savings_balance,
+        "fund_valuation": fund_valuation,
+        "total_bank_assets": total_bank_assets
     }
 
 

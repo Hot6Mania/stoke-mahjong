@@ -441,9 +441,12 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
         "debt": debt,
         "special_snipe_scrolls": te.get_user_special_snipe_scrolls(u)
     }
-    bank_bal = int(bank_info.get("bank_balance", 0) or 0)
-    fund_val = int(bank_info.get("fund_valuation", 0) or 0)
-    net_worth = int(round(cash + bank_bal + fund_val + total_stock_value - debt))
+    bank_assets_info = te.calculate_user_bank_assets(u, market_state=state)
+    bank_bal = bank_assets_info["bank_balance"]
+    savings_bal = bank_assets_info["savings_balance"]
+    fund_val = bank_assets_info["fund_valuation"]
+    total_bank_assets = bank_assets_info["total_bank_assets"]
+    net_worth = int(round(cash + total_bank_assets + total_stock_value - debt))
 
     # 2. Equipments & Potentials
     equipments = []
@@ -553,7 +556,7 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
         "treasury_pool": float(getattr(state, "treasury_pool", 0.0) or 0.0)
     }
 
-    credit_info = te.get_user_credit_info(u, market_state=state)
+    credit_info = te.get_user_credit_info(u, db=db, market_state=state)
 
     # 4. Asset History
     history_entries = []
@@ -588,6 +591,9 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
         "points": u.points,
         "cash": cash,
         "bank_balance": bank_bal,
+        "savings_balance": savings_bal,
+        "fund_valuation": fund_val,
+        "bank_assets": total_bank_assets,
         "debt": debt,
         "net_worth": net_worth,
         "stock_value": round(total_stock_value, 1),
