@@ -524,9 +524,10 @@ POTENTIAL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "unit": "%",
         "icon": "📈",
         "tiers": {
-            "EPIC": (25.0, "마작 경기 배당금 수령액 +25% 증폭"),
-            "UNIQUE": (50.0, "마작 경기 배당금 수령액 +50% 증폭"),
-            "LEGENDARY": (100.0, "마작 경기 배당금 수령액 +100% (2배!) 증폭"),
+            "RARE": (20.0, "마작 경기 배당금 수령액 +20% 증폭"),
+            "EPIC": (50.0, "마작 경기 배당금 수령액 +50% 증폭"),
+            "UNIQUE": (120.0, "마작 경기 배당금 수령액 +120% 증폭"),
+            "LEGENDARY": (250.0, "마작 경기 배당금 수령액 +250% (3.5배!) 초대박 증폭"),
         }
     },
     "HEAVY_MINING": {
@@ -898,7 +899,8 @@ def get_lower_potential_tier(tier: str) -> str:
 def roll_single_potential_line(
     tier: str,
     target_codes: Optional[List[str]] = None,
-    target_chance_pct: float = 0.0
+    target_chance_pct: float = 0.0,
+    target_weight: float = 3.5
 ) -> Dict[str, Any]:
     """Rolls a single potential line option for the specified tier."""
     valid_keys = [
@@ -910,12 +912,13 @@ def roll_single_potential_line(
         tier = "RARE"
 
     target_match = [c for c in (target_codes or []) if c in valid_keys]
-    # Strictly non-100% targeted chance (e.g. 35%)
+    # Targeted chance (e.g. 35% for normal snipe, 88% for specific named snipe scroll)
     if target_match and target_chance_pct > 0 and random.uniform(0, 100) < target_chance_pct:
         code = random.choice(target_match)
     elif target_match:
-        # 3.5x weighted probability for targeted potential codes
-        weights = [3.5 if k in target_match else 1.0 for k in valid_keys]
+        # Weighted probability for targeted potential codes (3.5x for normal, 10x for special)
+        w = max(1.0, float(target_weight))
+        weights = [w if k in target_match else 1.0 for k in valid_keys]
         code = random.choices(valid_keys, weights=weights, k=1)[0]
     else:
         code = random.choice(valid_keys)
@@ -934,19 +937,24 @@ def roll_single_potential_line(
 
 def roll_cube_potential(
     tier: str,
-    target_codes: Optional[List[str]] = None
+    target_codes: Optional[List[str]] = None,
+    line1_snipe_chance: float = 35.0,
+    is_special_snipe: bool = False
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Rolls 3 lines of potential options based on MapleStory distribution rules:
-    - Line 1: Current tier (100%), 35% targeted snipe chance if targeted (strictly not 100%)
-    - Line 2: Current tier (50%) / 1 tier lower (50%), 3.5x weight for target
-    - Line 3: Current tier (20%) / 1 tier lower (80%), 3.5x weight for target
+    - Line 1: Current tier (100%), targeted snipe chance (35% standard or 88% special)
+    - Line 2: Current tier (50%) / 1 tier lower (50%), 3.5x~10x weight for target
+    - Line 3: Current tier (20%) / 1 tier lower (80%), 3.5x~10x weight for target
     """
     tier = (tier or "RARE").upper()
     lower_tier = get_lower_potential_tier(tier)
 
-    # Line 1: 100% Current tier (35% targeted snipe chance if target_codes provided)
-    line1 = roll_single_potential_line(tier, target_codes=target_codes, target_chance_pct=35.0 if target_codes else 0.0)
+    eff_line1_chance = float(line1_snipe_chance) if target_codes else 0.0
+    sec_weight = 10.0 if is_special_snipe else 3.5
+
+    # Line 1: 100% Current tier
+    line1 = roll_single_potential_line(tier, target_codes=target_codes, target_chance_pct=eff_line1_chance, target_weight=sec_weight)
 
     # Line 2: 50% Current / 50% Lower (RARE is always RARE | LEGENDARY boosted to 80%)
     if tier == "RARE":
@@ -955,7 +963,7 @@ def roll_cube_potential(
         l2_tier = "LEGENDARY" if random.random() < 0.80 else lower_tier
     else:
         l2_tier = tier if random.random() < 0.50 else lower_tier
-    line2 = roll_single_potential_line(l2_tier, target_codes=target_codes, target_chance_pct=0.0)
+    line2 = roll_single_potential_line(l2_tier, target_codes=target_codes, target_chance_pct=0.0, target_weight=sec_weight)
 
     # Line 3: 20% Current / 80% Lower (RARE is always RARE | LEGENDARY boosted to 60%)
     if tier == "RARE":
@@ -964,13 +972,13 @@ def roll_cube_potential(
         l3_tier = "LEGENDARY" if random.random() < 0.60 else lower_tier
     else:
         l3_tier = tier if random.random() < 0.20 else lower_tier
-    line3 = roll_single_potential_line(l3_tier, target_codes=target_codes, target_chance_pct=0.0)
+    line3 = roll_single_potential_line(l3_tier, target_codes=target_codes, target_chance_pct=0.0, target_weight=sec_weight)
 
     # Strict Guarantee: If tier is LEGENDARY, at least 1 line is 100% guaranteed to be a LEGENDARY option!
     if tier == "LEGENDARY":
         lines = [line1, line2, line3]
         if not any(l.get("tier") == "LEGENDARY" for l in lines):
-            line1 = roll_single_potential_line("LEGENDARY", target_codes=target_codes, target_chance_pct=35.0 if target_codes else 0.0)
+            line1 = roll_single_potential_line("LEGENDARY", target_codes=target_codes, target_chance_pct=eff_line1_chance, target_weight=sec_weight)
 
     return line1, line2, line3
 
@@ -1088,7 +1096,7 @@ def get_equipment_potential_effects(item: Optional[UserEquipment]) -> Dict[str, 
     effects["starforce_success_boost"] = min(20.0, effects["starforce_success_boost"])
     effects["mining_cd_reduction"] = min(8, effects["mining_cd_reduction"])
     effects["treasury_loot_pct"] = min(1.0, effects["treasury_loot_pct"])
-    effects["dividend_boost_pct"] = min(300.0, effects["dividend_boost_pct"])
+    effects["dividend_boost_pct"] = min(750.0, effects["dividend_boost_pct"])
     effects["goblin_chance"] = min(35.0, effects["goblin_chance"])
 
     # Calculate maximum leverage multiplier based on Beast Heart (야수의 심장) line count
@@ -2471,7 +2479,8 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         r = int(rank)
     except (ValueError, TypeError):
         r = 0
-    div_rate = 0.05 if r == 1 else (0.01 if r == 2 else 0.0)
+    # Buffed Dividend Rates: 1st place 8%, 2nd place 3%, 3rd place 1%
+    div_rate = 0.08 if r == 1 else (0.03 if r == 2 else (0.01 if r == 3 else 0.0))
 
     if div_rate > 0:
         all_positions = db.query(Position).filter(Position.quantity > 0).all()
@@ -2487,7 +2496,7 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
                 if payout > 0:
                     eq = get_user_equipped_item(db, u)
                     pot_eff = get_equipment_potential_effects(eq) if eq else {}
-                    div_boost_pct = min(300.0, float(pot_eff.get("dividend_boost_pct", 0.0)))
+                    div_boost_pct = min(750.0, float(pot_eff.get("dividend_boost_pct", 0.0)))
                     if div_boost_pct > 0:
                         payout = int(round(payout * (1.0 + div_boost_pct / 100.0)))
                     u.points += payout
@@ -2501,6 +2510,79 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
                         "rate_pct": div_rate * 100.0,
                         "dividend_boost_pct": div_boost_pct
                     })
+
+    # Central Bank Periodic Settlement Processing:
+    # 1. Demand Deposit (보통예금) Interest: +0.5% paid to all users with bank_balance > 0
+    bank_users = db.query(User).filter(User.bank_balance > 0).all()
+    for bu in bank_users:
+        b_interest = max(1, int(round(bu.bank_balance * 0.005)))
+        bu.bank_balance += b_interest
+
+    # 2. Installment Savings (정기적금) deduction & maturity check + Insurance matches decrement
+    bank_data_users = db.query(User).filter(User.bank_data.isnot(None)).all()
+    for bdu in bank_data_users:
+        b_data = get_user_bank_data(bdu)
+        dirty_bank = False
+
+        # Installment Savings
+        sav = b_data.get("savings")
+        if sav and isinstance(sav, dict):
+            per_round = int(sav.get("per_round", 0))
+            if per_round > 0:
+                paid = False
+                if bdu.points >= per_round:
+                    bdu.points -= per_round
+                    paid = True
+                elif (getattr(bdu, "bank_balance", 0) or 0) >= per_round:
+                    bdu.bank_balance -= per_round
+                    paid = True
+
+                if paid:
+                    sav["current_rounds"] = int(sav.get("current_rounds", 0)) + 1
+                    sav["total_deposited"] = int(sav.get("total_deposited", 0)) + per_round
+                    target_rounds = int(sav.get("target_rounds", 5))
+                    if sav["current_rounds"] >= target_rounds:
+                        # Maturity!
+                        bonus = int(round(sav["total_deposited"] * 0.20))  # +20% maturity bonus!
+                        total_payout = sav["total_deposited"] + bonus
+                        bdu.bank_balance = (getattr(bdu, "bank_balance", 0) or 0) + total_payout
+                        b_data["last_maturity_notice"] = (
+                            f"🎉 [정기적금 만기 축하!] {target_rounds}회차 완납 달성! "
+                            f"원금 {sav['total_deposited']:,}P + 보너스 이자(+20%) {bonus:,}P = 총 {total_payout:,}P 보통예금 입금 완료!"
+                        )
+                        del b_data["savings"]
+                else:
+                    sav["missed_rounds"] = int(sav.get("missed_rounds", 0)) + 1
+                    if sav["missed_rounds"] >= 2:
+                        # Auto-cancel due to consecutive misses, refund principal
+                        refund = int(sav.get("total_deposited", 0))
+                        bdu.bank_balance = (getattr(bdu, "bank_balance", 0) or 0) + refund
+                        b_data["last_maturity_notice"] = (
+                            f"⚠️ [정기적금 납입 실패로 인한 자동 해지] 2회 연속 잔액 부족으로 적금이 해지되었으며, "
+                            f"지금까지 납입된 원금 {refund:,}P가 보통예금으로 환급되었습니다."
+                        )
+                        del b_data["savings"]
+                dirty_bank = True
+
+        # Insurance policy match decrement
+        ins = b_data.get("insurance")
+        if ins and isinstance(ins, dict) and ins.get("active"):
+            left_m = int(ins.get("matches_left", 1)) - 1
+            if left_m <= 0:
+                ins["active"] = False
+                ins["matches_left"] = 0
+            else:
+                ins["matches_left"] = left_m
+            dirty_bank = True
+
+        if dirty_bank:
+            save_user_bank_data(bdu, b_data)
+
+    # 3. Mahjong Index Fund NAV update based on stock movement
+    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    price_change_ratio = (new_price - old_price) / max(1, old_price)
+    new_nav = max(100.0, round(cur_nav * (1.0 + (price_change_ratio * 0.6) + 0.005), 2))
+    state.fund_nav = new_nav
 
     # Process pending limit orders
     pending_orders = db.query(LimitOrder).filter_by(status=OrderStatus.PENDING).all()
@@ -3437,6 +3519,71 @@ MERCHANT_ITEMS = {
 }
 
 
+def get_user_special_snipe_scrolls(user: User) -> Dict[str, int]:
+    """Returns dict of code -> count for specific option sniper scrolls."""
+    raw = getattr(user, "special_snipe_scrolls", "{}") or "{}"
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        if isinstance(data, dict):
+            return {str(k): int(v) for k, v in data.items() if int(v) > 0}
+        return {}
+    except Exception:
+        return {}
+
+def add_user_special_snipe_scroll(user: User, code: str, count: int = 1) -> None:
+    """Adds specific option sniper scrolls to user."""
+    curr = get_user_special_snipe_scrolls(user)
+    curr[code] = curr.get(code, 0) + max(1, int(count))
+    user.special_snipe_scrolls = json.dumps(curr, ensure_ascii=False)
+
+def consume_user_special_snipe_scroll(user: User, code: str) -> bool:
+    """Consumes 1 specific option sniper scroll if available."""
+    curr = get_user_special_snipe_scrolls(user)
+    if curr.get(code, 0) <= 0:
+        return False
+    curr[code] -= 1
+    if curr[code] <= 0:
+        del curr[code]
+    user.special_snipe_scrolls = json.dumps(curr, ensure_ascii=False)
+    return True
+
+def get_user_bank_data(user: User) -> Dict[str, Any]:
+    """Returns bank data dict from JSON."""
+    raw = getattr(user, "bank_data", "{}") or "{}"
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        if isinstance(data, dict):
+            return data
+        return {}
+    except Exception:
+        return {}
+
+def save_user_bank_data(user: User, data: Dict[str, Any]) -> None:
+    """Saves bank data dict to JSON."""
+    user.bank_data = json.dumps(data, ensure_ascii=False)
+
+def roll_merchant_special_snipe() -> Tuple[Optional[str], Optional[str], Optional[str], int, int]:
+    """75% chance to stock a specific named potential sniper scroll with 1~3 stock."""
+    if random.uniform(0, 100) > 75.0:
+        return None, None, None, 0, 0
+
+    candidates = [
+        ("DIVIDEND_BOOST_PCT", "📈 배당금 증폭 전용 저격주문서", "큐브 사용 시 1줄 [배당금 증폭] 88% 확정급 저격!", 750000),
+        ("MINING_CD_RESET", "⚡ 쿨타임 초기화 전용 저격주문서", "큐브 사용 시 1줄 [쿨타임 즉시 초기화] 88% 확정급 저격!", 850000),
+        ("STARFORCE_SUCCESS_BOOST", "⭐ 성공률 증가 전용 저격주문서", "큐브 사용 시 1줄 [강화 성공률 증가] 88% 확정급 저격!", 900000),
+        ("GOBLIN_JACKPOT_CHANCE", "👹 황금 고블린 전용 저격주문서", "큐브 사용 시 1줄 [황금 고블린 잭팟] 88% 확정급 저격!", 800000),
+        ("MINING_YIELD_BOOST", "⛏️ 채굴량 증폭 전용 저격주문서", "큐브 사용 시 1줄 [주식 채굴량 배율] 88% 확정급 저격!", 700000),
+        ("MINING_BONUS_CASH", "🪙 확정 현금 전용 저격주문서", "큐브 사용 시 1줄 [채굴 확정 현금] 88% 확정급 저격!", 650000),
+        ("MAHJONG_TILE_BOOST", "🀄 마작 화료 전용 저격주문서", "큐브 사용 시 1줄 [마작패 화료 보너스] 88% 확정급 저격!", 650000),
+        ("HEAVY_MINING", "🌋 과충전 채굴 전용 저격주문서", "큐브 사용 시 1줄 [과충전 집중 채굴] 88% 확정급 저격!", 800000),
+        ("STARFORCE_DISCOUNT", "🔨 강화비 할인 전용 저격주문서", "큐브 사용 시 1줄 [스타포스 강화비 할인] 88% 확정급 저격!", 600000),
+    ]
+    code, name, desc, base_price = random.choice(candidates)
+    stock = random.randint(1, 3)
+    price = int(round(base_price * random.uniform(0.85, 1.35) / 10000)) * 10000
+    return code, name, desc, price, stock
+
+
 def get_merchant_state(
     db: Session,
     force_trigger: bool = False,
@@ -3483,14 +3630,23 @@ def get_merchant_state(
             end_time = now + dur_m * 60.0
             next_time = end_time + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
 
+            # Randomize standard items stock & price
             state.merchant_shield_price = random.randint(8, 98) * 10000
-            state.merchant_shield_stock = random.randint(2, 6)
+            state.merchant_shield_stock = random.randint(1, 8)
             state.merchant_boost_price = random.randint(4, 65) * 10000
-            state.merchant_boost_stock = random.randint(4, 12)
+            state.merchant_boost_stock = random.randint(3, 16)
             state.merchant_downgrade_price = random.randint(6, 80) * 10000
-            state.merchant_downgrade_stock = random.randint(3, 8)
+            state.merchant_downgrade_stock = random.randint(2, 10)
             state.merchant_snipe_price = random.randint(9, 120) * 10000
-            state.merchant_snipe_stock = random.randint(2, 5)
+            state.merchant_snipe_stock = random.randint(1, 6)
+
+            # Probabilistically bring special named option sniper scroll (1~3 stock)
+            sp_code, sp_name, sp_desc, sp_price, sp_stock = roll_merchant_special_snipe()
+            state.merchant_special_snipe_code = sp_code
+            state.merchant_special_snipe_name = sp_name
+            state.merchant_special_snipe_desc = sp_desc
+            state.merchant_special_snipe_price = sp_price
+            state.merchant_special_snipe_stock = sp_stock
 
             state.merchant_is_open = True
             state.merchant_end_time = end_time
@@ -3514,16 +3670,16 @@ def get_merchant_state(
 
     updated_m_price = False
     if cur_shield_price <= 0:
-        state.merchant_shield_price = random.randint(8, 98) * 10000
+        state.merchant_shield_price = random.randint(20, 98) * 10000
         updated_m_price = True
     if cur_boost_price <= 0:
-        state.merchant_boost_price = random.randint(4, 65) * 10000
+        state.merchant_boost_price = random.randint(12, 65) * 10000
         updated_m_price = True
     if cur_downgrade_price <= 0:
-        state.merchant_downgrade_price = random.randint(6, 80) * 10000
+        state.merchant_downgrade_price = random.randint(15, 80) * 10000
         updated_m_price = True
     if cur_snipe_price <= 0:
-        state.merchant_snipe_price = random.randint(9, 120) * 10000
+        state.merchant_snipe_price = random.randint(25, 120) * 10000
         updated_m_price = True
 
     if updated_m_price:
@@ -3533,50 +3689,80 @@ def get_merchant_state(
         except Exception:
             pass
 
+    items_dict: Dict[str, Any] = {
+        "shield": {
+            "id": 1,
+            "name": "🛡️ 파괴방어권",
+            "price": getattr(state, "merchant_shield_price", 500000) or 500000,
+            "stock": getattr(state, "merchant_shield_stock", 5) or 0,
+            "desc": "15성+ 강화 실패 시 폭발 파괴 75% 방어 (25% 확률로 폭발할 수 있음!)"
+        },
+        "boost": {
+            "id": 2,
+            "name": "⚡ 강화확률상승권",
+            "price": getattr(state, "merchant_boost_price", 350000) or 350000,
+            "stock": getattr(state, "merchant_boost_stock", 10) or 0,
+            "desc": "스타포스 강화 성공률 +25% 곱연산 증폭"
+        },
+        "downgrade": {
+            "id": 3,
+            "name": "📉 하강방지권",
+            "price": getattr(state, "merchant_downgrade_price", 400000) or 400000,
+            "stock": getattr(state, "merchant_downgrade_stock", 8) or 0,
+            "desc": "강화 실패 시 등급(성수) 하락 80% 방어 (20% 확률로 하락할 수 있음)"
+        },
+        "snipe": {
+            "id": 4,
+            "name": "🎯 잠재저격주문서",
+            "price": getattr(state, "merchant_snipe_price", 500000) or 500000,
+            "stock": getattr(state, "merchant_snipe_stock", 4) or 0,
+            "desc": "큐브 사용 시 원하는 잠재 옵션 확률 대폭 증가 (1줄 35% 저격 + 전체 3.5배 가중치)"
+        }
+    }
+
+    if getattr(state, "merchant_special_snipe_stock", 0) > 0 and getattr(state, "merchant_special_snipe_code", None):
+        items_dict["special"] = {
+            "id": 5,
+            "name": state.merchant_special_snipe_name,
+            "price": getattr(state, "merchant_special_snipe_price", 750000) or 750000,
+            "stock": getattr(state, "merchant_special_snipe_stock", 0) or 0,
+            "code": state.merchant_special_snipe_code,
+            "desc": state.merchant_special_snipe_desc or "큐브 사용 시 1줄 88% 확정급 저격!"
+        }
+
     return {
         "is_active": active,
         "remaining_sec": rem_sec,
         "end_time": end_time,
         "merchant_name": name,
         "next_event_in_sec": next_in_sec,
-        "items": {
-            "shield": {
-                "id": 1,
-                "name": "🛡️ 파괴방어권",
-                "price": getattr(state, "merchant_shield_price", 500000) or 500000,
-                "stock": getattr(state, "merchant_shield_stock", 5) or 0,
-                "desc": "15성+ 스타포스 강화 실패 시 폭발 파괴 100% 방어"
-            },
-            "boost": {
-                "id": 2,
-                "name": "⚡ 강화확률상승권",
-                "price": getattr(state, "merchant_boost_price", 350000) or 350000,
-                "stock": getattr(state, "merchant_boost_stock", 10) or 0,
-                "desc": "스타포스 강화 성공률 +25% 곱연산 증폭"
-            },
-            "downgrade": {
-                "id": 3,
-                "name": "📉 하강방지권",
-                "price": getattr(state, "merchant_downgrade_price", 400000) or 400000,
-                "stock": getattr(state, "merchant_downgrade_stock", 8) or 0,
-                "desc": "스타포스 강화 실패 시 등급(성수) 하락 100% 방어"
-            },
-            "snipe": {
-                "id": 4,
-                "name": "🎯 잠재저격주문서",
-                "price": getattr(state, "merchant_snipe_price", 500000) or 500000,
-                "stock": getattr(state, "merchant_snipe_stock", 4) or 0,
-                "desc": "큐브 사용 시 원하는 잠재 옵션 확률 대폭 증가 (1줄 35% 저격 + 전체 3.5배 가중치)"
-            }
-        }
+        "items": items_dict
     }
+
+
+def calculate_merchant_inflation_multiplier(db: Session, state: MarketState) -> float:
+    """Dynamically scales merchant prices based on users' wealth (top holders) and central treasury pool."""
+    try:
+        top_users = db.query(User).order_by(User.points.desc()).limit(5).all()
+        if not top_users:
+            return 1.0
+        avg_top_cash = sum(u.points for u in top_users) / len(top_users)
+        treasury = float(getattr(state, "treasury_pool", 500000.0) or 500000.0)
+
+        cash_factor = max(1.0, (avg_top_cash / 1000000.0) ** 0.5)
+        treasury_factor = max(1.0, (treasury / 2000000.0) ** 0.35)
+        mult = max(1.0, min(10.0, (cash_factor * 0.65 + treasury_factor * 0.35)))
+        return round(mult, 2)
+    except Exception:
+        return 1.0
+
 
 def open_merchant(
     db: Session,
     duration_minutes: int = 10,
     name: str = "신비상인"
 ) -> Tuple[bool, str, Dict[str, Any]]:
-    """Streamer/Admin manual spawn for Mysterious Merchant."""
+    """Streamer/Admin manual spawn for Mysterious Merchant with dynamic economy pricing."""
     state = get_market_state(db)
     now = time.time()
     dur_m = max(1, min(120, int(duration_minutes)))
@@ -3588,21 +3774,35 @@ def open_merchant(
     state.merchant_name = name
     state.merchant_next_time = next_time
 
-    # Generate random wide-range prices and stocks
-    state.merchant_shield_price = random.randint(8, 98) * 10000
-    state.merchant_shield_stock = random.randint(2, 6)
-    state.merchant_boost_price = random.randint(4, 65) * 10000
-    state.merchant_boost_stock = random.randint(4, 12)
-    state.merchant_downgrade_price = random.randint(6, 80) * 10000
-    state.merchant_downgrade_stock = random.randint(3, 8)
-    state.merchant_snipe_price = random.randint(9, 120) * 10000
-    state.merchant_snipe_stock = random.randint(2, 5)
+    # Compute dynamic economy inflation multiplier (scales with user cash & treasury pool)
+    mult = calculate_merchant_inflation_multiplier(db, state)
+
+    # Generate random wide-range prices scaled by inflation (rounded to nearest 10,000P)
+    state.merchant_shield_price = int(round((random.randint(18, 95) * 10000) * mult / 10000)) * 10000
+    state.merchant_shield_stock = random.randint(1, 8)
+    state.merchant_boost_price = int(round((random.randint(10, 55) * 10000) * mult / 10000)) * 10000
+    state.merchant_boost_stock = random.randint(3, 16)
+    state.merchant_downgrade_price = int(round((random.randint(14, 75) * 10000) * mult / 10000)) * 10000
+    state.merchant_downgrade_stock = random.randint(2, 10)
+    state.merchant_snipe_price = int(round((random.randint(22, 110) * 10000) * mult / 10000)) * 10000
+    state.merchant_snipe_stock = random.randint(1, 6)
+
+    # Roll special named sniper scroll with scaled price
+    sp_code, sp_name, sp_desc, sp_price, sp_stock = roll_merchant_special_snipe()
+    if sp_price:
+        sp_price = int(round(sp_price * mult / 10000)) * 10000
+    state.merchant_special_snipe_code = sp_code
+    state.merchant_special_snipe_name = sp_name
+    state.merchant_special_snipe_desc = sp_desc
+    state.merchant_special_snipe_price = sp_price
+    state.merchant_special_snipe_stock = sp_stock
 
     db.commit()
     db.refresh(state)
 
     ev_state = get_merchant_state(db)
-    msg = f"🧞‍♂️🛒 [신비상인 등장] 방랑 {name}이(가) 마을에 나타났습니다! ({dur_m}분간 영업 | 특수 주문서 한정 판매! 명령어: !신비상인, !상인구매)"
+    sp_msg = f" | ⭐ 한정 특매: [{state.merchant_special_snipe_name}]" if state.merchant_special_snipe_stock > 0 else ""
+    msg = f"🧞‍♂️🛒 [신비상인 등장] 방랑 {name}이(가) 마을에 나타났습니다! ({dur_m}분간 영업{sp_msg} | 명령어: !신비상인, !상인구매)"
     return True, msg, ev_state
 
 def close_merchant(db: Session) -> Tuple[bool, str, Dict[str, Any]]:
@@ -3633,12 +3833,13 @@ def execute_buy_merchant_item(
     item_key_str: str,
     quantity_str: str = "1"
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-    """Buy item from Mysterious Merchant (!상인구매 [1/2/3/4] [수량])."""
+    """Buy item from Mysterious Merchant (!상인구매 [1/2/3/4/5] [수량])."""
     m_state = get_merchant_state(db)
     if not m_state["is_active"]:
         next_m = max(1, m_state["next_event_in_sec"] // 60)
         return False, f"🔒 지금은 신비상인이 마을에 없습니다! (약 {next_m}분 후 다음 방문 예정. 스트리머 전용: !신비상인오픈 [분])", None
 
+    state = get_market_state(db)
     clean_key = (item_key_str or "").strip().lower()
     matched_item_type = None
     for k, info in MERCHANT_ITEMS.items():
@@ -3646,25 +3847,45 @@ def execute_buy_merchant_item(
             matched_item_type = k
             break
 
-    if not matched_item_type:
-        return False, "⚠️ 구매할 아이템을 지정해주세요: 1(파괴방어권), 2(강화확률상승권), 3(하강방지권), 4(잠재저격주문서) (예: !상인구매 4 1, !상인구매 저격 1)", None
+    is_special = False
+    if clean_key in ["5", "special", "특수", "전용", "전용저격", "전용주문서", "특정"]:
+        is_special = True
+    elif state.merchant_special_snipe_code and (
+        clean_key == state.merchant_special_snipe_code.lower() or
+        (state.merchant_special_snipe_name and clean_key in state.merchant_special_snipe_name.lower())
+    ):
+        is_special = True
 
-    state = get_market_state(db)
+    if not matched_item_type and not is_special:
+        sp_guide = f", 5({state.merchant_special_snipe_name})" if (getattr(state, "merchant_special_snipe_stock", 0) > 0 and state.merchant_special_snipe_name) else ""
+        return False, f"⚠️ 구매할 아이템을 지정해주세요: 1(파괴방어권), 2(강화확률상승권), 3(하강방지권), 4(잠재저격주문서){sp_guide} (예: !상인구매 4 1, !상인구매 저격 1)", None
+
     user = get_or_create_user(db, user_id, username)
 
-    item_def = MERCHANT_ITEMS[matched_item_type]
-    if matched_item_type == "shield":
-        unit_price = getattr(state, "merchant_shield_price", 500000) or 500000
-        avail_stock = getattr(state, "merchant_shield_stock", 0) or 0
-    elif matched_item_type == "boost":
-        unit_price = getattr(state, "merchant_boost_price", 350000) or 350000
-        avail_stock = getattr(state, "merchant_boost_stock", 0) or 0
-    elif matched_item_type == "downgrade":
-        unit_price = getattr(state, "merchant_downgrade_price", 400000) or 400000
-        avail_stock = getattr(state, "merchant_downgrade_stock", 0) or 0
-    else:  # snipe
-        unit_price = getattr(state, "merchant_snipe_price", 500000) or 500000
-        avail_stock = getattr(state, "merchant_snipe_stock", 0) or 0
+    if is_special:
+        unit_price = getattr(state, "merchant_special_snipe_price", 750000) or 750000
+        avail_stock = getattr(state, "merchant_special_snipe_stock", 0) or 0
+        item_def = {
+            "id": 5,
+            "name": getattr(state, "merchant_special_snipe_name", "특수 전용 저격주문서") or "특수 전용 저격주문서",
+            "desc": getattr(state, "merchant_special_snipe_desc", "1줄 88% 확정급 전용 저격") or "1줄 88% 확정급 전용 저격"
+        }
+        if avail_stock <= 0 or not state.merchant_special_snipe_code:
+            return False, "⚠️ 특수 전용 저격주문서는 오늘 입고되지 않았거나 매진되었습니다!", None
+    else:
+        item_def = MERCHANT_ITEMS[matched_item_type]
+        if matched_item_type == "shield":
+            unit_price = getattr(state, "merchant_shield_price", 500000) or 500000
+            avail_stock = getattr(state, "merchant_shield_stock", 0) or 0
+        elif matched_item_type == "boost":
+            unit_price = getattr(state, "merchant_boost_price", 350000) or 350000
+            avail_stock = getattr(state, "merchant_boost_stock", 0) or 0
+        elif matched_item_type == "downgrade":
+            unit_price = getattr(state, "merchant_downgrade_price", 400000) or 400000
+            avail_stock = getattr(state, "merchant_downgrade_stock", 0) or 0
+        else:  # snipe
+            unit_price = getattr(state, "merchant_snipe_price", 500000) or 500000
+            avail_stock = getattr(state, "merchant_snipe_stock", 0) or 0
 
     if avail_stock <= 0:
         return False, f"⚠️ [{item_def['name']}]은(는) 오늘 준비된 수량이 모두 매진되었습니다!", None
@@ -3702,7 +3923,11 @@ def execute_buy_merchant_item(
     state.treasury_pool += total_cost
 
     # Update stock in state
-    if matched_item_type == "shield":
+    if is_special:
+        state.merchant_special_snipe_stock = max(0, avail_stock - qty)
+        add_user_special_snipe_scroll(user, state.merchant_special_snipe_code, qty)
+        user_stock = get_user_special_snipe_scrolls(user).get(state.merchant_special_snipe_code, 0)
+    elif matched_item_type == "shield":
         state.merchant_shield_stock = max(0, avail_stock - qty)
         user.shield_scroll_count = (getattr(user, "shield_scroll_count", 0) or 0) + qty
         user_stock = user.shield_scroll_count
@@ -3723,7 +3948,8 @@ def execute_buy_merchant_item(
         (getattr(state, "merchant_shield_stock", 0) or 0) +
         (getattr(state, "merchant_boost_stock", 0) or 0) +
         (getattr(state, "merchant_downgrade_stock", 0) or 0) +
-        (getattr(state, "merchant_snipe_stock", 0) or 0)
+        (getattr(state, "merchant_snipe_stock", 0) or 0) +
+        (getattr(state, "merchant_special_snipe_stock", 0) or 0)
     )
 
     all_sold_out = (total_remaining_stock <= 0)
@@ -3731,10 +3957,10 @@ def execute_buy_merchant_item(
     if all_sold_out:
         close_merchant(db)
         sold_out_msg = f"\n🚪💨 [완판 마감] 신비상인의 모든 물품이 완판(매진)되어 보따리를 싸고 마을을 떠났습니다! 다음 방문을 기다려주세요."
-
-    db.commit()
-    db.refresh(user)
-    db.refresh(state)
+    else:
+        db.commit()
+        db.refresh(user)
+        db.refresh(state)
 
     clamp_msg = f" (요청 {requested_qty}개 중 가능 수량 {qty}개 구매)" if requested_qty > qty else ""
     reply = (
@@ -3742,7 +3968,7 @@ def execute_buy_merchant_item(
         f"(보유 수량: {user_stock}장 | 잔여 현금: {user.points:,}P | 상인 남은 재고: {max(0, avail_stock - qty)}개){sold_out_msg}"
     )
     details = {
-        "item_type": matched_item_type,
+        "item_type": "special" if is_special else matched_item_type,
         "item_name": item_def["name"],
         "quantity": qty,
         "unit_price": unit_price,
@@ -5209,14 +5435,26 @@ def execute_pickaxe_upgrade(
         if effective_use_downgrade and (getattr(user, "downgrade_scroll_count", 0) or 0) > 0:
             user.downgrade_scroll_count -= 1
             used_downgrade_scroll = True
-            outcome = "downgrade_prevented"
-            new_level = curr_level
-            target_item.starforce = new_level
-            new_item = current_item
-            reply = (
-                f"🛡️📉 [하강방지권 발동! (등급 하락 방어){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화에 실패했으나, "
-                f"하강방지권을 소모하여 1성 하락을 막고 성수를 보존했습니다! (남은 하강방지권: {user.downgrade_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
-            )
+            downgrade_defend_roll = random.uniform(0, 100)
+            if downgrade_defend_roll < 80.0:
+                outcome = "downgrade_prevented"
+                new_level = curr_level
+                target_item.starforce = new_level
+                new_item = current_item
+                reply = (
+                    f"🛡️📉 [하강방지권 방어 성공! (80% 확률){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화에 실패했으나, "
+                    f"하강방지권을 소모하여 1성 하락을 성공적으로 막아냈습니다! (남은 하강방지권: {user.downgrade_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+                )
+            else:
+                outcome = "drop"
+                new_level = max(0, curr_level - 1)
+                target_item.starforce = new_level
+                new_item = get_pickaxe_info(new_level, event_state=sf_state)
+                target_item.name = new_item["name"]
+                reply = (
+                    f"🔨📉 [하강방지권 방어 실패! (20% 뚫림){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 하강방지권을 사용했으나, "
+                    f"하락 압력을 이겨내지 못하고 1성 하락했습니다! ㅠㅠ ([{current_item['name']}] ➔ [{new_item['name']}] | 남은 하강방지권: {user.downgrade_scroll_count}장 | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+                )
         else:
             outcome = "drop"
             new_level = max(0, curr_level - 1)
@@ -5229,39 +5467,66 @@ def execute_pickaxe_upgrade(
             )
     else:
         # Destroyed / Blown up! (Only possible at 15성+)
+        shield_defended = False
         if effective_use_shield and (getattr(user, "shield_scroll_count", 0) or 0) > 0:
             user.shield_scroll_count -= 1
             used_shield_scroll = True
-            outcome = "destruction_prevented"
-            new_level = curr_level
-            target_item.starforce = new_level
-            new_item = current_item
-            reply = (
-                f"🛡️✨ [파괴방어권 발동! (장비 파괴 완벽 방어!){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴될 위기였으나, "
-                f"파괴방어권을 소모하여 장비 폭발을 완벽히 막아내고 성수를 지켜냈습니다! (남은 파괴방어권: {user.shield_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
-            )
-        elif safeguard_pct > 0 and random.uniform(0, 100) < safeguard_pct:
-            # Safeguarded! Drop 1 star instead of falling to 12
-            outcome = "safeguarded_drop"
-            new_level = max(0, curr_level - 1)
-            target_item.starforce = new_level
-            new_item = get_pickaxe_info(new_level, event_state=sf_state)
-            target_item.name = new_item["name"]
-            reply = (
-                f"🛡️✨ [강화 파괴 방지 성공! (세이프가드 {safeguard_pct:.0f}% 발동!){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 "
-                f"[장비 #{target_item.id}] 강화가 폭발 파괴될 위기였으나, 잠재능력 파괴 방지(★1성 하락 보호)가 발동하여 장비 폭발을 막아냈습니다! "
-                f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
-            )
-        else:
-            outcome = "destroyed"
-            # MapleStory Starforce rule: Destroys into Equipment Trace (장비의 흔적, 12성 복원)
-            target_item.starforce = 12
-            new_item = get_pickaxe_info(12, event_state=sf_state)
-            target_item.name = new_item["name"]
-            reply = (
-                f"💥💀 [스타포스 강화 실패: 장비 파괴!{fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴되었습니다! ㅠㅠ "
-                f"(메이플 스타포스 규칙에 따라 [장비의 흔적(★12성 {new_item['name']})]으로 복원되었습니다. | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
-            )
+            dest_defend_roll = random.uniform(0, 100)
+            if dest_defend_roll < 75.0:
+                shield_defended = True
+                outcome = "destruction_prevented"
+                new_level = curr_level
+                target_item.starforce = new_level
+                new_item = current_item
+                reply = (
+                    f"🛡️✨ [파괴방어권 방어 성공! (75% 확률){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴될 위기였으나, "
+                    f"파괴방어권을 소모하여 폭발을 가까스로 막아내고 성수를 지켜냈습니다! (방어 성공! 남은 파괴방어권: {user.shield_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+                )
+            else:
+                shield_defended = False
+
+        if not shield_defended:
+            if safeguard_pct > 0 and random.uniform(0, 100) < safeguard_pct:
+                # Safeguarded! Drop 1 star instead of falling to 12
+                outcome = "safeguarded_drop"
+                new_level = max(0, curr_level - 1)
+                target_item.starforce = new_level
+                new_item = get_pickaxe_info(new_level, event_state=sf_state)
+                target_item.name = new_item["name"]
+                reply = (
+                    f"🛡️✨ [강화 파괴 방지 성공! (세이프가드 {safeguard_pct:.0f}% 발동!){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 "
+                    f"[장비 #{target_item.id}] 강화가 폭발 파괴될 위기였으나, 잠재능력 파괴 방지(★1성 하락 보호)가 발동하여 장비 폭발을 막아냈습니다! "
+                    f"([{current_item['name']}] ➔ [{new_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+                )
+            else:
+                outcome = "destroyed"
+                # MapleStory Starforce rule: Destroys into Equipment Trace (장비의 흔적, 12성 복원)
+                target_item.starforce = 12
+                new_item = get_pickaxe_info(12, event_state=sf_state)
+                target_item.name = new_item["name"]
+
+                # Check Bank Insurance
+                ins_payout_msg = ""
+                b_data = get_user_bank_data(user)
+                ins = b_data.get("insurance")
+                if ins and isinstance(ins, dict) and ins.get("active") and ins.get("claims_left", 0) > 0:
+                    cov = int(ins.get("coverage_amount", 1000000))
+                    user.bank_balance = (getattr(user, "bank_balance", 0) or 0) + cov
+                    ins["claims_left"] = 0
+                    ins["active"] = False
+                    ins["claimed_payout"] = cov
+                    save_user_bank_data(user, b_data)
+                    ins_payout_msg = (
+                        f"\n🏥🛡️ [치즈나베 중앙은행 파괴보험금 지급!] 스타포스 안심 파괴 보험이 발동하여 "
+                        f"보험금 +{cov:,}P가 보통예금으로 즉시 지급되었습니다! (보통예금 잔액: {user.bank_balance:,}P)"
+                    )
+
+                shield_fail_tag = " [파괴방어권 방어 실패! 장비 폭발 파괴! (25% 뚫림)" if used_shield_scroll else " [스타포스 강화 실패: 장비 파괴!"
+                reply = (
+                    f"💥💀{shield_fail_tag}{fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 "
+                    f"{'파괴방어막이 뚫려 ' if used_shield_scroll else ''}장비가 폭발 파괴되었습니다! ㅠㅠ "
+                    f"(메이플 스타포스 규칙에 따라 [장비의 흔적(★12성 {new_item['name']})]으로 복원되었습니다. | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P){ins_payout_msg}"
+                )
 
     if target_item.is_equipped:
         user.pickaxe_level = target_item.starforce
@@ -6181,13 +6446,16 @@ def execute_cube_use(
     item_id_or_index: Optional[str] = None,
     target_keyword: Optional[str] = None,
     use_snipe: bool = False,
-    lock_lines: Optional[List[int]] = None
+    lock_lines: Optional[List[int]] = None,
+    special_snipe_code: Optional[str] = None
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !큐브 [장비번호/슬롯] [저격 옵션] (MapleStory Miracle Cube potential reset).
     - Requires pre-purchased cube (!큐브구매). Consumes 1 cube from user.cube_count.
-    - If target_keyword is specified or use_snipe=True, consumes 1 snipe scroll (!상인구매 4)
-      and provides 35% targeted snipe chance on Line 1 + 3.5x weight across all lines (strictly not 100%).
+    - If special_snipe_code is specified, consumes 1 specific option sniper scroll and applies
+      88% targeted snipe chance on Line 1 + 10x weight on other lines!
+    - If target_keyword is specified or use_snipe=True, consumes 1 generic snipe scroll (!상인구매 4)
+      and provides 35% targeted snipe chance on Line 1 + 3.5x weight across all lines.
     - Equipment Cube Lock: If target_item.is_cube_locked is True, cube rerolls are blocked.
     - Potential Line Lock: If lines are locked, consumes 20x current price (300,000P or 20 cubes) and preserves locked lines.
     - Tier order: NONE -> RARE -> EPIC -> UNIQUE -> LEGENDARY
@@ -6270,31 +6538,47 @@ def execute_cube_use(
         user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 1
         cost_desc = "큐브 1개 소모"
 
-    # Snipe scroll verification
-    if not use_snipe and not target_keyword and getattr(user, "arm_snipe", False):
-        if (getattr(user, "snipe_scroll_count", 0) or 0) > 0:
-            use_snipe = True
-
+    # Special Snipe Scroll Verification
     target_label = None
     target_codes = None
     used_snipe = False
-    if target_keyword or use_snipe:
-        snipe_stock = getattr(user, "snipe_scroll_count", 0) or 0
-        if snipe_stock <= 0:
-            return False, "⚠️ [잠재저격주문서]를 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
+    used_special_snipe = False
 
-        if target_keyword:
-            clean_kw = target_keyword.strip().lower()
-            if clean_kw in ["목록", "리스트", "가이드", "도감", "설명", "options", "list", "help", "도움말"]:
-                return True, get_snipe_options_guide_text(), None
-            target_label, target_codes = match_potential_target(target_keyword)
-            if not target_codes:
-                return False, f"⚠️ 지정한 저격 키워드('{target_keyword}')를 찾을 수 없습니다! (지원: 고블린, 과충전, 쿨초, 크리, 채굴량, 성공률, 할인, 배당, 야수 등 | 전체 목록: !저격목록)", None
-        else:
-            return False, "⚠️ 저격할 잠재 옵션을 입력해주세요! (예: !주문서 저격 고블린, !큐브 저격 고블린, !큐브 1 저격 과충전 | 전체 옵션 확인: !저격목록)", None
-
-        user.snipe_scroll_count = snipe_stock - 1
+    if special_snipe_code:
+        u_specials = get_user_special_snipe_scrolls(user)
+        if u_specials.get(special_snipe_code, 0) <= 0:
+            return False, f"⚠️ [{special_snipe_code}] 전용 저격주문서를 보유하고 있지 않습니다! (보유: 0장)", None
+        opt_info = POTENTIAL_OPTIONS.get(special_snipe_code)
+        if not opt_info:
+            return False, f"⚠️ 알 수 없는 잠재 옵션 코드입니다: {special_snipe_code}", None
+        consume_user_special_snipe_scroll(user, special_snipe_code)
+        target_codes = [special_snipe_code]
+        target_label = f"[{opt_info['name']}] 전용 저격(1줄 88%!)"
         used_snipe = True
+        used_special_snipe = True
+    else:
+        # Generic Snipe scroll verification
+        if not use_snipe and not target_keyword and getattr(user, "arm_snipe", False):
+            if (getattr(user, "snipe_scroll_count", 0) or 0) > 0:
+                use_snipe = True
+
+        if target_keyword or use_snipe:
+            snipe_stock = getattr(user, "snipe_scroll_count", 0) or 0
+            if snipe_stock <= 0:
+                return False, "⚠️ [잠재저격주문서]를 보유하고 있지 않습니다! (보유: 0장 | 신비상인 또는 !거래소에서 구매 가능)", None
+
+            if target_keyword:
+                clean_kw = target_keyword.strip().lower()
+                if clean_kw in ["목록", "리스트", "가이드", "도감", "설명", "options", "list", "help", "도움말"]:
+                    return True, get_snipe_options_guide_text(), None
+                target_label, target_codes = match_potential_target(target_keyword)
+                if not target_codes:
+                    return False, f"⚠️ 지정한 저격 키워드('{target_keyword}')를 찾을 수 없습니다! (지원: 고블린, 과충전, 쿨초, 크리, 채굴량, 성공률, 할인, 배당, 야수 등 | 전체 목록: !저격목록)", None
+            else:
+                return False, "⚠️ 저격할 잠재 옵션을 입력해주세요! (예: !주문서 저격 고블린, !큐브 저격 고블린, !큐브 1 저격 과충전 | 전체 옵션 확인: !저격목록)", None
+
+            user.snipe_scroll_count = snipe_stock - 1
+            used_snipe = True
 
     old_tier = curr_tier
     promoted = False
@@ -6373,7 +6657,12 @@ def execute_cube_use(
         pass
 
     # Roll 3 lines (with snipe target if used)
-    r_l1, r_l2, r_l3 = roll_cube_potential(new_tier, target_codes=target_codes if used_snipe else None)
+    r_l1, r_l2, r_l3 = roll_cube_potential(
+        new_tier,
+        target_codes=target_codes if used_snipe else None,
+        line1_snipe_chance=88.0 if used_special_snipe else 35.0,
+        is_special_snipe=used_special_snipe
+    )
 
     line1 = old_l1 if (1 in effective_locked and old_l1) else r_l1
     line2 = old_l2 if (2 in effective_locked and old_l2) else r_l2
@@ -6398,10 +6687,16 @@ def execute_cube_use(
     snipe_banner = ""
     if used_snipe and target_label and target_codes:
         hit_target = any(l.get("code") in target_codes for l in [line1, line2, line3])
+        rem_scroll_msg = (
+            f"(남은 전용저격: {get_user_special_snipe_scrolls(user).get(special_snipe_code, 0)}장)"
+            if used_special_snipe else
+            f"(남은 저격주문서: {user.snipe_scroll_count}장)"
+        )
         if hit_target:
-            snipe_banner = f"\n🎯✨ [잠재 저격 주문서 발동!] [{target_label}] 저격 유도 성공! (남은 저격주문서: {user.snipe_scroll_count}장)"
+            star_fx = "🎯🌟✨ [특수 전용 저격(88%) 대성공!]" if used_special_snipe else "🎯✨ [잠재 저격 주문서 발동!]"
+            snipe_banner = f"\n{star_fx} [{target_label}] 저격 유도 적중! {rem_scroll_msg}"
         else:
-            snipe_banner = f"\n🎯💨 [잠재 저격 주문서 발동] [{target_label}] 저격 유도 빗나감! 다음 기회에... (남은 저격주문서: {user.snipe_scroll_count}장)"
+            snipe_banner = f"\n🎯💨 [잠재 저격 유도 빗나감] 다음 기회에... {rem_scroll_msg}"
 
     if new_tier in CUBE_PITY_CEILINGS:
         ceil_val = CUBE_PITY_CEILINGS[new_tier]
@@ -6409,7 +6704,7 @@ def execute_cube_use(
     else:
         pity_info = "• 🌟 최고 등급(레전드리) 도달 완료! (종결 옵션 3줄을 노려보세요)"
 
-    cube_tag = "🔮🎯 [잠재저격 미라클 큐브 사용]" if used_snipe else "🔮✨ [미라클 큐브 사용]"
+    cube_tag = "🔮🌟 [특수전용저격 미라클 큐브 사용]" if used_special_snipe else ("🔮🎯 [잠재저격 미라클 큐브 사용]" if used_snipe else "🔮✨ [미라클 큐브 사용]")
     l1_tag = " 🔒[잠금유지]" if (1 in effective_locked) else ""
     l2_tag = " 🔒[잠금유지]" if (2 in effective_locked) else ""
     l3_tag = " 🔒[잠금유지]" if (3 in effective_locked) else ""
@@ -6441,6 +6736,9 @@ def execute_cube_use(
         "cube_fragments": user.cube_fragments,
         "locked_lines": list(effective_locked),
         "lines": [line1, line2, line3],
+        "used_snipe": used_snipe,
+        "used_special_snipe": used_special_snipe,
+        "special_snipe_code": special_snipe_code,
         "remaining_points": user.points,
         "treasury_pool": state.treasury_pool
     }
@@ -8379,27 +8677,49 @@ def parse_mahjong_choice(raw_choice: str) -> Tuple[Optional[str], Optional[str],
     """
     Parses user input into (bet_type, target, display_label).
     Returns (None, None, None) if unrecognized.
-    bet_type is 'suit' or 'exact'.
+    bet_type can be:
+      - 'suit': target is '만'/'삭'/'통', display_label is '만수'/'삭수'/'통수'
+      - 'exact': target is '7통', display_label is '7통'
+      - 'ting': target is '1만,4만,7만', display_label is '화료패 3종 (1만, 4만, 7만) [8.10배]'
     """
-    token = (raw_choice or "").strip().lower().replace(" ", "")
+    token = (raw_choice or "").strip().lower()
     if not token:
         return None, None, None
 
-    if token in MAHJONG_SUIT_ALIASES:
-        suit = MAHJONG_SUIT_ALIASES[token]
+    # Strip prefixes like 화료, 대기, 화료패, 대기패, 패
+    token = re.sub(r'^(화료|대기|화료패|대기패|패)\s*', '', token).strip()
+
+    # Check suit
+    clean_no_space = token.replace(" ", "")
+    if clean_no_space in MAHJONG_SUIT_ALIASES:
+        suit = MAHJONG_SUIT_ALIASES[clean_no_space]
         return "suit", suit, f"{suit}수"
 
-    import re
-    m = re.match(r"^([1-9])([만삭통mpssoupin]+)$", token)
-    if m:
-        num = m.group(1)
-        suit_part = m.group(2)
-        suit = MAHJONG_SUIT_ALIASES.get(suit_part)
+    # Extract tiles (supports e.g. "147만", "1만,4만,7만", "1만 4만 7만", "1m 4m 7m")
+    found_tiles = []
+    for m in re.finditer(r'([1-9]+)\s*([만삭통mpssoupin]+)', token):
+        digits = m.group(1)
+        s_raw = m.group(2)
+        suit = MAHJONG_SUIT_ALIASES.get(s_raw)
         if suit:
-            exact_tile = f"{num}{suit}"
-            return "exact", exact_tile, exact_tile
+            for d in digits:
+                tile = f"{d}{suit}"
+                if tile in MAHJONG_TILES and tile not in found_tiles:
+                    found_tiles.append(tile)
 
-    return None, None, None
+    if not found_tiles:
+        return None, None, None
+
+    if len(found_tiles) == 1:
+        return "exact", found_tiles[0], found_tiles[0]
+
+    if len(found_tiles) > 24:
+        return None, None, None
+
+    target = ",".join(found_tiles)
+    k = len(found_tiles)
+    mult = max(1.01, round(24.3 / k, 2))
+    return "ting", target, f"화료패 {k}종 ({', '.join(found_tiles)}) [{mult:.2f}배]"
 
 
 def execute_mahjong_tile_gamble(
@@ -8410,10 +8730,11 @@ def execute_mahjong_tile_gamble(
     bet_token: Any
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Execute Mahjong Tile Guess Gamble (!마작 [만/삭/통 or 1만~9통] [베팅금]):
+    Execute Mahjong Tile Guess Gamble (!마작 [만/삭/통 or 1만~9통 or 1만,4만,7만] [베팅금]):
     - 27 tiles (1~9만, 1~9삭, 1~9통 - no honors)
     - Suit Guess (만/삭/통): 1/3 (33.33%) probability, 2.7x payout (RTP 90.0%)
     - Exact Tile Guess (1만~9통): 1/27 (3.704%) probability, 24.3x payout (RTP 90.0%)
+    - Multi-tile Ting Guess (1~24 tiles): K/27 probability, round(24.3 / K, 2) payout (RTP 90.0%)
     - Potential: MAHJONG_TILE_BOOST increases win payout (Legendary +11.1% achieves 100% RTP)
     """
     c_state = get_casino_state(db)
@@ -8426,10 +8747,12 @@ def execute_mahjong_tile_gamble(
     bet_type, target, display_label = parse_mahjong_choice(choice_token)
     if not bet_type:
         return False, (
-            "💡 [마작패 맞추기 사용법] !마작 [선택] [베팅금]\n"
+            "💡 [마작패 / 화료패 맞추기 사용법] !마작 [선택패들] [베팅금] 또는 !화료 [패목록] [베팅금]\n"
             "• 종류 맞추기: 만 / 삭 / 통 (확률 1/3, 배당 2.7배)\n"
             "• 1종 정확히 맞추기: 1만~9만, 1삭~9삭, 1통~9통 (확률 1/27, 배당 24.3배)\n"
-            "예시: !마작 만 10000, !마작 7통 5000, !마작 통 올인"
+            "• 화료패(다면 대기) 맞추기: 원하는 만큼 여러 개 패 선택 (개수에 따라 배율 조정)\n"
+            "  - 2종 대기: 12.15배 | 3종 대기: 8.1배 | 4종: 6.08배 | 9종: 2.7배\n"
+            "예시: !마작 만 10000, !마작 7통 5000, !화료 1만,4만,7만 10000, !화료 147만 5000"
         ), None
 
     max_bet = c_state.get("max_bet", 100000)
@@ -8473,9 +8796,14 @@ def execute_mahjong_tile_gamble(
     if bet_type == "suit":
         multiplier = 2.7
         won = (target == drawn_suit)
-    else:  # exact
+    elif bet_type == "exact":
         multiplier = 24.3
         won = (target == drawn_tile)
+    elif bet_type == "ting":
+        target_tiles = [t.strip() for t in target.split(",") if t.strip()]
+        k = len(target_tiles)
+        multiplier = max(1.01, round(24.3 / k, 2))
+        won = (drawn_tile in target_tiles)
 
     if won:
         gross_payout = int(round(bet * multiplier))
@@ -8497,6 +8825,11 @@ def execute_mahjong_tile_gamble(
             msg = (
                 f"🀄🌟 [마작패 단기 적중 대박!] {user.username}님이 1/{len(MAHJONG_TILES)} 확률의 [{drawn_tile}] 정확히 적중! "
                 f"24.3배 대박 당첨으로 +{net_payout:,}P 국고 획득!{boost_str} (잔여: {user.points:,}P)"
+            )
+        elif bet_type == "ting":
+            msg = (
+                f"🀄🀄 [화료! {display_label} 적중!] {user.username}님의 화료패 [{drawn_tile}] 쯔모/적중! "
+                f"{multiplier:.2f}배 당첨으로 +{net_payout:,}P 획득!{boost_str} (잔여: {user.points:,}P)"
             )
         else:
             msg = (
@@ -8538,7 +8871,7 @@ def execute_mahjong_tile_gamble(
 
 YAKUMAN_RUNNERS = [
     {"num": 1, "name": "대삼원", "icon": "🐉", "title": "🐉 1번마 대삼원", "aliases": ["1", "대삼원", "용", "dragon", "daisangen"]},
-    {"num": 2, "name": "사안커", "icon": "🀄", "title": "🀄 2번마 사안커", "aliases": ["2", "사안커", "사암각", "anko", "suuankou"]},
+    {"num": 2, "name": "스안커", "icon": "🀄", "title": "🀄 2번마 스안커", "aliases": ["2", "스안커", "사안커", "사암각", "anko", "suuankou"]},
     {"num": 3, "name": "국사무쌍", "icon": "🌸", "title": "🌸 3번마 국사무쌍", "aliases": ["3", "국사무쌍", "국사", "kokushi"]},
     {"num": 4, "name": "구련보등", "icon": "⚡", "title": "⚡ 4번마 구련보등", "aliases": ["4", "구련보등", "구련", "chuuren"]},
 ]
@@ -8559,7 +8892,7 @@ def execute_yakuman_race_gamble(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute Yakuman 4-Greats Race Gamble (!경마 / !레이스 [1~4 or 마명] [베팅금]):
-    - 4 runners: 🐉대삼원(1), 🀄사안커(2), 🌸국사무쌍(3), ⚡구련보등(4)
+    - 4 runners: 🐉대삼원(1), 🀄스안커(2), 🌸국사무쌍(3), ⚡구련보등(4)
     - 1st place (Win): 25% chance, 3.6x payout (Base RTP 90.0%)
     - 2nd place (Safety): 25% chance, potential payback with RACE_SAFETY_PAYBACK (Legendary 40% gives 100% RTP)
     - 3rd / 4th place: Loss
@@ -8576,10 +8909,10 @@ def execute_yakuman_race_gamble(
         return False, (
             "💡 [역만 4대 천왕 경마 사용법] !경마 [말이름/번호] [베팅금] (또는 !레이스)\n"
             "• 1번마 🐉 대삼원 (배당 3.6배, 우승 확률 25%)\n"
-            "• 2번마 🀄 사안커 (배당 3.6배, 우승 확률 25%)\n"
+            "• 2번마 🀄 스안커 (배당 3.6배, 우승 확률 25%)\n"
             "• 3번마 🌸 국사무쌍 (배당 3.6배, 우승 확률 25%)\n"
             "• 4번마 ⚡ 구련보등 (배당 3.6배, 우승 확률 25%)\n"
-            "예시: !경마 대삼원 10000, !레이스 3 5000, !경마 사안커 올인"
+            "예시: !경마 대삼원 10000, !레이스 2 5000, !경마 스안커 올인"
         ), None
 
     max_bet = c_state.get("max_bet", 100000)
@@ -9708,6 +10041,437 @@ def get_arena_data(
         "pending_challenge": pending_challenge,
         "recent_matches": recent_matches
     }
+
+
+# =====================================================================
+# Central Bank (치즈나베 중앙은행) System Functions
+# =====================================================================
+
+def get_user_bank_info(
+    db: Session,
+    user: User,
+    state: Optional[MarketState] = None
+) -> Dict[str, Any]:
+    """Returns aggregated central bank status for a user."""
+    if state is None:
+        state = get_market_state(db)
+
+    b_data = get_user_bank_data(user)
+    bank_balance = int(getattr(user, "bank_balance", 0) or 0)
+    debt = int(getattr(user, "debt", 0) or 0)
+    credit_info = get_user_credit_info(user, db=db, market_state=state)
+
+    # 1. Savings
+    sav = b_data.get("savings")
+    savings_info = None
+    if sav and isinstance(sav, dict):
+        total_dep = int(sav.get("total_deposited", 0))
+        target_r = int(sav.get("target_rounds", 5))
+        curr_r = int(sav.get("current_rounds", 0))
+        est_bonus = int(round(total_dep * 0.20))
+        progress_pct = round((curr_r / max(1, target_r)) * 100.0, 1)
+        savings_info = {
+            "per_round": int(sav.get("per_round", 0)),
+            "target_rounds": target_r,
+            "current_rounds": curr_r,
+            "total_deposited": total_dep,
+            "missed_rounds": int(sav.get("missed_rounds", 0)),
+            "estimated_bonus": est_bonus,
+            "estimated_payout": total_dep + est_bonus,
+            "progress_pct": min(100.0, progress_pct)
+        }
+
+    # 2. Fund
+    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    fund_units = float(b_data.get("fund_units", 0.0) or 0.0)
+    fund_invested = int(b_data.get("fund_invested", 0) or 0)
+    fund_valuation = int(round(fund_units * cur_nav))
+    fund_pnl = fund_valuation - fund_invested
+    fund_pnl_pct = round((fund_pnl / fund_invested * 100.0), 2) if fund_invested > 0 else 0.0
+
+    fund_info = {
+        "nav": cur_nav,
+        "units": round(fund_units, 4),
+        "invested": fund_invested,
+        "valuation": fund_valuation,
+        "pnl": fund_pnl,
+        "pnl_pct": fund_pnl_pct
+    }
+
+    # 3. Insurance
+    ins = b_data.get("insurance")
+    insurance_info = None
+    if ins and isinstance(ins, dict) and ins.get("active"):
+        insurance_info = {
+            "active": True,
+            "claims_left": int(ins.get("claims_left", 1)),
+            "matches_left": int(ins.get("matches_left", 5)),
+            "coverage_amount": int(ins.get("coverage_amount", 1000000))
+        }
+
+    return {
+        "bank_balance": bank_balance,
+        "points": user.points,
+        "interest_rate_pct": 0.5,
+        "savings": savings_info,
+        "fund": fund_info,
+        "fund_valuation": fund_valuation,
+        "insurance": insurance_info,
+        "credit": credit_info,
+        "debt": debt,
+        "last_maturity_notice": b_data.get("last_maturity_notice"),
+        "special_snipe_scrolls": get_user_special_snipe_scrolls(user)
+    }
+
+
+def execute_bank_deposit(
+    db: Session,
+    user_id: str,
+    username: str,
+    amount_str: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Deposit cash into demand deposit (!입금 [금액/올인])."""
+    user = get_or_create_user(db, user_id, username)
+    clean_amt = (amount_str or "").strip().lower().replace(",", "").replace("p", "").replace("원", "")
+
+    if clean_amt in ["올인", "all", "전액", "전부", "다", "최대", "max"]:
+        amt = user.points
+    else:
+        try:
+            amt = int(clean_amt)
+        except (ValueError, TypeError):
+            return False, "⚠️ 올바른 입금 금액을 입력해주세요. (예: !입금 50000, !입금 올인)", None
+
+    if amt <= 0:
+        return False, "⚠️ 입금 금액은 1P 이상이어야 합니다.", None
+
+    if user.points < amt:
+        return False, f"⚠️ 보유 포인트가 부족합니다! (보유: {user.points:,}P | 요청: {amt:,}P)", None
+
+    user.points -= amt
+    user.bank_balance = (getattr(user, "bank_balance", 0) or 0) + amt
+    db.commit()
+    db.refresh(user)
+
+    reply = (
+        f"🏛️💰 [중앙은행 보통예금 입금 완료] {user.username}님이 {amt:,}P를 보통예금 계좌에 입금하셨습니다!\n"
+        f"• 보통예금 잔액: {user.bank_balance:,}P (경기 종료마다 +0.5% 복리 이자 지급)\n"
+        f"• 보유 현금: {user.points:,}P"
+    )
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "deposit_amount": amt,
+        "bank_balance": user.bank_balance,
+        "points": user.points
+    }
+    return True, reply, details
+
+
+def execute_bank_withdraw(
+    db: Session,
+    user_id: str,
+    username: str,
+    amount_str: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Withdraw cash from demand deposit (!출금 [금액/전액])."""
+    user = get_or_create_user(db, user_id, username)
+    clean_amt = (amount_str or "").strip().lower().replace(",", "").replace("p", "").replace("원", "")
+    cur_bank = getattr(user, "bank_balance", 0) or 0
+
+    if clean_amt in ["올인", "all", "전액", "전부", "다", "최대", "max"]:
+        amt = cur_bank
+    else:
+        try:
+            amt = int(clean_amt)
+        except (ValueError, TypeError):
+            return False, "⚠️ 올바른 출금 금액을 입력해주세요. (예: !출금 50000, !출금 전액)", None
+
+    if amt <= 0:
+        return False, "⚠️ 출금 금액은 1P 이상이어야 합니다.", None
+
+    if cur_bank < amt:
+        return False, f"⚠️ 보통예금 잔액이 부족합니다! (예금 잔액: {cur_bank:,}P | 요청: {amt:,}P)", None
+
+    user.bank_balance = cur_bank - amt
+    user.points += amt
+    db.commit()
+    db.refresh(user)
+
+    reply = (
+        f"🏛️💸 [중앙은행 보통예금 출금 완료] {user.username}님이 {amt:,}P를 현금으로 인출하셨습니다!\n"
+        f"• 보통예금 잔액: {user.bank_balance:,}P | 보유 현금: {user.points:,}P"
+    )
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "withdraw_amount": amt,
+        "bank_balance": user.bank_balance,
+        "points": user.points
+    }
+    return True, reply, details
+
+
+def execute_open_savings(
+    db: Session,
+    user_id: str,
+    username: str,
+    per_round_str: str,
+    rounds_str: str = "5"
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Start installment savings (!적금 가입 [회당금액] [판수])."""
+    user = get_or_create_user(db, user_id, username)
+    b_data = get_user_bank_data(user)
+
+    if b_data.get("savings"):
+        sav = b_data["savings"]
+        return False, (
+            f"⚠️ 이미 진행 중인 정기적금이 있습니다!\n"
+            f"• 회당 납입: {sav['per_round']:,}P | 진행: {sav['current_rounds']}/{sav['target_rounds']}회차 | "
+            f"누적: {sav['total_deposited']:,}P (해지: !적금 해지)"
+        ), None
+
+    try:
+        per_round = int((per_round_str or "").strip().lower().replace(",", "").replace("p", "").replace("원", ""))
+    except (ValueError, TypeError):
+        return False, "⚠️ 올바른 회당 납입 금액을 입력해주세요. (예: !적금 10000 5)", None
+
+    if per_round < 5000 or per_round > 1000000:
+        return False, "⚠️ 정기적금 회당 납입금은 5,000P ~ 1,000,000P 사이로 설정 가능합니다.", None
+
+    try:
+        rounds = int(str(rounds_str).strip().replace("판", "").replace("회", ""))
+    except (ValueError, TypeError):
+        rounds = 5
+
+    if rounds not in [5, 10]:
+        rounds = 5 if rounds < 8 else 10
+
+    # 1st installment deduction
+    paid_from = "points"
+    if user.points >= per_round:
+        user.points -= per_round
+    elif (getattr(user, "bank_balance", 0) or 0) >= per_round:
+        user.bank_balance -= per_round
+        paid_from = "bank_balance"
+    else:
+        return False, f"⚠️ 적금 1회차 납입금({per_round:,}P)이 부족합니다! (보유: {user.points:,}P, 예금: {getattr(user, 'bank_balance', 0):,}P)", None
+
+    b_data["savings"] = {
+        "per_round": per_round,
+        "target_rounds": rounds,
+        "current_rounds": 1,
+        "total_deposited": per_round,
+        "missed_rounds": 0,
+        "created_at": time.time()
+    }
+    save_user_bank_data(user, b_data)
+    db.commit()
+    db.refresh(user)
+
+    est_bonus = int(round(per_round * rounds * 0.20))
+    est_total = (per_round * rounds) + est_bonus
+    reply = (
+        f"🏛️📅 [치즈나베 정기적금 가입 완료] {user.username}님 매 경기 {per_round:,}P 적립 ({rounds}회 만기) 플랜 시작!\n"
+        f"• 1회차 납입 완료 (1/{rounds}회 | 납입: {per_round:,}P)\n"
+        f"• 만기 예상 보너스: +20% ({est_bonus:,}P 보너스 이자!) ➔ 만기 수령액: {est_total:,}P\n"
+        f"• 매 경기 마작 정산 시 보유 현금(부족 시 예금)에서 자동 차감 적립됩니다."
+    )
+    details = {
+        "per_round": per_round,
+        "target_rounds": rounds,
+        "current_rounds": 1,
+        "total_deposited": per_round,
+        "estimated_payout": est_total
+    }
+    return True, reply, details
+
+
+def execute_cancel_savings(
+    db: Session,
+    user_id: str,
+    username: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Cancel installment savings early (!적금 해지)."""
+    user = get_or_create_user(db, user_id, username)
+    b_data = get_user_bank_data(user)
+    sav = b_data.get("savings")
+    if not sav:
+        return False, "⚠️ 현재 가입 중인 정기적금이 없습니다.", None
+
+    refund = int(sav.get("total_deposited", 0))
+    user.bank_balance = (getattr(user, "bank_balance", 0) or 0) + refund
+    del b_data["savings"]
+    save_user_bank_data(user, b_data)
+    db.commit()
+    db.refresh(user)
+
+    reply = (
+        f"🏛️🔒 [정기적금 중도해지 완료] {user.username}님의 정기적금이 해지되었습니다.\n"
+        f"• 납입 원금 {refund:,}P가 보통예금 계좌로 전액 환급되었습니다. (중도해지 시 만기 보너스 이자 미지급)\n"
+        f"• 보통예금 잔액: {user.bank_balance:,}P"
+    )
+    return True, reply, {"refund": refund, "bank_balance": user.bank_balance}
+
+
+def execute_buy_fund(
+    db: Session,
+    user_id: str,
+    username: str,
+    amount_str: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Invest points in Mahjong Index Fund (!펀드매수 [금액/올인])."""
+    user = get_or_create_user(db, user_id, username)
+    state = get_market_state(db)
+    clean_amt = (amount_str or "").strip().lower().replace(",", "").replace("p", "").replace("원", "")
+
+    if clean_amt in ["올인", "all", "전액", "전부", "다", "최대", "max"]:
+        amt = user.points
+    else:
+        try:
+            amt = int(clean_amt)
+        except (ValueError, TypeError):
+            return False, "⚠️ 올바른 펀드 매수 금액을 입력해주세요. (예: !펀드매수 50000, !펀드매수 올인)", None
+
+    if amt < 10000:
+        return False, "⚠️ 마작 지수 펀드 최소 매수 금액은 10,000P입니다.", None
+
+    if user.points < amt:
+        return False, f"⚠️ 보유 포인트가 부족합니다! (보유: {user.points:,}P | 요청: {amt:,}P)", None
+
+    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    units_bought = round(amt / cur_nav, 4)
+
+    user.points -= amt
+    b_data = get_user_bank_data(user)
+    b_data["fund_units"] = round(float(b_data.get("fund_units", 0.0) or 0.0) + units_bought, 4)
+    b_data["fund_invested"] = int(b_data.get("fund_invested", 0) or 0) + amt
+    save_user_bank_data(user, b_data)
+
+    db.commit()
+    db.refresh(user)
+
+    total_units = b_data["fund_units"]
+    valuation = int(round(total_units * cur_nav))
+    reply = (
+        f"🏛️📊 [마작 지수 펀드 매수 완료] {user.username}님이 {amt:,}P를 투자하여 펀드 {units_bought:,.4f}좌를 매수하셨습니다!\n"
+        f"• 기준가(NAV): {cur_nav:,.2f}P | 총 보유: {total_units:,.4f}좌 (평가금: {valuation:,}P)\n"
+        f"• 펀드는 주가 지수 상승 및 경기 배당 수익률에 연동되어 가치가 변동합니다."
+    )
+    details = {
+        "invested": amt,
+        "units_bought": units_bought,
+        "nav": cur_nav,
+        "total_units": total_units,
+        "valuation": valuation
+    }
+    return True, reply, details
+
+
+def execute_sell_fund(
+    db: Session,
+    user_id: str,
+    username: str,
+    units_str: str = "전부"
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Sell/Redeem units of Mahjong Index Fund (!펀드환매 [좌수/전액])."""
+    user = get_or_create_user(db, user_id, username)
+    state = get_market_state(db)
+    b_data = get_user_bank_data(user)
+
+    cur_units = float(b_data.get("fund_units", 0.0) or 0.0)
+    if cur_units <= 0.0001:
+        return False, "⚠️ 보유 중인 마작 지수 펀드 좌수가 없습니다.", None
+
+    clean_u = (units_str or "").strip().lower().replace("좌", "").replace("개", "")
+    if clean_u in ["올인", "all", "전액", "전부", "다", "최대", "max", ""]:
+        units_to_sell = cur_units
+    else:
+        try:
+            units_to_sell = float(clean_u)
+        except (ValueError, TypeError):
+            return False, "⚠️ 올바른 환매 좌수를 입력해주세요. (예: !펀드환매 10.5, !펀드환매 전액)", None
+
+    if units_to_sell <= 0:
+        return False, "⚠️ 환매 좌수는 0보다 커야 합니다.", None
+
+    units_to_sell = min(cur_units, units_to_sell)
+    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    payout = int(round(units_to_sell * cur_nav))
+
+    # Proportionate invested deduction
+    orig_invested = int(b_data.get("fund_invested", 0) or 0)
+    cost_basis = int(round(orig_invested * (units_to_sell / cur_units))) if cur_units > 0 else orig_invested
+    pnl = payout - cost_basis
+
+    rem_units = round(max(0.0, cur_units - units_to_sell), 4)
+    b_data["fund_units"] = rem_units
+    b_data["fund_invested"] = max(0, orig_invested - cost_basis)
+    save_user_bank_data(user, b_data)
+
+    user.points += payout
+    db.commit()
+    db.refresh(user)
+
+    pnl_sign = f"+{pnl:,}" if pnl >= 0 else f"{pnl:,}"
+    reply = (
+        f"🏛️📊 [마작 지수 펀드 환매 완료] {user.username}님이 {units_to_sell:,.4f}좌를 환매하여 {payout:,}P를 수령하셨습니다!\n"
+        f"• 기준가(NAV): {cur_nav:,.2f}P | 실현 손익: {pnl_sign}P | 남은 펀드: {rem_units:,.4f}좌\n"
+        f"• 보유 현금: {user.points:,}P"
+    )
+    details = {
+        "units_sold": units_to_sell,
+        "payout": payout,
+        "pnl": pnl,
+        "nav": cur_nav,
+        "remaining_units": rem_units
+    }
+    return True, reply, details
+
+
+def execute_buy_insurance(
+    db: Session,
+    user_id: str,
+    username: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Purchase Starforce Destruction Insurance (!보험 가입)."""
+    user = get_or_create_user(db, user_id, username)
+    b_data = get_user_bank_data(user)
+    ins = b_data.get("insurance")
+
+    if ins and isinstance(ins, dict) and ins.get("active") and ins.get("claims_left", 0) > 0:
+        return False, (
+            f"⚠️ 이미 유효한 스타포스 안심 파괴 보험에 가입되어 있습니다!\n"
+            f"• 잔여 경기: {ins.get('matches_left', 0)}경기 | 보장 횟수: {ins.get('claims_left', 0)}회 | 보장금: {ins.get('coverage_amount', 1000000):,}P"
+        ), None
+
+    cost = 50000
+    if user.points < cost:
+        return False, f"⚠️ 보험 가입 보험료({cost:,}P)가 부족합니다! (보유: {user.points:,}P)", None
+
+    user.points -= cost
+    state = get_market_state(db)
+    state.treasury_pool = (getattr(state, "treasury_pool", 0.0) or 0.0) + cost
+
+    b_data["insurance"] = {
+        "active": True,
+        "claims_left": 1,
+        "matches_left": 5,
+        "coverage_amount": 1000000,
+        "bought_at": time.time()
+    }
+    save_user_bank_data(user, b_data)
+    db.commit()
+    db.refresh(user)
+
+    reply = (
+        f"🏥🛡️ [스타포스 안심 파괴 보험 가입 완료] {user.username}님 보험 가입 완료!\n"
+        f"• 보험료: {cost:,}P | 보장 기간: 앞으로 5경기 동안 유효\n"
+        f"• 보장 혜택: 15성 이상 스타포스 강화 실패로 곡괭이가 폭발 파괴될 경우, 즉시 보통예금으로 위로 보상금 1,000,000P 지급!\n"
+        f"• 고성수 강화 도전을 안심하고 즐기세요!"
+    )
+    return True, reply, b_data["insurance"]
+
 
 
 

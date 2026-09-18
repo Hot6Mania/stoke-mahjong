@@ -738,6 +738,44 @@
             100% { transform: scale(1.04); box-shadow: 0 0 30px rgba(245, 158, 11, 0.85); }
         }
 
+        /* Transfer Cutscene Animation */
+        @keyframes transferCoinFly {
+            0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: translate(var(--tx, 140px), var(--ty, -60px)) scale(1.1); opacity: 0; }
+        }
+        @keyframes stampDropIn {
+            0% { transform: scale(3.5) rotate(-25deg); opacity: 0; }
+            60% { transform: scale(0.92) rotate(-8deg); opacity: 1; }
+            80% { transform: scale(1.06) rotate(-11deg); }
+            100% { transform: scale(1) rotate(-10deg); opacity: 1; }
+        }
+        @keyframes receiptGlowPulse {
+            0% { box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
+            50% { box-shadow: 0 0 35px rgba(56, 189, 248, 0.5), 0 0 15px rgba(74, 222, 128, 0.3); }
+            100% { box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
+        }
+
+        /* Cube Suspense Overhaul Animations */
+        @keyframes cubePulseCharging {
+            0% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.4)); }
+            25% { transform: scale(1.08) rotate(-6deg); filter: drop-shadow(0 0 22px rgba(236, 72, 153, 0.7)); }
+            50% { transform: scale(1.18) rotate(8deg); filter: drop-shadow(0 0 35px rgba(168, 85, 247, 0.9)); }
+            75% { transform: scale(1.26) rotate(-10deg); filter: drop-shadow(0 0 45px rgba(56, 189, 248, 0.95)); }
+            100% { transform: scale(1.35) rotate(12deg); filter: drop-shadow(0 0 60px rgba(251, 191, 36, 1)); }
+        }
+        @keyframes lineRevealFlash {
+            0% { background: rgba(251, 191, 36, 0.45); transform: scale(1.03); border-color: #fbbf24; }
+            100% { background: #1e293b; transform: scale(1); border-color: var(--border-color); }
+        }
+        .cube-charging-pulse {
+            animation: cubePulseCharging 1.8s infinite alternate ease-in-out !important;
+        }
+        .line-revealed {
+            animation: lineRevealFlash 0.65s ease-out forwards;
+        }
+
         /* Foil Scratch Coating Layer */
         .lottery-foil-layer {
             position: absolute;
@@ -969,47 +1007,65 @@
             margin-bottom: 14px;
             perspective: 900px;
         }
-        .physical-die-box {
-            width: 86px;
-            height: 86px;
-            background: linear-gradient(145deg, #ffffff, #e2e8f0);
-            border-radius: 18px;
+        .dice-3d-scene {
+            width: 78px;
+            height: 78px;
+            perspective: 600px;
+            display: inline-block;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        .dice-3d-cube {
+            width: 78px;
+            height: 78px;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+        }
+        .dice-3d-cube .cube-face {
+            position: absolute;
+            width: 78px;
+            height: 78px;
+            background: linear-gradient(145deg, #ffffff 0%, #f1f5f9 60%, #e2e8f0 100%);
+            border: 1.5px solid rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 -4px 6px rgba(0,0,0,0.15), inset 0 4px 6px rgba(255,255,255,0.9);
-            position: relative;
-            transform-style: preserve-3d;
-            cursor: pointer;
-            user-select: none;
-            border: 1px solid rgba(0, 0, 0, 0.08);
-            transition: box-shadow 0.2s;
+            box-shadow: inset 0 2px 5px rgba(255, 255, 255, 0.95), inset 0 -3px 5px rgba(0, 0, 0, 0.15), 0 6px 16px rgba(0, 0, 0, 0.4);
+            box-sizing: border-box;
+            backface-visibility: hidden;
         }
-        .physical-die-box.toss-1 {
-            animation: diePhysicalToss1 1.25s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        .dice-3d-cube .face-1 { transform: rotateY(0deg) translateZ(39px); }
+        .dice-3d-cube .face-6 { transform: rotateX(180deg) translateZ(39px); }
+        .dice-3d-cube .face-2 { transform: rotateY(90deg) translateZ(39px); }
+        .dice-3d-cube .face-5 { transform: rotateY(-90deg) translateZ(39px); }
+        .dice-3d-cube .face-3 { transform: rotateX(90deg) translateZ(39px); }
+        .dice-3d-cube .face-4 { transform: rotateX(-90deg) translateZ(39px); }
+
+        /* Pure rigid 3D tumbling animations - absolutely NO squash/stretch scales */
+        .dice-3d-cube.rolling-1 {
+            animation: diceRollTumble1 1.15s cubic-bezier(0.25, 0.8, 0.25, 1) infinite;
         }
-        .physical-die-box.toss-2 {
-            animation: diePhysicalToss2 1.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        .dice-3d-cube.rolling-2 {
+            animation: diceRollTumble2 1.25s cubic-bezier(0.25, 0.8, 0.25, 1) infinite;
         }
-        @keyframes diePhysicalToss1 {
-            0% { transform: translateY(0) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1); }
-            16% { transform: translateY(-75px) rotateX(320deg) rotateY(180deg) rotateZ(90deg) scale(1.18); }
-            38% { transform: translateY(-38px) rotateX(540deg) rotateY(360deg) rotateZ(180deg) scale(1.08); }
-            58% { transform: translateY(0) rotateX(720deg) rotateY(540deg) rotateZ(270deg) scale(1.1, 0.86); }
-            72% { transform: translateY(-24px) rotateX(810deg) rotateY(630deg) rotateZ(320deg) scale(1.02); }
-            86% { transform: translateY(0) rotateX(900deg) rotateY(720deg) rotateZ(355deg) scale(1.04, 0.94); }
-            94% { transform: translateY(-6px) rotateX(900deg) rotateY(720deg) rotateZ(360deg) scale(1); }
-            100% { transform: translateY(0) rotateX(900deg) rotateY(720deg) rotateZ(360deg) scale(1); }
+        @keyframes diceRollTumble1 {
+            0% { transform: translateY(0px) rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+            20% { transform: translateY(-55px) rotateX(240deg) rotateY(180deg) rotateZ(60deg); }
+            45% { transform: translateY(-30px) rotateX(480deg) rotateY(360deg) rotateZ(180deg); }
+            70% { transform: translateY(-10px) rotateX(660deg) rotateY(540deg) rotateZ(270deg); }
+            85% { transform: translateY(-3px) rotateX(720deg) rotateY(630deg) rotateZ(320deg); }
+            100% { transform: translateY(0px) rotateX(720deg) rotateY(720deg) rotateZ(360deg); }
         }
-        @keyframes diePhysicalToss2 {
-            0% { transform: translateY(0) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1); }
-            18% { transform: translateY(-84px) rotateX(-290deg) rotateY(-200deg) rotateZ(-110deg) scale(1.2); }
-            40% { transform: translateY(-42px) rotateX(-490deg) rotateY(-390deg) rotateZ(-220deg) scale(1.09); }
-            60% { transform: translateY(0) rotateX(-690deg) rotateY(-580deg) rotateZ(-330deg) scale(1.12, 0.85); }
-            74% { transform: translateY(-26px) rotateX(-780deg) rotateY(-670deg) rotateZ(-380deg) scale(1.03); }
-            88% { transform: translateY(0) rotateX(-870deg) rotateY(-740deg) rotateZ(-412deg) scale(1.05, 0.93); }
-            95% { transform: translateY(-7px) rotateX(-900deg) rotateY(-760deg) rotateZ(-420deg) scale(1); }
-            100% { transform: translateY(0) rotateX(-900deg) rotateY(-760deg) rotateZ(-420deg) scale(1); }
+        @keyframes diceRollTumble2 {
+            0% { transform: translateY(0px) rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+            20% { transform: translateY(-60px) rotateX(-220deg) rotateY(-200deg) rotateZ(-90deg); }
+            45% { transform: translateY(-32px) rotateX(-450deg) rotateY(-400deg) rotateZ(-180deg); }
+            70% { transform: translateY(-12px) rotateX(-630deg) rotateY(-580deg) rotateZ(-270deg); }
+            85% { transform: translateY(-4px) rotateX(-720deg) rotateY(-680deg) rotateZ(-330deg); }
+            100% { transform: translateY(0px) rotateX(-720deg) rotateY(-720deg) rotateZ(-360deg); }
         }
 
         .dice-face-grid {
@@ -1042,6 +1098,7 @@
         /* 🀄 3. Mahjong Tile High-Contrast SVG Presentation */
         /* ========================================================= */
         .mahjong-exact-tile-btn {
+            position: relative;
             background: #0f172a;
             border: 1px solid var(--border-color);
             border-radius: 8px;
@@ -1053,6 +1110,7 @@
             gap: 3px;
             cursor: pointer;
             transition: all 0.15s ease;
+            user-select: none;
         }
         .mahjong-exact-tile-btn:hover {
             background: #1e293b;
@@ -1064,6 +1122,16 @@
             border-color: #c084fc !important;
             box-shadow: 0 0 12px rgba(168, 85, 247, 0.6) !important;
             transform: translateY(-3px) scale(1.05);
+        }
+        .mahjong-exact-tile-btn.selected::after {
+            content: "✓";
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 10px;
+            font-weight: 900;
+            color: #fbbf24;
+            line-height: 1;
         }
         .mahjong-tile-img {
             width: 26px;
@@ -1116,7 +1184,32 @@
             filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
         }
         .race-progress-bar.finished, .race-horse-runner.finished {
-            transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1), left 1.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            transition: width 1.1s cubic-bezier(0.45, 0, 0.15, 1), left 1.1s cubic-bezier(0.45, 0, 0.15, 1) !important;
+        }
+
+        /* =========================================================
+           GitHub Pages Mode (Official Info & Guide View)
+           - Focuses purely on rules, stats, drop tables, rates & ranking
+           - Interactive controls requiring backend are hidden
+           ========================================================= */
+        .gh-pages-banner {
+            display: none;
+        }
+        .gh-pages-show {
+            display: none !important;
+        }
+        body.github-pages-mode #web-user-bar,
+        body.github-pages-mode .gh-pages-hide {
+            display: none !important;
+        }
+        body.github-pages-mode .gh-pages-banner {
+            display: block !important;
+        }
+        body.github-pages-mode .gh-pages-show {
+            display: inline-flex !important;
+        }
+        body.github-pages-mode .gh-pages-show-block {
+            display: block !important;
         }
     </style>
 </head>
@@ -1144,8 +1237,8 @@
             </a>
         </div>
 
-        <!-- Web Viewer Interactive Desk Bar -->
-        <div id="web-user-bar" style="max-width: 880px; margin: 18px auto 0; background: rgba(15, 23, 42, 0.92); border: 2px solid #38bdf8; border-radius: 12px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; box-shadow: 0 10px 30px rgba(56, 189, 248, 0.25);">
+        <!-- Web Viewer Interactive Desk Bar (Hidden on GitHub Pages Mode) -->
+        <div id="web-user-bar" class="gh-pages-hide" style="max-width: 880px; margin: 18px auto 0; background: rgba(15, 23, 42, 0.92); border: 2px solid #38bdf8; border-radius: 12px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; box-shadow: 0 10px 30px rgba(56, 189, 248, 0.25);">
             <!-- Unauthenticated State (Default) -->
             <div id="web-bar-unauth" style="display: flex; align-items: center; justify-content: space-between; width: 100%; flex-wrap: wrap; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1187,6 +1280,7 @@
                     <button onclick="openWebMerchantModal()" class="deck-btn merchant">🧙 신비상인</button>
                     <button onclick="openWebLotteryModal()" class="deck-btn lottery">🎫 복권</button>
                     <button onclick="openWebStockModal()" class="deck-btn stock">📈 주식</button>
+                    <button onclick="openWebBankModal()" class="deck-btn bank" style="background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #fff; border-color: #60a5fa;">🏛️ 은행</button>
                     <button onclick="openWebTransferModal()" class="deck-btn transfer">💸 송금</button>
                     <button onclick="openWebInventoryModal()" class="deck-btn inv">🎒 가방</button>
                     <button onclick="openWebSetPinModal()" class="deck-btn pin" style="background: #1e293b; border: 1px solid #475569; color: #cbd5e1; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;" title="비밀번호(PIN) 설정/변경">🔐 PIN</button>
@@ -1197,6 +1291,36 @@
     </header>
 
     <div class="container">
+        <!-- GitHub Pages Official Info & Guide Banner -->
+        <div id="gh-pages-guide-banner" class="gh-pages-banner" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98)); border: 2px solid #38bdf8; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; box-shadow: 0 8px 24px rgba(56, 189, 248, 0.15);">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <span style="font-size: 32px;">📖</span>
+                    <div>
+                        <div style="font-size: 16px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+                            <span>치즈나베 마작 주식 & 국고 카지노 공식 가이드북</span>
+                            <span style="background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #38bdf8; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 800;">정보 안내 전용</span>
+                        </div>
+                        <div style="font-size: 12px; color: #94a3b8; margin-top: 4px; line-height: 1.5;">
+                            본 사이트는 <strong>실시간 시청자 랭킹 스냅샷, 주식 룰북, 채굴/스타포스 확률표, 전체 명령어 사전</strong>을 열람하는 <strong>공식 정보 안내 페이지</strong>입니다.<br>
+                            💡 <strong>게임 참여 안내</strong>: 주식 매수/매도, 카지노, 채굴, 강화 등 모든 상호작용은 <strong>치지직 생방송 채팅창 명령어</strong>로 직접 참여하실 수 있습니다!
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <a href="https://chzzk.naver.com/live/4495f96624a2c60bd1ed5a6139014d20" target="_blank" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #082f49; font-weight: 900; font-size: 13px; padding: 10px 18px; border-radius: 8px; text-decoration: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);">
+                        📺 치지직 생방송 바로가기
+                    </a>
+                    <button onclick="switchTab('cheatsheet')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.5); color: #38bdf8; font-weight: 800; font-size: 13px; padding: 10px 16px; border-radius: 8px; cursor: pointer;">
+                        📜 명령어 사전
+                    </button>
+                    <button onclick="switchTab('stockholders')" style="background: rgba(30, 41, 59, 0.8); border: 1px solid #475569; color: #cbd5e1; font-weight: 800; font-size: 13px; padding: 10px 16px; border-radius: 8px; cursor: pointer;">
+                        📈 주주명부
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Live Events Ticker Bar -->
         <div id="live-events-banner" style="background: linear-gradient(90deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98)); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
@@ -1206,10 +1330,12 @@
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
                 <span id="ev-badge-fever" class="badge-sub-pill" style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">☀️ 피버: OFF</span>
-                <span id="ev-badge-casino" class="badge-sub-pill" onclick="openWebCasinoModal()" style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">🎰 카지노: 마감</span>
-                <span id="ev-badge-merchant" class="badge-sub-pill" onclick="openWebMerchantModal()" style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">🧙 신비상인: 부재중</span>
-                <button onclick="openWebCasinoModal()" class="quick-amt-btn" style="color: #f472b6; border-color: #ec4899; padding: 3px 8px; font-size: 11px;">🎰 카지노</button>
-                <button onclick="openWebMerchantModal()" class="quick-amt-btn" style="color: #2dd4bf; border-color: #14b8a6; padding: 3px 8px; font-size: 11px;">🧙 신비상인</button>
+                <span id="ev-badge-casino" class="badge-sub-pill" onclick="handleCasinoClick()" style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">🎰 카지노: 마감</span>
+                <span id="ev-badge-merchant" class="badge-sub-pill" onclick="handleMerchantClick()" style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">🧙 신비상인: 부재중</span>
+                <button onclick="openWebCasinoModal()" class="quick-amt-btn gh-pages-hide" style="color: #f472b6; border-color: #ec4899; padding: 3px 8px; font-size: 11px;">🎰 카지노</button>
+                <button onclick="openWebMerchantModal()" class="quick-amt-btn gh-pages-hide" style="color: #2dd4bf; border-color: #14b8a6; padding: 3px 8px; font-size: 11px;">🧙 신비상인</button>
+                <button onclick="switchTab('casino')" class="quick-amt-btn gh-pages-show" style="color: #f472b6; border-color: #ec4899; padding: 3px 8px; font-size: 11px;">🎰 카지노 안내</button>
+                <button onclick="switchTab('market')" class="quick-amt-btn gh-pages-show" style="color: #2dd4bf; border-color: #14b8a6; padding: 3px 8px; font-size: 11px;">🧙 상인 안내</button>
             </div>
         </div>
 
@@ -1217,8 +1343,8 @@
         <div class="stats-grid metrics-grid">
             <div class="stat-card" onclick="switchTab('stockholders')" style="cursor: pointer;" title="클릭 시 실시간 주식 투자현황 탭으로 이동">
                 <div class="stat-label">작혼 랭크 연동 주가 (1X 본주)</div>
-                <div class="stat-val" id="live-stock-price" style="color: var(--primary);">0P</div>
-                <div id="live-stock-change" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">변동률 계산 중...</div>
+                <div class="stat-val" id="live-current-price" style="color: var(--primary);">0P</div>
+                <div id="live-price-sub" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">변동률 계산 중...</div>
             </div>
             <div class="stat-card" onclick="switchTab('inspector')" style="cursor: pointer;" title="클릭 시 시청자 랭킹 탭으로 이동">
                 <div class="stat-label">등록 시청자 수</div>
@@ -1480,10 +1606,13 @@
                         <div style="font-size: 14px; font-weight: 800; color: #fff;">💡 주식 거래가 필요하신가요?</div>
                         <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">5분 자유 거래 창이 열렸을 때 웹 데스크 또는 채팅 명령어로 즉시 주문할 수 있습니다.</div>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button onclick="openWebStockModal()" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #082f49; font-weight: 900; font-size: 13px; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button onclick="openWebStockModal()" class="gh-pages-hide" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #082f49; font-weight: 900; font-size: 13px; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);">
                             📈 웹 주식 주문창 열기
                         </button>
+                        <a href="https://chzzk.naver.com/live/4495f96624a2c60bd1ed5a6139014d20" target="_blank" class="gh-pages-show" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #082f49; font-weight: 900; font-size: 13px; padding: 10px 18px; border-radius: 8px; text-decoration: none; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);">
+                            📺 방송 채팅으로 주문 참여 (!매수/!매도)
+                        </a>
                         <button onclick="switchTab('stock')" style="background: #1e293b; border: 1px solid #475569; color: #cbd5e1; font-weight: 800; font-size: 13px; padding: 10px 16px; border-radius: 8px; cursor: pointer;">
                             📖 주식 배당 & 룰 안내 →
                         </button>
@@ -1680,7 +1809,7 @@
 
                 <h4 style="margin: 20px 0 6px; font-size: 15px; color: #10b981;">4. 🏇 역만 4대 천왕 경마 레이스 (<code>!경마 [1~4 or 마명] [금액]</code>)</h4>
                 <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">
-                    마작 4대 역만 경주마들의 치열한 단거리 스프린트 대결입니다! (1: 🐉대삼원, 2: 🀄사안커, 3: 🌸국사무쌍, 4: ⚡구련보등)
+                    마작 4대 역만 경주마들의 치열한 단거리 스프린트 대결입니다! (1: 🐉대삼원, 2: 🀄스안커, 3: 🌸국사무쌍, 4: ⚡구련보등)
                 </p>
                 <div class="callout" style="border-left-color: #10b981;">
                     • <strong>1위 우승 적중 (25.0% 확률)</strong> : 🏁 <strong>3.6배 배당</strong> (기본 RTP 90.0%)<br>
@@ -2980,7 +3109,7 @@
                     </div>
                     <div class="cmd-box" data-category="casino" onclick="copyCommand('!경마 대삼원 10000')">
                         <div class="cmd-code">!경마 / !레이스 [1~4 or 마명] [금액] <span class="copy-icon">📋 복사</span></div>
-                        <div class="cmd-desc">역만 4대 천왕 경마 레이스 (1: 🐉대삼원, 2: 🀄사안커, 3: 🌸국사무쌍, 4: ⚡구련보등 | 1위 3.6배 배당, 2위 잠재 세이프티)</div>
+                        <div class="cmd-desc">역만 4대 천왕 경마 레이스 (1: 🐉대삼원, 2: 🀄스안커, 3: 🌸국사무쌍, 4: ⚡구련보등 | 1위 3.6배 배당, 2위 잠재 세이프티)</div>
                     </div>
                     <div class="cmd-box" data-category="casino" onclick="copyCommand('!동복권 5')">
                         <div class="cmd-code">!동복권 [수량] / !동복 <span class="copy-icon">📋 복사</span></div>
@@ -3406,6 +3535,325 @@
             </div>
         </div>
 
+        <!-- 2-1. Transfer Animation Cutscene Modal -->
+        <div id="web-transfer-animation-modal" class="web-modal-overlay" onclick="if(event.target===this) closeWebTransferAnimModal()">
+            <div class="web-modal-card" style="max-width: 480px; border-color: #38bdf8; text-align: center; position: relative; overflow: hidden; animation: receiptGlowPulse 2.5s infinite alternate ease-in-out;">
+                <!-- Particle Flight Stage -->
+                <div id="transfer-particles-container" style="position: relative; height: 110px; width: 100%; display: flex; align-items: center; justify-content: space-around; overflow: hidden; margin-bottom: 8px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; z-index: 2;">
+                        <span style="font-size: 32px;">🧑</span>
+                        <strong id="transfer-anim-sender" style="color: #cbd5e1; font-size: 13px; margin-top: 4px;">나</strong>
+                    </div>
+                    <div id="transfer-coin-stream" style="position: absolute; inset: 0; pointer-events: none;"></div>
+                    <div style="font-size: 24px; color: #38bdf8; z-index: 1;">➔ ➔ ➔</div>
+                    <div style="display: flex; flex-direction: column; align-items: center; z-index: 2;">
+                        <span style="font-size: 32px;">🎁</span>
+                        <strong id="transfer-anim-receiver" style="color: #38bdf8; font-size: 13px; margin-top: 4px;">상대방</strong>
+                    </div>
+                </div>
+
+                <!-- Digital Stamped Remittance Receipt -->
+                <div style="background: rgba(15, 23, 42, 0.95); border: 2px dashed rgba(56, 189, 248, 0.5); border-radius: 12px; padding: 18px; position: relative; margin-bottom: 14px; text-align: left;">
+                    <div style="text-align: center; font-size: 14px; font-weight: 900; color: #38bdf8; margin-bottom: 12px; letter-spacing: 1px;">
+                        🏛️ 치즈나베 금융 전산망 이체 전표
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
+                        <span style="color: var(--text-secondary);">송금 일시:</span>
+                        <span id="transfer-anim-time" style="color: #cbd5e1; font-family: monospace;">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
+                        <span style="color: var(--text-secondary);">송금 금액:</span>
+                        <strong id="transfer-anim-gross" style="color: #4ade80; font-size: 16px; font-family: monospace;">0P</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
+                        <span style="color: var(--text-secondary);">국고 송금세:</span>
+                        <span id="transfer-anim-fee" style="color: #f87171; font-family: monospace;">0P</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 6px; font-size: 13px;">
+                        <span style="color: #e2e8f0; font-weight: 700;">상대방 실수령액:</span>
+                        <strong id="transfer-anim-net" style="color: #fbbf24; font-size: 18px; font-family: monospace;">0P</strong>
+                    </div>
+
+                    <!-- Glowing Stamp Overlay -->
+                    <div id="transfer-anim-stamp" style="position: absolute; right: 18px; top: 38px; border: 3px solid #22c55e; color: #4ade80; font-size: 14px; font-weight: 900; padding: 5px 12px; border-radius: 8px; text-transform: uppercase; letter-spacing: 1.5px; box-shadow: 0 0 16px rgba(34, 197, 94, 0.4); animation: stampDropIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; pointer-events: none; transform: rotate(-10deg);">
+                        이체 승인 [CONFIRMED]
+                    </div>
+                </div>
+
+                <button onclick="closeWebTransferAnimModal()" style="width: 100%; background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; font-size: 14px; font-weight: 800; padding: 10px; border-radius: 8px; border: none; cursor: pointer;">
+                    확인
+                </button>
+            </div>
+        </div>
+
+        <!-- 2-2. Central Bank Modal (치즈나베 중앙은행) -->
+        <div id="web-bank-modal" class="web-modal-overlay" onclick="if(event.target===this) closeWebBankModal()">
+            <div class="web-modal-card" style="max-width: 820px; border-color: #60a5fa;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 14px;">
+                    <div>
+                        <h3 style="margin: 0; color: #93c5fd; font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                            <span>🏛️ 치즈나베 중앙은행 (Central Bank)</span>
+                        </h3>
+                        <span style="font-size: 11px; color: var(--text-secondary);">안전한 보통예금(+0.5% 복리), 고수익 만기 적금(+20%), 마작 지수 펀드, 파괴안심보험 및 신용대출</span>
+                    </div>
+                    <button onclick="closeWebBankModal()" style="background: #1e293b; border: 1px solid var(--border-color); color: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-weight: 700; cursor: pointer;">✕</button>
+                </div>
+
+                <!-- Account Overview Bar -->
+                <div style="background: #0f172a; border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px;">
+                    <div>
+                        <span style="font-size: 11px; color: var(--text-secondary);">🏛️ 보통예금 잔액:</span>
+                        <div id="bank-deck-balance" style="font-size: 16px; font-weight: 900; color: #60a5fa; font-family: monospace;">0P</div>
+                    </div>
+                    <div>
+                        <span style="font-size: 11px; color: var(--text-secondary);">🪙 보유 현금(지갑):</span>
+                        <div id="bank-deck-cash" style="font-size: 16px; font-weight: 900; color: #4ade80; font-family: monospace;">0P</div>
+                    </div>
+                    <div>
+                        <span style="font-size: 11px; color: var(--text-secondary);">💳 대출 잔액 / 한도:</span>
+                        <div id="bank-deck-debt" style="font-size: 14px; font-weight: 800; color: #f87171; font-family: monospace;">0P / 0P</div>
+                    </div>
+                    <div>
+                        <span style="font-size: 11px; color: var(--text-secondary);">⭐ 신용 평가:</span>
+                        <div id="bank-deck-credit" style="font-size: 13px; font-weight: 800; color: #fbbf24;">4등급 (BBB)</div>
+                    </div>
+                </div>
+
+                <!-- Bank Subtabs -->
+                <div style="display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; flex-wrap: wrap;">
+                    <button id="bank-tab-btn-deposit" class="web-subtab-btn active" onclick="switchBankTab('deposit')">💰 보통예금</button>
+                    <button id="bank-tab-btn-savings" class="web-subtab-btn" onclick="switchBankTab('savings')">📈 정기적금</button>
+                    <button id="bank-tab-btn-fund" class="web-subtab-btn" onclick="switchBankTab('fund')">📊 마작지수펀드</button>
+                    <button id="bank-tab-btn-insurance" class="web-subtab-btn" onclick="switchBankTab('insurance')">🛡️ 파괴안심보험</button>
+                    <button id="bank-tab-btn-loan" class="web-subtab-btn" onclick="switchBankTab('loan')">💳 신용대출</button>
+                    <button onclick="loadBankStatus()" style="margin-left: auto; background: #1e293b; border: 1px solid var(--border-color); color: #94a3b8; font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer;">🔄 새로고침</button>
+                </div>
+
+                <!-- 1. Demand Deposit Tab -->
+                <div id="bank-subtab-deposit" style="display: block;">
+                    <div style="background: rgba(30, 58, 138, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="font-size: 13px; color: #93c5fd; font-weight: 800; margin-bottom: 4px;">💰 수시입출금 보통예금 안내</div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+                            • 보통예금에 포인트를 예치해두면 <strong>매 경기 마작 정산 시 잔액의 +0.5% 복리 이자</strong>가 자동 지급됩니다.<br>
+                            • 언제든지 입금 및 출금이 수수료 없이 24시간 즉시 자유롭게 가능합니다.
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <!-- Deposit Box -->
+                        <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+                            <div style="font-size: 13px; font-weight: 800; color: #4ade80; margin-bottom: 10px;">📥 예금 입금 (지갑 ➔ 은행)</div>
+                            <input type="number" id="bank-deposit-amt" min="1" placeholder="입금 금액 (P)" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;">
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-deposit-amt').value=10000">+1만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-deposit-amt').value=50000">+5만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-deposit-amt').value=100000">+10만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-deposit-amt').value=activeWebUser ? activeWebUser.points : 0">전액</button>
+                            </div>
+                            <button onclick="executeWebBankDeposit()" style="width: 100%; background: linear-gradient(135deg, #16a34a, #22c55e); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                                📥 예금 입금하기
+                            </button>
+                        </div>
+
+                        <!-- Withdraw Box -->
+                        <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+                            <div style="font-size: 13px; font-weight: 800; color: #38bdf8; margin-bottom: 10px;">📤 예금 출금 (은행 ➔ 지갑)</div>
+                            <input type="number" id="bank-withdraw-amt" min="1" placeholder="출금 금액 (P)" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;">
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-withdraw-amt').value=10000">+1만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-withdraw-amt').value=50000">+5만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-withdraw-amt').value=100000">+10만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-withdraw-amt').value=activeBankData ? activeBankData.bank_balance : 0">전액</button>
+                            </div>
+                            <button onclick="executeWebBankWithdraw()" style="width: 100%; background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                                📤 예금 출금하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Installment Savings Tab -->
+                <div id="bank-subtab-savings" style="display: none;">
+                    <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="font-size: 13px; color: #c084fc; font-weight: 800; margin-bottom: 4px;">📈 정기적금 (+20% 만기 보너스 이자)</div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+                            • <strong>5경기 또는 10경기</strong> 만기 적금: 매 경기 정산 시 설정한 금액이 자동 저축됩니다.<br>
+                            • 목표 경기 수 만기 도달 시 <strong>납입 총 원금 + 20% 특별 만기 보너스</strong>가 보통예금으로 즉시 지급됩니다!<br>
+                            • 중도 해지 시 납입 원금은 100% 환급되나 보너스 이자는 지급되지 않습니다.
+                        </div>
+                    </div>
+
+                    <div id="bank-savings-active-card" style="display: none; background: #1e293b; border: 1px solid #c084fc; border-radius: 10px; padding: 16px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <strong style="color: #c084fc; font-size: 15px;">🔥 진행 중인 정기적금</strong>
+                            <span id="bank-sav-badge" style="background: rgba(168, 85, 247, 0.2); color: #e9d5ff; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px;">0 / 5 경기</span>
+                        </div>
+                        <div style="height: 10px; background: #0f172a; border-radius: 5px; overflow: hidden; margin-bottom: 10px;">
+                            <div id="bank-sav-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s;"></div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 14px;">
+                            <div>납입 회차: <strong id="bank-sav-rounds" style="color: #fff;">0회</strong></div>
+                            <div>경기당 납입금: <strong id="bank-sav-per-round" style="color: #38bdf8;">0P</strong></div>
+                            <div>현재 적립 원금: <strong id="bank-sav-deposited" style="color: #4ade80;">0P</strong></div>
+                            <div>만기 예상 수령액: <strong id="bank-sav-est-payout" style="color: #fbbf24;">0P (+20%)</strong></div>
+                        </div>
+                        <button onclick="executeWebBankSavingsCancel()" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #f87171; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                            ⚠️ 적금 중도해지 (원금 전액 환급)
+                        </button>
+                    </div>
+
+                    <div id="bank-savings-open-card" style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 16px;">
+                        <div style="font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 12px;">🌱 신규 정기적금 가입</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">경기당 납입 금액 (최소 5,000P)</label>
+                                <input type="number" id="bank-sav-input-amt" min="5000" step="5000" value="10000" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700;">
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">만기 목표 경기 수</label>
+                                <select id="bank-sav-input-rounds" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700;">
+                                    <option value="5">5경기 만기 (+20% 보너스)</option>
+                                    <option value="10">10경기 만기 (+20% 보너스)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button onclick="executeWebBankSavingsOpen()" style="width: 100%; background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 14px; cursor: pointer;">
+                            ✨ 정기적금 계좌 개설하기
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. Mahjong Index Fund Tab -->
+                <div id="bank-subtab-fund" style="display: none;">
+                    <div style="background: rgba(14, 165, 233, 0.12); border: 1px solid rgba(14, 165, 233, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-size: 13px; color: #38bdf8; font-weight: 800;">📊 나베 마작 종합 지수 펀드 (Index Fund)</span>
+                            <span id="bank-fund-nav-badge" style="background: #0284c7; color: #fff; font-size: 12px; font-weight: 900; padding: 2px 10px; border-radius: 6px; font-family: monospace;">NAV: 1,000.00P</span>
+                        </div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+                            • 주가 상승 및 경기 배당 수익률에 연동되는 실시간 공모 펀드입니다.<br>
+                            • 기준가(NAV)는 매 경기 결과에 따라 실시간으로 변동하며, 원할 때 언제든 좌수를 환매하여 현금화할 수 있습니다.
+                        </div>
+                    </div>
+
+                    <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="font-size: 13px; font-weight: 800; color: #fff; margin-bottom: 8px;">📋 내 펀드 보유 현황</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; font-size: 12px;">
+                            <div>보유 좌수: <strong id="bank-fund-my-units" style="color: #38bdf8; font-family: monospace;">0.0000좌</strong></div>
+                            <div>투자 원금: <strong id="bank-fund-my-invested" style="color: #cbd5e1; font-family: monospace;">0P</strong></div>
+                            <div>현재 평가액: <strong id="bank-fund-my-valuation" style="color: #4ade80; font-family: monospace;">0P</strong></div>
+                            <div>평가 손익: <strong id="bank-fund-my-pnl" style="color: #4ade80; font-family: monospace;">0P (+0.0%)</strong></div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <!-- Buy Fund -->
+                        <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+                            <div style="font-size: 13px; font-weight: 800; color: #38bdf8; margin-bottom: 8px;">📈 펀드 매수 (투자)</div>
+                            <input type="number" id="bank-fund-buy-amt" min="10000" step="10000" placeholder="투자 금액 (최소 1만P)" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=10000">+1만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=50000">+5만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=100000">+10만</button>
+                            </div>
+                            <button onclick="executeWebBankFundBuy()" style="width: 100%; background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                                📈 펀드 매수하기
+                            </button>
+                        </div>
+
+                        <!-- Sell Fund -->
+                        <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+                            <div style="font-size: 13px; font-weight: 800; color: #f472b6; margin-bottom: 8px;">📉 펀드 환매 (매도)</div>
+                            <input type="text" id="bank-fund-sell-units" placeholder="환매 좌수 (또는 '전액')" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-sell-units').value='전액'">전액 환매</button>
+                            </div>
+                            <button onclick="executeWebBankFundSell()" style="width: 100%; background: linear-gradient(135deg, #db2777, #f472b6); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                                📉 펀드 환매하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Insurance Tab -->
+                <div id="bank-subtab-insurance" style="display: none;">
+                    <div style="background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="font-size: 13px; color: #4ade80; font-weight: 800; margin-bottom: 4px;">🏥🛡️ 스타포스 안심 파괴 보험</div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+                            • <strong>보험료 50,000P</strong>로 가입 후 <strong>앞으로 5경기 동안</strong> 보장됩니다.<br>
+                            • 15성 이상 스타포스 강화 실패로 곡괭이가 폭발 파괴될 경우, 즉시 보통예금으로 <strong>위로 보험금 1,000,000P</strong>가 자동 입금됩니다!<br>
+                            • 파괴 방어 실패의 두려움 없이 안전하게 고성수 강화에 도전하세요!
+                        </div>
+                    </div>
+
+                    <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div style="font-size: 14px; font-weight: 800; color: #fff;">내 보험 가입 상태</div>
+                            <span id="bank-ins-status-badge" style="background: #334155; color: #94a3b8; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 4px;">미가입</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 14px;">
+                            <div>잔여 보장 경기: <strong id="bank-ins-matches" style="color: #38bdf8;">0경기</strong></div>
+                            <div>보장 횟수: <strong id="bank-ins-claims" style="color: #fbbf24;">1회</strong></div>
+                            <div>폭발 시 보장금: <strong style="color: #4ade80; font-size: 14px;">1,000,000P</strong></div>
+                            <div>보험료: <strong style="color: #cbd5e1;">50,000P (5경기)</strong></div>
+                        </div>
+                        <button id="bank-ins-buy-btn" onclick="executeWebBankInsuranceBuy()" style="width: 100%; background: linear-gradient(135deg, #15803d, #22c55e); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 900; font-size: 14px; cursor: pointer; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);">
+                            🏥 50,000P로 파괴 안심 보험 가입하기
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 5. Credit Loan Tab -->
+                <div id="bank-subtab-loan" style="display: none;">
+                    <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="font-size: 13px; color: #fbbf24; font-weight: 800; margin-bottom: 4px;">💳 신용대출 & 국고 대여 창구</div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
+                            • 개인 신용 평가 점수(1~10등급)에 따라 <strong>최대 50,000,000P</strong>까지 무담보 신용 대출이 가능합니다.<br>
+                            • 매 경기 정산 시 대출 잔액에 대한 기준 이자가 부과되므로, 여유 현금이 생기면 조기 상환하는 것을 권장합니다.
+                        </div>
+                    </div>
+
+                    <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 12px;">
+                            <div>신용 등급: <strong id="bank-loan-tier" style="color: #fbbf24;">4등급 (BBB)</strong></div>
+                            <div>신용 점수: <strong id="bank-loan-score" style="color: #fff;">603점</strong></div>
+                            <div>경기당 이자율: <strong id="bank-loan-rate" style="color: #f87171;">1.8%</strong></div>
+                            <div>대출 한도: <strong id="bank-loan-limit" style="color: #38bdf8;">7,000,000P</strong></div>
+                            <div>현재 대출 잔액: <strong id="bank-loan-current" style="color: #f87171;">0P</strong></div>
+                            <div>대출 가능 금액: <strong id="bank-loan-avail" style="color: #4ade80;">7,000,000P</strong></div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <!-- Borrow Box -->
+                        <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+                            <div style="font-size: 13px; font-weight: 800; color: #fbbf24; margin-bottom: 8px;">💳 신용대출 받기</div>
+                            <input type="number" id="bank-loan-borrow-amt" min="10000" step="10000" placeholder="대출 신청 금액 (P)" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-loan-borrow-amt').value=100000">+10만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-loan-borrow-amt').value=500000">+50만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-loan-borrow-amt').value=1000000">+100만</button>
+                            </div>
+                            <button onclick="executeWebBankLoanBorrow()" style="width: 100%; background: linear-gradient(135deg, #d97706, #f59e0b); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                                💳 대출 실행하기
+                            </button>
+                        </div>
+
+                        <!-- Repay Box -->
+                        <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+                            <div style="font-size: 13px; font-weight: 800; color: #4ade80; margin-bottom: 8px;">💰 대출 원금 상환</div>
+                            <input type="text" id="bank-loan-repay-amt" placeholder="상환 금액 (또는 '전액')" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-loan-repay-amt').value='전액'">전액 상환</button>
+                            </div>
+                            <button onclick="executeWebBankLoanRepay()" style="width: 100%; background: linear-gradient(135deg, #16a34a, #22c55e); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                                💰 대출 상환하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 3. Web Marketplace Exchange Modal -->
         <div id="web-exchange-modal" class="web-modal-overlay" onclick="if(event.target===this) closeWebExchangeModal()">
             <div class="web-modal-card" style="max-width: 820px; border-color: #a855f7;">
@@ -3735,17 +4183,27 @@
                 <div id="casino-subtab-dice" style="display: none;">
                     <div style="background: linear-gradient(180deg, #090d16 0%, #172033 100%); border: 2px solid #38bdf8; border-radius: 16px; padding: 20px 16px; margin-bottom: 14px; text-align: center; box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);">
                         <div class="physical-dice-stage">
-                            <!-- Physical Die 1 -->
-                            <div id="casino-dice-1" class="physical-die-box" onclick="executeWebCasinoDice()" title="클릭하여 주사위 굴리기">
-                                <div class="dice-face-grid" id="dice-face-1">
-                                    <!-- Rendered dynamically with physical pips -->
+                            <!-- 3D Die 1 -->
+                            <div id="casino-dice-1" class="dice-3d-scene" onclick="executeWebCasinoDice()" title="클릭하여 주사위 굴리기">
+                                <div class="dice-3d-cube" id="dice-cube-1">
+                                    <div class="cube-face face-1"><div class="dice-face-grid"><div class="dice-pip red" style="grid-area: 2 / 2 / 3 / 3;"></div></div></div>
+                                    <div class="cube-face face-2"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-3"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 2 / 2 / 3 / 3;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-4"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 1 / 3 / 2 / 4;"></div><div class="dice-pip" style="grid-area: 3 / 1 / 4 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-5"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 1 / 3 / 2 / 4;"></div><div class="dice-pip" style="grid-area: 2 / 2 / 3 / 3;"></div><div class="dice-pip" style="grid-area: 3 / 1 / 4 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-6"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 2 / 1 / 3 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 1 / 4 / 2;"></div><div class="dice-pip" style="grid-area: 1 / 3 / 2 / 4;"></div><div class="dice-pip" style="grid-area: 2 / 3 / 3 / 4;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
                                 </div>
                             </div>
                             <span style="font-size: 24px; font-weight: 900; color: #64748b; user-select: none;">+</span>
-                            <!-- Physical Die 2 -->
-                            <div id="casino-dice-2" class="physical-die-box" onclick="executeWebCasinoDice()" title="클릭하여 주사위 굴리기">
-                                <div class="dice-face-grid" id="dice-face-2">
-                                    <!-- Rendered dynamically with physical pips -->
+                            <!-- 3D Die 2 -->
+                            <div id="casino-dice-2" class="dice-3d-scene" onclick="executeWebCasinoDice()" title="클릭하여 주사위 굴리기">
+                                <div class="dice-3d-cube" id="dice-cube-2">
+                                    <div class="cube-face face-1"><div class="dice-face-grid"><div class="dice-pip red" style="grid-area: 2 / 2 / 3 / 3;"></div></div></div>
+                                    <div class="cube-face face-2"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-3"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 2 / 2 / 3 / 3;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-4"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 1 / 3 / 2 / 4;"></div><div class="dice-pip" style="grid-area: 3 / 1 / 4 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-5"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 1 / 3 / 2 / 4;"></div><div class="dice-pip" style="grid-area: 2 / 2 / 3 / 3;"></div><div class="dice-pip" style="grid-area: 3 / 1 / 4 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
+                                    <div class="cube-face face-6"><div class="dice-face-grid"><div class="dice-pip" style="grid-area: 1 / 1 / 2 / 2;"></div><div class="dice-pip" style="grid-area: 2 / 1 / 3 / 2;"></div><div class="dice-pip" style="grid-area: 3 / 1 / 4 / 2;"></div><div class="dice-pip" style="grid-area: 1 / 3 / 2 / 4;"></div><div class="dice-pip" style="grid-area: 2 / 3 / 3 / 4;"></div><div class="dice-pip" style="grid-area: 3 / 3 / 4 / 4;"></div></div></div>
                                 </div>
                             </div>
                             <span style="font-size: 24px; font-weight: 900; color: #64748b; user-select: none;">=</span>
@@ -3817,11 +4275,11 @@
                                 <div id="race-rank-1" style="width: 60px; text-align: right; font-size: 11px; font-weight: 900; color: #94a3b8;">--</div>
                             </div>
 
-                            <!-- Lane 2: 사안커 -->
+                            <!-- Lane 2: 스안커 -->
                             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(110, 231, 183, 0.3); border-radius: 10px; padding: 6px 10px; display: flex; align-items: center; gap: 8px;">
                                 <div style="width: 80px; font-size: 12px; font-weight: 900; color: #60a5fa; display: flex; align-items: center; gap: 4px;">
                                     <span>🀄 2번</span>
-                                    <span style="font-size: 11px; color: #cbd5e1;">사안커</span>
+                                    <span style="font-size: 11px; color: #cbd5e1;">스안커</span>
                                 </div>
                                 <div class="race-track-lane">
                                     <div class="race-finish-marker" title="결승선"></div>
@@ -3867,7 +4325,7 @@
                         <label style="font-size: 12px; color: #cbd5e1; font-weight: 700; display: block; margin-bottom: 8px;">1위 우승마 선택 (3.6배 배당)</label>
                         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px;">
                             <button type="button" id="race-btn-1" onclick="selectRaceRunner(1)" class="quick-amt-btn" style="padding: 10px 4px; font-size: 13px; font-weight: 900; background: #059669; color: #ffffff; border-color: #34d399; box-shadow: 0 0 12px #10b981;">🐉 1. 대삼원</button>
-                            <button type="button" id="race-btn-2" onclick="selectRaceRunner(2)" class="quick-amt-btn" style="padding: 10px 4px; font-size: 13px; font-weight: 900; background: #0f172a; color: #94a3b8; border-color: var(--border-color);">🀄 2. 사안커</button>
+                            <button type="button" id="race-btn-2" onclick="selectRaceRunner(2)" class="quick-amt-btn" style="padding: 10px 4px; font-size: 13px; font-weight: 900; background: #0f172a; color: #94a3b8; border-color: var(--border-color);">🀄 2. 스안커</button>
                             <button type="button" id="race-btn-3" onclick="selectRaceRunner(3)" class="quick-amt-btn" style="padding: 10px 4px; font-size: 13px; font-weight: 900; background: #0f172a; color: #94a3b8; border-color: var(--border-color);">🌸 3. 국사무쌍</button>
                             <button type="button" id="race-btn-4" onclick="selectRaceRunner(4)" class="quick-amt-btn" style="padding: 10px 4px; font-size: 13px; font-weight: 900; background: #0f172a; color: #94a3b8; border-color: var(--border-color);">⚡ 4. 구련보등</button>
                         </div>
@@ -3911,7 +4369,7 @@
                     <div style="background: #1e293b; border-radius: 10px; padding: 14px; border: 1px solid var(--border-color); margin-bottom: 14px;">
                         <div style="display: flex; gap: 6px; margin-bottom: 12px;">
                             <button type="button" id="mahjong-mode-suit-btn" onclick="switchMahjongBetMode('suit')" class="quick-amt-btn" style="flex: 1; padding: 8px; font-size: 12px; font-weight: 900; background: #7c3aed; color: #fff; border-color: #a78bfa;">🎯 종류 맞추기 (만/삭/통 2.7배)</button>
-                            <button type="button" id="mahjong-mode-exact-btn" onclick="switchMahjongBetMode('exact')" class="quick-amt-btn" style="flex: 1; padding: 8px; font-size: 12px; font-weight: 700; background: #0f172a; color: #94a3b8; border-color: var(--border-color);">💎 특정 패 1종 단기 (24.3배 잭팟)</button>
+                            <button type="button" id="mahjong-mode-exact-btn" onclick="switchMahjongBetMode('exact')" class="quick-amt-btn" style="flex: 1; padding: 8px; font-size: 12px; font-weight: 700; background: #0f172a; color: #94a3b8; border-color: var(--border-color);">🀄 화료패 맞추기 (자유 다중 선택)</button>
                         </div>
 
                         <!-- Mode A: Suit Selection -->
@@ -3924,9 +4382,25 @@
                             </div>
                         </div>
 
-                        <!-- Mode B: Exact Tile Selection -->
+                        <!-- Mode B: Exact / Multi Tile Selection (화료패 맞추기) -->
                         <div id="mahjong-exact-panel" style="display: none; margin-bottom: 12px;">
-                            <label style="font-size: 12px; color: #cbd5e1; font-weight: 700; display: block; margin-bottom: 6px;">27종 패 중 1개 선택 (배당 24.3배 | 확률 1/27)</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+                                <label style="font-size: 12px; color: #cbd5e1; font-weight: 700;">🀄 화료패 선택 (클릭하여 추가/해제, 1~24개)</label>
+                                <span id="mahjong-odds-badge" style="font-size: 11px; font-weight: 800; color: #fbbf24; background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); padding: 2px 8px; border-radius: 6px; font-family: monospace;">선택: 1종 대기 | 배당: 24.30배</span>
+                            </div>
+                            <!-- Quick selectors -->
+                            <div style="display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;">
+                                <button type="button" onclick="quickSelectMahjongTiles('만')" class="quick-amt-btn" style="font-size: 11px; padding: 4px 8px; background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3);">🔴 만수 전체 (9종 2.70배)</button>
+                                <button type="button" onclick="quickSelectMahjongTiles('삭')" class="quick-amt-btn" style="font-size: 11px; padding: 4px 8px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);">🟢 삭수 전체 (9종 2.70배)</button>
+                                <button type="button" onclick="quickSelectMahjongTiles('통')" class="quick-amt-btn" style="font-size: 11px; padding: 4px 8px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-color: rgba(59, 130, 246, 0.3);">🔵 통수 전체 (9종 2.70배)</button>
+                                <button type="button" onclick="quickSelectMahjongTiles('19')" class="quick-amt-btn" style="font-size: 11px; padding: 4px 8px; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3);">⭐ 1·9 요구패 (6종 4.05배)</button>
+                                <button type="button" onclick="quickSelectMahjongTiles('clear')" class="quick-amt-btn" style="font-size: 11px; padding: 4px 8px; background: #334155; color: #cbd5e1;">✕ 전체 해제</button>
+                            </div>
+                            <!-- Selected Chips preview -->
+                            <div id="mahjong-selected-chips" style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; min-height: 28px; padding: 4px 6px; background: #0f172a; border-radius: 6px; border: 1px dashed var(--border-color); align-items: center;">
+                                <span style="font-size: 11px; color: #64748b; padding: 0 4px;">선택된 화료패가 없습니다. 아래 패를 클릭해 대기패를 구성하세요!</span>
+                            </div>
+                            <!-- 27 Tile Grid -->
                             <div style="display: flex; flex-direction: column; gap: 6px;">
                                 <div id="mahjong-exact-man-row" style="display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px;"></div>
                                 <div id="mahjong-exact-sak-row" style="display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px;"></div>
@@ -3951,9 +4425,11 @@
                     </div>
 
                     <div style="background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid var(--border-color); font-size: 11px; color: #94a3b8; line-height: 1.6;">
-                        <strong style="color: var(--accent-gold); display: block; margin-bottom: 4px;">🀄 마작패 맞추기 룰 안내:</strong>
-                        • 종류 맞추기(만/삭/통): <strong>2.7배</strong> 배당금 지급 (확률 1/3)<br>
-                        • 1종 정확히 맞추기: <strong>24.3배</strong> 초대박 잭팟 배당 지급 (확률 1/27)<br>
+                        <strong style="color: var(--accent-gold); display: block; margin-bottom: 4px;">🀄 마작패 & 화료패 맞추기 룰 안내:</strong>
+                        • 종류 맞추기(만/삭/통): <strong>2.70배</strong> 배당금 지급 (확률 1/3)<br>
+                        • 화료패 맞추기(자유 다중 선택): 원하는 만큼 패를 골라 화료패를 구성할 수 있습니다!<br>
+                        &nbsp;&nbsp;- 1종 단기: <strong>24.30배</strong> 잭팟 | 2종 양면: <strong>12.15배</strong> | 3종 3면대기: <strong>8.10배</strong> | 4종: <strong>6.08배</strong> | 9종: <strong>2.70배</strong><br>
+                        &nbsp;&nbsp;- 선택한 패가 많아질수록 당첨 확률은 높아지고 배당률은 실시간 자동 조정됩니다 (90% RTP).<br>
                         • 잠재능력 <strong>[마작패 화료 보너스]</strong> 보유 시 당첨 배당 추가 증폭!
                     </div>
                 </div>
@@ -4132,7 +4608,7 @@
                                 <option value="2X">2X (2배 레버리지)</option>
                                 <option value="3X">3X (3배 레버리지)</option>
                                 <option value="5X">5X (5배 레버리지)</option>
-                                <option value="10X" selected>10X (10배 국민 레버리지)</option>
+                                <option value="10X" selected>10X (10배 레버리지)</option>
                             </optgroup>
                             <optgroup label="📉 인버스 숏 (하락 베팅)">
                                 <option value="INV">INV (1배 숏/인버스)</option>
@@ -4452,51 +4928,64 @@
                 </div>
 
                 <!-- Snipe Scroll Section -->
-                <div style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-                    <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
-                        <input type="checkbox" id="cube-chk-snipe">
-                        <span>🎯 잠재 저격 주문서 사용 (보유: <strong id="cube-hold-snipe" style="color: #c4b5fd;">0</strong>장)</span>
-                    </label>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <select id="cube-select-snipe" onchange="onCubeSnipeSelectChanged()" style="background: #1e293b; border: 1px solid rgba(139, 92, 246, 0.5); border-radius: 6px; padding: 5px 8px; color: #fff; font-size: 12px; max-width: 220px;">
-                            <option value="">🎯 저격 옵션 선택</option>
-                            <optgroup label="⛏️ [채굴 계열]">
-                                <option value="고블린">👹 황금 고블린 잭팟 (+350만P)</option>
-                                <option value="과충전">🌋 과충전 집중 채굴 (+400% 5배)</option>
-                                <option value="쿨초">⚡ 쿨타임 즉시 초기화 (15%)</option>
-                                <option value="쿨감">⌛ 채굴 쿨타임 단축 (-3분)</option>
-                                <option value="크리">💥 채굴 크리티컬 확률 (+25%)</option>
-                                <option value="채굴량">⛏️ 주식 채굴량 배율 (+2.0x)</option>
-                                <option value="현금">🪙 채굴 확정 현금 (+6만P)</option>
-                                <option value="국고">🏛️ 국고 풀 갈취 (0.25%)</option>
-                                <option value="자동">⏰ 자동채굴 시간 연장 (+100%)</option>
-                            </optgroup>
-                            <optgroup label="⭐ [스타포스 강화 계열]">
-                                <option value="성공률">⭐ 강화 성공률 증가 (+8.0%)</option>
-                                <option value="할인">🔨 스타포스 강화비 할인 (20%)</option>
-                                <option value="파괴방지">🛡️ 15성+ 파괴 방지 (65%)</option>
-                            </optgroup>
-                            <optgroup label="📈 [주식 & 배당 계열]">
-                                <option value="배당">📈 배당금 수령 증폭 (+100% 2배)</option>
-                                <option value="수수료">📉 거래 수수료 감면 (60%)</option>
-                                <option value="야수">🦁 야수의 심장 (최대 60배)</option>
-                            </optgroup>
-                            <optgroup label="🎰 [카지노 계열]">
-                                <option value="슬롯">🎰 당첨금 보너스 (+14%)</option>
-                                <option value="주사위">🎲 패배 페이백 (20%)</option>
-                                <option value="마작">🀄 화료 보너스 (+11.1%)</option>
-                                <option value="경마">🏇 2등 세이프티 (40%)</option>
-                            </optgroup>
-                            <optgroup label="🌐 [통합 종합 계열]">
-                                <option value="채굴">⛏️ 채굴 계열 종합 (9종 3.5배)</option>
-                                <option value="스타포스">⭐ 스타포스 계열 종합 (3종 3.5배)</option>
-                                <option value="주식">📈 주식 계열 종합 (3종 3.5배)</option>
-                                <option value="카지노">🎰 카지노 계열 종합 (4종 3.5배)</option>
-                            </optgroup>
+                <div style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                            <input type="checkbox" id="cube-chk-snipe" onchange="onCubeSnipeCheckboxChanged()">
+                            <span>🎯 잠재 저격 주문서 사용 (보유: <strong id="cube-hold-snipe" style="color: #c4b5fd;">0</strong>장)</span>
+                        </label>
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <select id="cube-select-snipe" onchange="onCubeSnipeSelectChanged()" style="background: #1e293b; border: 1px solid rgba(139, 92, 246, 0.5); border-radius: 6px; padding: 5px 8px; color: #fff; font-size: 12px; max-width: 220px;">
+                                <option value="">🎯 저격 옵션 선택</option>
+                                <optgroup label="⛏️ [채굴 계열]">
+                                    <option value="고블린">👹 황금 고블린 잭팟 (+350만P)</option>
+                                    <option value="과충전">🌋 과충전 집중 채굴 (+400% 5배)</option>
+                                    <option value="쿨초">⚡ 쿨타임 즉시 초기화 (15%)</option>
+                                    <option value="쿨감">⌛ 채굴 쿨타임 단축 (-3분)</option>
+                                    <option value="크리">💥 채굴 크리티컬 확률 (+25%)</option>
+                                    <option value="채굴량">⛏️ 주식 채굴량 배율 (+2.0x)</option>
+                                    <option value="현금">🪙 채굴 확정 현금 (+6만P)</option>
+                                    <option value="국고">🏛️ 국고 풀 갈취 (0.25%)</option>
+                                    <option value="자동">⏰ 자동채굴 시간 연장 (+100%)</option>
+                                </optgroup>
+                                <optgroup label="⭐ [스타포스 강화 계열]">
+                                    <option value="성공률">⭐ 강화 성공률 증가 (+8.0%)</option>
+                                    <option value="할인">🔨 스타포스 강화비 할인 (20%)</option>
+                                    <option value="파괴방지">🛡️ 15성+ 파괴 방지 (65%)</option>
+                                </optgroup>
+                                <optgroup label="📈 [주식 & 배당 계열]">
+                                    <option value="배당">📈 배당금 수령 증폭 (+100% 2배)</option>
+                                    <option value="수수료">📉 거래 수수료 감면 (60%)</option>
+                                    <option value="야수">🦁 야수의 심장 (최대 60배)</option>
+                                </optgroup>
+                                <optgroup label="🎰 [카지노 계열]">
+                                    <option value="슬롯">🎰 당첨금 보너스 (+14%)</option>
+                                    <option value="주사위">🎲 패배 페이백 (20%)</option>
+                                    <option value="마작">🀄 화료 보너스 (+11.1%)</option>
+                                    <option value="경마">🏇 2등 세이프티 (40%)</option>
+                                </optgroup>
+                                <optgroup label="🌐 [통합 종합 계열]">
+                                    <option value="채굴">⛏️ 채굴 계열 종합 (9종 3.5배)</option>
+                                    <option value="스타포스">⭐ 스타포스 계열 종합 (3종 3.5배)</option>
+                                    <option value="주식">📈 주식 계열 종합 (3종 3.5배)</option>
+                                    <option value="카지노">🎰 카지노 계열 종합 (4종 3.5배)</option>
+                                </optgroup>
+                            </select>
+                            <button type="button" onclick="openWebSnipeGuideModal()" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(168, 85, 247, 0.4)); border: 1px solid rgba(168, 85, 247, 0.7); color: #e9d5ff; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);">
+                                <span>📋 옵션 도감</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Special Named Sniper Scrolls Container -->
+                    <div id="cube-special-snipe-container" style="display: none; width: 100%; padding-top: 8px; border-top: 1px dashed rgba(244, 114, 182, 0.3); align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: #f472b6;">
+                            <input type="checkbox" id="cube-chk-special-snipe" onchange="onCubeSpecialSnipeCheckboxChanged()">
+                            <span>✨ <strong>신비상인 전용 저격주문서</strong> (88% 확정급)</span>
+                        </label>
+                        <select id="cube-select-special-snipe" onchange="onSpecialSnipeSelectChanged()" style="background: #1e293b; border: 1px solid rgba(244, 114, 182, 0.6); border-radius: 6px; padding: 5px 8px; color: #fbcfe8; font-size: 12px; max-width: 250px;">
+                            <option value="">전용 저격 주문서 선택</option>
                         </select>
-                        <button type="button" onclick="openWebSnipeGuideModal()" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(168, 85, 247, 0.4)); border: 1px solid rgba(168, 85, 247, 0.7); color: #e9d5ff; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);">
-                            <span>📋 옵션 도감</span>
-                        </button>
                     </div>
                 </div>
 
@@ -4623,6 +5112,14 @@
     <!-- Toast Notification -->
     <div id="toast">✅ 명령어가 복사되었습니다!</div>
 
+    <!-- Real-time Arena Battle Notification Banner -->
+    <div id="live-arena-toast" style="display: none; position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 10000; background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(88, 28, 135, 0.96)); border: 2px solid #a855f7; border-radius: 12px; padding: 10px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(168, 85, 247, 0.5); align-items: center; gap: 12px; max-width: 90vw; backdrop-filter: blur(8px);">
+        <span style="font-size: 20px;">⚔️</span>
+        <div id="live-arena-toast-body" style="font-size: 13px; color: #f1f5f9; font-weight: 700; line-height: 1.4;"></div>
+        <button id="live-arena-toast-action-btn" style="background: linear-gradient(135deg, #7c3aed, #be123c); color: #fff; font-size: 12px; font-weight: 900; padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(190, 18, 60, 0.5); white-space: nowrap;">🎬 결과 보기</button>
+        <button onclick="document.getElementById('live-arena-toast').style.display='none'" style="background: none; border: none; color: #94a3b8; font-size: 16px; cursor: pointer; padding: 2px 6px;">✕</button>
+    </div>
+
     <script>
         let stockholdersTimer = null;
 
@@ -4742,6 +5239,33 @@
         }
 
         // ---------------------------------------------------------
+        // GitHub Pages Mode Detection & Action Handlers
+        // ---------------------------------------------------------
+        const isGitHubPages = (
+            window.location.hostname.includes('github.io') ||
+            window.location.search.includes('mode=guide')
+        );
+        if (isGitHubPages) {
+            document.body.classList.add('github-pages-mode');
+        }
+
+        function handleCasinoClick() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('casino');
+            } else {
+                openWebCasinoModal();
+            }
+        }
+
+        function handleMerchantClick() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('market');
+            } else {
+                openWebMerchantModal();
+            }
+        }
+
+        // ---------------------------------------------------------
         // Real-time Market & Points Live Synchronization
         // ---------------------------------------------------------
         let lastPrice = 2034;
@@ -4780,8 +5304,8 @@
             // 1. Current Price & Rank Points
             const currentPrice = data.current_price || data.current_rank_point || 2034;
             const rankName = data.current_rank_name || "작성3";
-            const priceEl = document.getElementById('live-current-price');
-            const subEl = document.getElementById('live-price-sub');
+            const priceEl = document.getElementById('live-current-price') || document.getElementById('live-stock-price');
+            const subEl = document.getElementById('live-price-sub') || document.getElementById('live-stock-change');
             const rankLabelEl = document.getElementById('live-rank-label');
             if (rankLabelEl) rankLabelEl.textContent = rankName;
 
@@ -4804,6 +5328,11 @@
                 const sign = diff >= 0 ? '+' : '';
                 subEl.textContent = `당일 변동: ${sign}${diff.toLocaleString()}P (${sign}${diffPct.toFixed(1)}%)`;
                 subEl.style.color = diff > 0 ? 'var(--accent-green)' : (diff < 0 ? 'var(--accent-red)' : 'var(--text-secondary)');
+            }
+
+            if (data.total_users) {
+                const userCntEl = document.getElementById('live-user-count');
+                if (userCntEl) userCntEl.textContent = `${Number(data.total_users).toLocaleString()}명`;
             }
 
             // 2. Treasury Pool
@@ -4924,6 +5453,12 @@
                         const msg = JSON.parse(event.data);
                         if (msg.market_state) updateUI(msg.market_state);
                         else if (msg.type === 'settlement' && msg.market_state) updateUI(msg.market_state);
+
+                        if (msg.type === 'pvp_duel' && msg.data) {
+                            handleLiveArenaDuelEvent(msg.data, msg.reply);
+                        } else if (msg.type === 'pvp_open' || msg.type === 'pvp_challenge' || msg.type === 'pvp_declined') {
+                            handleLiveArenaEventNotice(msg.type, msg.data, msg.reply);
+                        }
                     } catch (e) {}
                 };
                 wsConnection.onclose = () => {
@@ -4967,6 +5502,8 @@
                             if (updatedU) renderModalUserAssetCharts(updatedU);
                         }
                         loaded = true;
+                        const userCntEl = document.getElementById('live-user-count');
+                        if (userCntEl) userCntEl.textContent = `${data.users.length.toLocaleString()}명`;
                         if (badge) {
                             badge.innerHTML = `🟢 <strong>실시간 연동</strong> (총 ${data.users.length}명)`;
                             badge.style.background = 'rgba(34, 197, 94, 0.15)';
@@ -4996,6 +5533,8 @@
                                 const updatedU = cachedUsersList.find(u => u.username === currentOpenUser.username || u.id === currentOpenUser.id);
                                 if (updatedU) renderModalUserAssetCharts(updatedU);
                             }
+                            const userCntEl = document.getElementById('live-user-count');
+                            if (userCntEl) userCntEl.textContent = `${fbData.users.length.toLocaleString()}명`;
                             if (badge) {
                                 const upTime = fbData.updated_at ? fbData.updated_at.substring(5, 16) : '최근';
                                 badge.innerHTML = `🔵 <strong>스냅샷 데이터</strong> (${upTime} 기준 ${fbData.users.length}명)`;
@@ -6121,6 +6660,11 @@
         }
 
         async function openWebLoginModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                showToast('💡 깃허브 페이지는 정보 안내 전용입니다. 방송 채팅창(!명령어)으로 참여해주세요!');
+                switchTab('cheatsheet');
+                return;
+            }
             document.getElementById("web-login-modal").style.display = "flex";
             switchLoginMode("chat");
         }
@@ -6395,11 +6939,11 @@
             const amt = (document.getElementById("transfer-amount-input").value || "").trim();
 
             if (!target) {
-                alert("받으실 시청자 닉네임을 입력해주세요.");
+                showToast("⚠️ 받으실 시청자 닉네임을 입력해주세요.");
                 return;
             }
             if (!amt || parseInt(amt, 10) <= 0) {
-                alert("올바른 송금 금액을 입력해주세요.");
+                showToast("⚠️ 올바른 송금 금액을 입력해주세요.");
                 return;
             }
 
@@ -6416,23 +6960,86 @@
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    showToast(`💸 ${target} 님께 ${parseInt(amt, 10).toLocaleString()}P 송금 완료!`);
                     if (data.user) {
                         activeWebUser = data.user;
                         updateWebUserBar(activeWebUser);
                     }
                     closeWebTransferModal();
                     document.getElementById("transfer-amount-input").value = "";
+                    showToast(`💸 ${target} 님께 ${parseInt(amt, 10).toLocaleString()}P 송금 완료!`);
+                    openWebTransferAnimModal(target, parseInt(amt, 10), data.details || {});
                 } else {
-                    alert(data.detail || data.reply || "송금 실패");
+                    showToast("⚠️ " + (data.detail || data.reply || "송금 실패"));
                 }
             } catch (err) {
-                alert("송금 처리 중 오류가 발생했습니다: " + err.message);
+                showToast("⚠️ 송금 처리 중 오류: " + err.message);
             }
+        }
+
+        function openWebTransferAnimModal(receiver, grossAmt, details) {
+            const modal = document.getElementById("web-transfer-animation-modal");
+            if (!modal) return;
+
+            const senderEl = document.getElementById("transfer-anim-sender");
+            const receiverEl = document.getElementById("transfer-anim-receiver");
+            const timeEl = document.getElementById("transfer-anim-time");
+            const grossEl = document.getElementById("transfer-anim-gross");
+            const feeEl = document.getElementById("transfer-anim-fee");
+            const netEl = document.getElementById("transfer-anim-net");
+            const coinStream = document.getElementById("transfer-coin-stream");
+
+            if (senderEl) senderEl.textContent = activeWebUser ? activeWebUser.username : "나";
+            if (receiverEl) receiverEl.textContent = receiver || "상대방";
+            if (timeEl) {
+                const d = new Date();
+                timeEl.textContent = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+            }
+
+            const gross = grossAmt || 0;
+            const fee = details && details.tax_fee !== undefined ? details.tax_fee : (details && details.tax_amount !== undefined ? details.tax_amount : 0);
+            const net = details && details.net_amount !== undefined ? details.net_amount : Math.max(0, gross - fee);
+
+            if (grossEl) grossEl.textContent = `${gross.toLocaleString()}P`;
+            if (feeEl) feeEl.textContent = fee > 0 ? `${fee.toLocaleString()}P` : "0P (면세)";
+            if (netEl) netEl.textContent = `${net.toLocaleString()}P`;
+
+            if (coinStream) {
+                coinStream.innerHTML = "";
+                for (let i = 0; i < 8; i++) {
+                    const coin = document.createElement("div");
+                    coin.textContent = "🪙";
+                    coin.style.position = "absolute";
+                    coin.style.fontSize = "18px";
+                    coin.style.top = `${20 + Math.random() * 50}%`;
+                    coin.style.left = "18%";
+                    coin.style.opacity = "0";
+                    const tx = 130 + Math.random() * 45;
+                    const ty = (Math.random() - 0.5) * 35;
+                    coin.style.setProperty('--tx', `${tx}px`);
+                    coin.style.setProperty('--ty', `${ty}px`);
+                    coin.style.animation = `transferCoinFly 1.1s ease-in-out infinite`;
+                    coin.style.animationDelay = `${i * 0.14}s`;
+                    coinStream.appendChild(coin);
+                }
+            }
+
+            playWebSound("trade");
+            modal.style.display = "flex";
+        }
+
+        function closeWebTransferAnimModal() {
+            const modal = document.getElementById("web-transfer-animation-modal");
+            if (modal) modal.style.display = "none";
+            const coinStream = document.getElementById("transfer-coin-stream");
+            if (coinStream) coinStream.innerHTML = "";
         }
 
         // Exchange Modal
         function openWebExchangeModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('market');
+                return;
+            }
             document.getElementById("web-exchange-modal").style.display = "flex";
             loadExchangeListings();
             populateExchangeInventoryUI();
@@ -6767,6 +7374,10 @@
 
         // Arena Modal
         function openWebArenaModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('cheatsheet');
+                return;
+            }
             document.getElementById("web-arena-modal").style.display = "flex";
             loadArenaStatus();
         }
@@ -6839,13 +7450,130 @@
             // 3. Recent logs
             if (logsEl) {
                 const logs = data.recent_matches || [];
+                cachedArenaRecentLogs = logs;
                 if (logs.length === 0) {
-                    logsEl.innerHTML = '<div style="color: #64748b;">최근 전적이 없습니다.</div>';
+                    logsEl.innerHTML = '<div style="color: #64748b; text-align: center; padding: 12px 0;">최근 전적이 없습니다.</div>';
                 } else {
-                    logsEl.innerHTML = logs.map(l => {
+                    logsEl.innerHTML = logs.map((l, idx) => {
                         const rollTxt = (l.challenger_roll !== undefined && l.defender_roll !== undefined) ? `(${l.challenger_roll} vs ${l.defender_roll})` : "";
-                        return `<div>👑 <strong style="color: #fbbf24;">${escapeHtml(l.winner_name)}</strong> (+${(l.winner_reward - l.bet_amount).toLocaleString()}P) ${rollTxt} ⚔️ 💀 <span style="color: #94a3b8;">${escapeHtml(l.loser_name)}</span> (-${l.bet_amount.toLocaleString()}P)</div>`;
+                        const profit = (l.winner_reward || 0) - (l.bet_amount || 0);
+                        return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06); gap: 6px;">
+                                <div style="font-size: 12px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    👑 <strong style="color: #fbbf24;">${escapeHtml(l.winner_name)}</strong>
+                                    <span style="color: #4ade80; font-weight: 700;">(+${profit.toLocaleString()}P)</span>
+                                    <span style="color: #cbd5e1; font-family: monospace; font-size: 11px;">${rollTxt}</span>
+                                    ⚔️ 💀 <span style="color: #94a3b8;">${escapeHtml(l.loser_name)}</span>
+                                </div>
+                                <button onclick="replayArenaMatch(${idx})" style="background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.5); color: #c4b5fd; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">🎬 다시보기</button>
+                            </div>
+                        `;
                     }).join("");
+                }
+            }
+        }
+
+        let cachedArenaRecentLogs = [];
+        let lastLiveArenaMatch = null;
+        let arenaToastTimer = null;
+
+        function replayArenaMatch(idx) {
+            const log = cachedArenaRecentLogs && cachedArenaRecentLogs[idx];
+            if (!log) return;
+            const cRoll = log.challenger_roll ?? 50;
+            const dRoll = log.defender_roll ?? 50;
+            const winnerName = log.winner_name || "승자";
+            const loserName = log.loser_name || "패자";
+            const isChallengerWinner = (cRoll >= dRoll);
+            const cName = isChallengerWinner ? winnerName : loserName;
+            const dName = isChallengerWinner ? loserName : winnerName;
+            const bet = log.bet_amount || 0;
+            const details = {
+                challenger_name: cName,
+                defender_name: dName,
+                challenger_roll: cRoll,
+                defender_roll: dRoll,
+                winner_name: winnerName,
+                loser_name: loserName,
+                bet: bet,
+                pot_total: bet * 2,
+                winner_reward: log.winner_reward || Math.round(bet * 2 * 0.98),
+                net_profit: (log.winner_reward || Math.round(bet * 2 * 0.98)) - bet,
+                tax_fee: log.tax_fee || Math.round(bet * 2 * 0.02)
+            };
+            playArenaBattleCutscene(details, `[결투 다시보기] 👑 ${winnerName} 승리!`);
+        }
+
+        function handleLiveArenaDuelEvent(details, reply) {
+            if (!details) return;
+            lastLiveArenaMatch = { details, reply };
+
+            // 1. If user is currently in Arena Modal or is participant in duel
+            const arenaModal = document.getElementById("web-arena-modal");
+            const isArenaModalOpen = arenaModal && arenaModal.style.display === "flex";
+            const isParticipant = activeWebUser && (
+                activeWebUser.username === details.challenger_name ||
+                activeWebUser.username === details.defender_name ||
+                activeWebUser.id === details.challenger_id ||
+                activeWebUser.id === details.defender_id
+            );
+
+            if (isArenaModalOpen || isParticipant) {
+                playArenaBattleCutscene(details, reply);
+                if (isArenaModalOpen) {
+                    loadArenaStatus();
+                }
+            }
+
+            // 2. Show live banner for all viewers
+            showLiveArenaToast(details, reply);
+        }
+
+        function showLiveArenaToast(details, reply) {
+            const toastEl = document.getElementById("live-arena-toast");
+            const bodyEl = document.getElementById("live-arena-toast-body");
+            const actionBtn = document.getElementById("live-arena-toast-action-btn");
+            if (!toastEl || !bodyEl) return;
+
+            const cName = details.challenger_name || "도전자";
+            const dName = details.defender_name || "수비자";
+            const winner = details.winner_name || cName;
+            const cRoll = details.challenger_roll ?? "";
+            const dRoll = details.defender_roll ?? "";
+            const netProfit = details.net_profit || (details.winner_reward ? details.winner_reward - details.bet : 0);
+
+            bodyEl.innerHTML = `
+                <div style="font-weight: 800; color: #fbbf24;">⚔️ [지하 투기장 실시간 결과] 👑 【${escapeHtml(winner)}】 승리!</div>
+                <div style="font-size: 11px; color: #cbd5e1; font-weight: 500;">
+                    ${escapeHtml(cName)}(${cRoll}) vs ${escapeHtml(dName)}(${dRoll}) | 독식 상금: <strong style="color: #4ade80;">+${Number(netProfit).toLocaleString()}P</strong>
+                </div>
+            `;
+
+            if (actionBtn) {
+                actionBtn.onclick = () => {
+                    toastEl.style.display = "none";
+                    playArenaBattleCutscene(details, reply);
+                };
+            }
+
+            toastEl.style.display = "flex";
+            if (arenaToastTimer) clearTimeout(arenaToastTimer);
+            arenaToastTimer = setTimeout(() => {
+                toastEl.style.display = "none";
+            }, 8000);
+        }
+
+        function handleLiveArenaEventNotice(type, data, reply) {
+            const arenaModal = document.getElementById("web-arena-modal");
+            if (arenaModal && arenaModal.style.display === "flex") {
+                loadArenaStatus();
+            }
+            if (type === 'pvp_open') {
+                showToast(`⚔️ [투기장 공개 결투] ${data.host_name || '누군가'}님이 ${Number(data.bet || 0).toLocaleString()}P 공개 결투장을 열었습니다!`);
+            } else if (type === 'pvp_challenge') {
+                if (activeWebUser && (activeWebUser.username === data.target_name || activeWebUser.id === data.target_id)) {
+                    showToast(`⚔️💥 [맞짱 신청] ${data.challenger_name}님이 나에게 ${Number(data.bet || 0).toLocaleString()}P 결투를 신청했습니다!`);
+                    openWebArenaModal();
                 }
             }
         }
@@ -7154,10 +7882,26 @@
             faceEl.innerHTML = pipsHtml;
         }
 
+        const CUBE_FACE_ROTATIONS = {
+            1: { x: 0, y: 0 },
+            2: { x: 0, y: -90 },
+            3: { x: -90, y: 0 },
+            4: { x: 90, y: 0 },
+            5: { x: 0, y: 90 },
+            6: { x: 180, y: 0 }
+        };
+
         function renderCasinoDice(el, val, isRolling = false) {
             if (!el) return;
-            const face = el.querySelector ? (el.querySelector(".dice-face-grid") || el) : el;
-            renderPhysicalDiceFace(face, val);
+            const cube = el.querySelector(".dice-3d-cube") || (el.classList.contains("dice-3d-cube") ? el : null);
+            const num = Math.min(6, Math.max(1, Number(val) || 1));
+            if (cube) {
+                const rot = CUBE_FACE_ROTATIONS[num] || { x: 0, y: 0 };
+                cube.style.transform = `rotateX(${rot.x}deg) rotateY(${rot.y}deg)`;
+            } else {
+                const face = el.querySelector ? (el.querySelector(".dice-face-grid") || el) : el;
+                renderPhysicalDiceFace(face, val);
+            }
         }
 
         function renderCasinoDiceSum(el, val) {
@@ -7417,6 +8161,10 @@
         }
 
         async function openWebCasinoModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('casino');
+                return;
+            }
             document.getElementById("web-casino-modal").style.display = "flex";
             switchCasinoSubTab("slot");
             renderCasinoDice(document.getElementById("casino-dice-1"), 1);
@@ -7645,38 +8393,22 @@
                 statusMsg.style.color = "#38bdf8";
             }
 
-            // Realistic physical 3D toss with natural bounces and variable timing
-            if (d1El) {
-                d1El.classList.remove("toss-1", "toss-2");
-                void d1El.offsetWidth;
-                const dur1 = (1.15 + Math.random() * 0.2).toFixed(2);
-                d1El.style.animationDuration = `${dur1}s`;
-                d1El.classList.add("toss-1");
+            // Realistic physical 3D cube tumbling toss
+            const c1 = document.getElementById("dice-cube-1");
+            const c2 = document.getElementById("dice-cube-2");
+            if (c1) {
+                c1.classList.remove("rolling-1", "rolling-2");
+                void c1.offsetWidth;
+                c1.classList.add("rolling-1");
             }
-            if (d2El) {
-                d2El.classList.remove("toss-1", "toss-2");
-                void d2El.offsetWidth;
-                const dur2 = (1.25 + Math.random() * 0.2).toFixed(2);
-                d2El.style.animationDuration = `${dur2}s`;
-                d2El.classList.add("toss-2");
+            if (c2) {
+                c2.classList.remove("rolling-1", "rolling-2");
+                void c2.offsetWidth;
+                c2.classList.add("rolling-2");
             }
 
             renderCasinoDiceSum(sumEl, "?");
             playWebSound("dice_roll");
-
-            // Dynamic decelerating face shuffle (mimics rotational velocity damping)
-            let rollLoop = true;
-            let shuffleDelay = 45;
-            function shuffleDiceFaces() {
-                if (!rollLoop) return;
-                const r1 = Math.floor(Math.random() * 6) + 1;
-                const r2 = Math.floor(Math.random() * 6) + 1;
-                renderCasinoDice(d1El, r1, true);
-                renderCasinoDice(d2El, r2, true);
-                shuffleDelay = Math.min(220, shuffleDelay + 14);
-                setTimeout(shuffleDiceFaces, shuffleDelay);
-            }
-            shuffleDiceFaces();
 
             try {
                 const apiBase = getApiBaseUrl();
@@ -7688,10 +8420,9 @@
                 const data = await res.json();
 
                 setTimeout(() => {
-                    rollLoop = false;
                     isDiceRolling = false;
-                    if (d1El) d1El.classList.remove("toss-1", "toss-2");
-                    if (d2El) d2El.classList.remove("toss-1", "toss-2");
+                    if (c1) c1.classList.remove("rolling-1", "rolling-2");
+                    if (c2) c2.classList.remove("rolling-1", "rolling-2");
                     if (rollBtn) {
                         rollBtn.disabled = !isWebCasinoOpen;
                         rollBtn.style.opacity = isWebCasinoOpen ? "1" : "0.6";
@@ -7825,20 +8556,26 @@
                 }
             }
 
-            // Continuous sprint phase (smooth progress approaching finish line 78%)
+            // Progressive acceleration phase (starts slow from gate, accelerates with surging momentum)
             let progress = [4, 4, 4, 4];
             let sprintLoop = true;
+            let raceTick = 0;
             const sprintInterval = setInterval(() => {
                 if (!sprintLoop) return;
+                raceTick++;
+                // Acceleration curve: starts slow (~0.4% per tick) and accelerates quadratically up to ~4.8% per tick
+                const progressRatio = Math.min(1.0, raceTick / 26);
+                const accelFactor = 0.35 + Math.pow(progressRatio, 2.2) * 4.5;
                 for (let i = 0; i < 4; i++) {
-                    progress[i] = Math.min(74, progress[i] + Math.random() * 4.5 + 1.2);
+                    const step = (Math.random() * 0.85 + 0.3) * accelFactor;
+                    progress[i] = Math.min(74, progress[i] + step);
                     const p = document.getElementById(`race-progress-${i + 1}`);
                     const h = document.getElementById(`race-horse-${i + 1}`);
                     if (p) p.style.width = `${progress[i].toFixed(1)}%`;
                     if (h) h.style.left = `${Math.max(2, progress[i] - 3).toFixed(1)}%`;
                 }
                 playWebSound("dice_roll");
-            }, 70);
+            }, 60);
 
             try {
                 const apiBase = getApiBaseUrl();
@@ -7945,7 +8682,7 @@
         // =========================================================
         let selectedMahjongMode = "suit";
         let selectedMahjongSuit = "만";
-        let selectedMahjongExact = "1만";
+        let selectedMahjongTiles = ["1만"];
 
         const MAHJONG_TILES_DATA = {
             "만": [
@@ -7982,7 +8719,6 @@
             const btnExact = document.getElementById("mahjong-mode-exact-btn");
             const panelSuit = document.getElementById("mahjong-suit-panel");
             const panelExact = document.getElementById("mahjong-exact-panel");
-            const statusMsg = document.getElementById("casino-mahjong-status-msg");
 
             if (mode === "suit") {
                 if (panelSuit) panelSuit.style.display = "block";
@@ -7999,7 +8735,6 @@
                     btnExact.style.borderColor = "var(--border-color)";
                     btnExact.style.fontWeight = "700";
                 }
-                if (statusMsg) statusMsg.textContent = `🎯 만/삭/통(2.7배) 중 하나를 선택하세요! (현재 선택: [${selectedMahjongSuit}수])`;
             } else {
                 if (panelSuit) panelSuit.style.display = "none";
                 if (panelExact) panelExact.style.display = "block";
@@ -8015,8 +8750,8 @@
                     btnSuit.style.borderColor = "var(--border-color)";
                     btnSuit.style.fontWeight = "700";
                 }
-                if (statusMsg) statusMsg.textContent = `💎 27종 패 중 1개를 단기 예측하세요! (24.3배 잭팟! 현재: [${selectedMahjongExact}])`;
             }
+            updateMahjongSelectionUI();
         }
 
         function selectMahjongSuit(suit) {
@@ -8041,15 +8776,101 @@
                     el.style.boxShadow = "none";
                 }
             }
-            const statusMsg = document.getElementById("casino-mahjong-status-msg");
-            if (statusMsg) statusMsg.textContent = `🎯 [${suit}수]에 베팅 준비 완료! (적중 시 2.7배 배당)`;
+            updateMahjongSelectionUI();
         }
 
-        function selectMahjongExact(tile) {
-            selectedMahjongExact = tile;
+        function toggleMahjongTile(tile) {
+            const idx = selectedMahjongTiles.indexOf(tile);
+            if (idx >= 0) {
+                selectedMahjongTiles.splice(idx, 1);
+            } else {
+                if (selectedMahjongTiles.length >= 24) {
+                    alert("화료패는 최대 24개까지만 선택할 수 있습니다!");
+                    return;
+                }
+                selectedMahjongTiles.push(tile);
+            }
+            updateMahjongSelectionUI();
+        }
+
+        function quickSelectMahjongTiles(type) {
+            if (type === 'clear') {
+                selectedMahjongTiles = [];
+            } else if (type === '만' || type === '삭' || type === '통') {
+                const suitTiles = MAHJONG_TILES_DATA[type].map(t => t.id);
+                const allPresent = suitTiles.every(t => selectedMahjongTiles.includes(t));
+                if (allPresent) {
+                    selectedMahjongTiles = selectedMahjongTiles.filter(t => !suitTiles.includes(t));
+                } else {
+                    suitTiles.forEach(t => {
+                        if (!selectedMahjongTiles.includes(t) && selectedMahjongTiles.length < 24) {
+                            selectedMahjongTiles.push(t);
+                        }
+                    });
+                }
+            } else if (type === '19') {
+                const terminalTiles = ["1만", "9만", "1삭", "9삭", "1통", "9통"];
+                const allPresent = terminalTiles.every(t => selectedMahjongTiles.includes(t));
+                if (allPresent) {
+                    selectedMahjongTiles = selectedMahjongTiles.filter(t => !terminalTiles.includes(t));
+                } else {
+                    terminalTiles.forEach(t => {
+                        if (!selectedMahjongTiles.includes(t) && selectedMahjongTiles.length < 24) {
+                            selectedMahjongTiles.push(t);
+                        }
+                    });
+                }
+            }
+            updateMahjongSelectionUI();
+        }
+
+        function updateMahjongSelectionUI() {
+            const k = selectedMahjongTiles.length;
+            const mult = k > 0 ? Math.max(1.01, Math.round((24.3 / k) * 100) / 100).toFixed(2) : "0.00";
+            const prob = k > 0 ? ((k / 27) * 100).toFixed(1) : "0.0";
+
+            const badge = document.getElementById("mahjong-odds-badge");
+            if (badge) {
+                badge.innerHTML = `선택: <strong>${k}종</strong> 대기 | 배당: <strong style="color: #4ade80;">${mult}배</strong> (확률 ${prob}%)`;
+            }
+
+            const statusMsg = document.getElementById("casino-mahjong-status-msg");
+            if (statusMsg) {
+                if (selectedMahjongMode === "suit") {
+                    statusMsg.textContent = `🎯 [${selectedMahjongSuit}수]에 베팅 준비 완료! (적중 시 2.70배 배당)`;
+                    statusMsg.style.color = "#a78bfa";
+                } else {
+                    if (k === 0) {
+                        statusMsg.textContent = `🀄 화료패를 아래 27종 패 중 1개 이상 골라주세요! (선택할수록 배율 자동 조정)`;
+                        statusMsg.style.color = "#94a3b8";
+                    } else if (k === 1) {
+                        statusMsg.textContent = `💎 1종 단기 대기 [${selectedMahjongTiles[0]}]! (24.30배 초대박 잭팟! 확률 3.7%)`;
+                        statusMsg.style.color = "#fbbf24";
+                    } else {
+                        statusMsg.textContent = `🀄 화료패 ${k}종 다면 대기! (적중 시 ${mult}배 배당금 지급 | 확률 ${prob}%)`;
+                        statusMsg.style.color = "#a78bfa";
+                    }
+                }
+            }
+
+            // Update chips preview
+            const chipsEl = document.getElementById("mahjong-selected-chips");
+            if (chipsEl) {
+                if (k === 0) {
+                    chipsEl.innerHTML = '<span style="font-size: 11px; color: #64748b; padding: 0 4px;">선택된 화료패가 없습니다. 아래 패를 클릭해 대기패를 구성하세요!</span>';
+                } else {
+                    chipsEl.innerHTML = selectedMahjongTiles.map(t => {
+                        const suit = t.slice(-1);
+                        const color = suit === '만' ? '#f87171' : suit === '삭' ? '#34d399' : '#60a5fa';
+                        return `<span style="font-size: 11px; font-weight: 800; background: #1e293b; border: 1px solid ${color}; color: ${color}; padding: 2px 7px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" onclick="toggleMahjongTile('${t}')">${t} <span style="font-size: 9px; opacity: 0.7;">✕</span></span>`;
+                    }).join("");
+                }
+            }
+
+            // Update button styles
             document.querySelectorAll(".mahjong-exact-tile-btn").forEach(btn => {
                 const t = btn.getAttribute("data-tile");
-                if (t === tile) {
+                if (selectedMahjongTiles.includes(t)) {
                     btn.classList.add("selected");
                     btn.style.background = "linear-gradient(135deg, #4c1d95, #6d28d9)";
                     btn.style.borderColor = "#c084fc";
@@ -8061,8 +8882,6 @@
                     btn.style.boxShadow = "none";
                 }
             });
-            const statusMsg = document.getElementById("casino-mahjong-status-msg");
-            if (statusMsg) statusMsg.textContent = `💎 단기 잭팟 [${tile}] 선택됨! (적중 시 24.3배 배당!)`;
         }
 
         let mahjongGridInitialized = false;
@@ -8082,10 +8901,10 @@
                 const color = suitColors[suit] || "#cbd5e1";
                 let html = "";
                 list.forEach(t => {
-                    const isSelected = (t.id === selectedMahjongExact);
+                    const isSelected = selectedMahjongTiles.includes(t.id);
                     const svgPath = getMahjongTileSvg(t.id);
                     html += `
-                        <button type="button" class="mahjong-exact-tile-btn ${isSelected ? 'selected' : ''}" data-tile="${t.id}" onclick="selectMahjongExact('${t.id}')" style="background: ${isSelected ? 'linear-gradient(135deg, #4c1d95, #6d28d9)' : '#0f172a'}; border-color: ${isSelected ? '#c084fc' : 'var(--border-color)'}; box-shadow: ${isSelected ? '0 0 12px rgba(168, 85, 247, 0.6)' : 'none'};">
+                        <button type="button" class="mahjong-exact-tile-btn ${isSelected ? 'selected' : ''}" data-tile="${t.id}" onclick="toggleMahjongTile('${t.id}')" style="background: ${isSelected ? 'linear-gradient(135deg, #4c1d95, #6d28d9)' : '#0f172a'}; border-color: ${isSelected ? '#c084fc' : 'var(--border-color)'}; box-shadow: ${isSelected ? '0 0 12px rgba(168, 85, 247, 0.6)' : 'none'};">
                             <img class="mahjong-tile-img" src="${svgPath}" alt="${t.id}">
                             <span style="font-size: 11px; font-weight: 800; color: ${color}; line-height: 1; margin-top: 1px;">${t.id}</span>
                         </button>
@@ -8097,6 +8916,7 @@
             renderRow("mahjong-exact-man-row", "만", MAHJONG_TILES_DATA["만"]);
             renderRow("mahjong-exact-sak-row", "삭", MAHJONG_TILES_DATA["삭"]);
             renderRow("mahjong-exact-tong-row", "통", MAHJONG_TILES_DATA["통"]);
+            updateMahjongSelectionUI();
         }
 
         async function executeWebCasinoMahjong() {
@@ -8116,6 +8936,11 @@
                 return;
             }
 
+            if (selectedMahjongMode !== "suit" && selectedMahjongTiles.length === 0) {
+                alert("화료패를 1개 이상 선택해주세요!");
+                return;
+            }
+
             isMahjongDrawing = true;
             const drawBtn = document.getElementById("casino-mahjong-draw-btn");
             const cardImg = document.getElementById("mahjong-card-img");
@@ -8123,7 +8948,7 @@
             const cardBox = document.getElementById("casino-mahjong-card");
             const statusMsg = document.getElementById("casino-mahjong-status-msg");
 
-            const choice = (selectedMahjongMode === "suit") ? selectedMahjongSuit : selectedMahjongExact;
+            const choice = (selectedMahjongMode === "suit") ? selectedMahjongSuit : selectedMahjongTiles.join(",");
 
             if (drawBtn) {
                 drawBtn.disabled = true;
@@ -8193,11 +9018,11 @@
                         }
 
                         if (d.won) {
-                            statusMsg.textContent = `🎉 마작패 적중 대박! ${data.reply}`;
+                            statusMsg.textContent = `🎉 화료/적중 성공! ${data.reply}`;
                             statusMsg.style.color = "#4ade80";
                             playWebSound("slot_win");
                         } else {
-                            statusMsg.textContent = `💀 마작패 빗나감! ${data.reply}`;
+                            statusMsg.textContent = `💀 빗나감! ${data.reply}`;
                             statusMsg.style.color = "#f87171";
                             playWebSound("starforce_destroy");
                         }
@@ -8214,14 +9039,12 @@
                 clearInterval(shuffleInterval);
                 isMahjongDrawing = false;
                 if (cardBox) cardBox.style.transform = "scale(1) rotate(0deg)";
-                if (cardImg) cardImg.src = "tiles/back.svg";
-                if (cardTxt) cardTxt.textContent = "오류";
                 if (drawBtn) {
                     drawBtn.disabled = !isWebCasinoOpen;
                     drawBtn.style.opacity = isWebCasinoOpen ? "1" : "0.6";
                 }
                 if (statusMsg) statusMsg.textContent = "오류: " + err.message;
-                alert("마작패 오류: " + err.message);
+                alert("마작패 뽑기 오류: " + err.message);
             }
         }
 
@@ -8231,6 +9054,10 @@
         let merchantPollInterval = null;
 
         async function openWebMerchantModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('market');
+                return;
+            }
             document.getElementById("web-merchant-modal").style.display = "flex";
             updateMerchantUserInventory();
             await loadMerchantStatus();
@@ -8436,6 +9263,10 @@
         }
 
         async function openWebLotteryModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('casino');
+                return;
+            }
             document.getElementById("web-lottery-modal").style.display = "flex";
             selectLotteryTier("basic");
             loadLotteryStatus();
@@ -8779,7 +9610,7 @@
             { code: "2X", name: "2X (2배 레버리지)", group: "LONG", mult: 2.0, reqMult: 10, desc: "2배 레버리지 롱", badge: "2배", req: null },
             { code: "3X", name: "3X (3배 레버리지)", group: "LONG", mult: 3.0, reqMult: 10, desc: "3배 레버리지 롱", badge: "3배", req: null },
             { code: "5X", name: "5X (5배 레버리지)", group: "LONG", mult: 5.0, reqMult: 10, desc: "5배 레버리지 롱", badge: "5배", req: null },
-            { code: "10X", name: "10X (10배 국민 레버리지)", group: "LONG", mult: 10.0, reqMult: 10, desc: "국민 10배 레버리지 롱", badge: "국민주", req: null },
+            { code: "10X", name: "10X (10배 레버리지)", group: "LONG", mult: 10.0, reqMult: 10, desc: "10배 레버리지 롱", badge: "10배", req: null },
             { code: "20X", name: "20X (20배 야수주 · 🦁1줄 해금)", group: "LONG", mult: 20.0, reqMult: 20, desc: "20배 초고배율 야수 롱", badge: "야수 20배", req: "🦁 1줄" },
             { code: "40X", name: "40X (40배 야수주 · 🦁2줄 해금)", group: "LONG", mult: 40.0, reqMult: 40, desc: "40배 초고배율 야수 롱", badge: "야수 40배", req: "🦁 2줄" },
             { code: "60X", name: "60X (60배 초야수주 · 🦁3줄 해금)", group: "LONG", mult: 60.0, reqMult: 60, desc: "60배 극대화 야수 롱", badge: "야수 60배", req: "🦁 3줄" },
@@ -8982,7 +9813,11 @@
         }
 
         // Stock Order Modal
-        function openWebStockModal() {
+        async function openWebStockModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('stock');
+                return;
+            }
             if (!activeWebToken) {
                 openWebLoginModal();
                 return;
@@ -9000,6 +9835,21 @@
             renderStockProductsDropdown();
             updateStockTradeUI();
             renderStockDeskItems();
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/me?token=${encodeURIComponent(activeWebToken)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                        renderStockProductsDropdown();
+                        updateStockTradeUI();
+                        renderStockDeskItems();
+                    }
+                }
+            } catch (e) {}
         }
 
         function closeWebStockModal() {
@@ -9013,9 +9863,6 @@
             }
             const product = document.getElementById("stock-modal-product").value;
             const actionKor = action === "BUY" ? "매수" : "매도";
-            const qtyDesc = isAllIn ? (action === "BUY" ? "풀매수(올인)" : "전량 매도") : `${qty}주 ${actionKor}`;
-
-            if (!confirm(`[${product}] 종목을 ${qtyDesc} 주문하시겠습니까?`)) return;
 
             try {
                 const apiBase = getApiBaseUrl();
@@ -9041,10 +9888,10 @@
                     renderStockDeskItems();
                     fetchMarketState();
                 } else {
-                    alert(data.detail || data.reply || "주문 실패");
+                    showToast("⚠️ " + (data.detail || data.reply || "주문 실패"));
                 }
             } catch (err) {
-                alert("주문 요청 오류: " + err.message);
+                showToast("⚠️ 주문 요청 오류: " + err.message);
             }
         }
 
@@ -9267,13 +10114,33 @@
         // =========================================================
         let mineCountdownInterval = null;
 
-        function openWebMiningModal() {
+        async function openWebMiningModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('mining');
+                return;
+            }
             if (!activeWebToken) {
                 openWebLoginModal();
                 return;
             }
             document.getElementById("web-mining-modal").style.display = "flex";
             renderMiningUI(activeWebUser);
+
+            // Asynchronously fetch latest user mining status to eliminate cooldown drift
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/me?token=${encodeURIComponent(activeWebToken)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                        renderMiningUI(activeWebUser);
+                    }
+                }
+            } catch (e) {
+                console.error("Mining status refresh error:", e);
+            }
         }
 
         function closeWebMiningModal() {
@@ -9309,7 +10176,15 @@
 
             if (mineCountdownInterval) clearInterval(mineCountdownInterval);
 
-            let remSec = m.remaining_cd_sec || 0;
+            const getRemainingSec = () => {
+                if (m.next_mine_time_epoch && m.next_mine_time_epoch > 0) {
+                    const nowSec = Date.now() / 1000;
+                    return Math.max(0, Math.ceil(m.next_mine_time_epoch - nowSec));
+                }
+                return m.remaining_cd_sec || 0;
+            };
+
+            let remSec = getRemainingSec();
             const totalSec = (m.effective_cd_min || 15) * 60;
 
             if (remSec <= 0) {
@@ -9329,6 +10204,7 @@
                 }
 
                 const updateTimer = () => {
+                    remSec = getRemainingSec();
                     if (remSec <= 0) {
                         clearInterval(mineCountdownInterval);
                         if (progBox) progBox.style.display = "none";
@@ -9346,7 +10222,6 @@
                     if (btn) btn.innerHTML = `⏳ 쿨타임 충전 중 (${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')})`;
                     const pct = Math.max(0, Math.min(100, ((totalSec - remSec) / totalSec) * 100));
                     if (progFill) progFill.style.width = pct + "%";
-                    remSec--;
                 };
                 updateTimer();
                 mineCountdownInterval = setInterval(updateTimer, 1000);
@@ -9410,6 +10285,10 @@
         let isLineLockPending = false;
 
         function openWebStarforceModal(fromInventory = false, eqId = null) {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('mining');
+                return;
+            }
             if (!activeWebToken) {
                 openWebLoginModal();
                 return;
@@ -9633,6 +10512,10 @@
         // 3. Web Miracle Cube (미라클 큐브) Logic
         // =========================================================
         function openWebCubeModal(fromInventory = false, eqId = null) {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('cube');
+                return;
+            }
             if (!activeWebToken) {
                 openWebLoginModal();
                 return;
@@ -9649,6 +10532,10 @@
             if (chkSnipe) chkSnipe.checked = false;
             const selSnipe = document.getElementById("cube-select-snipe");
             if (selSnipe) selSnipe.value = "";
+            const chkSpecial = document.getElementById("cube-chk-special-snipe");
+            if (chkSpecial) chkSpecial.checked = false;
+            const selSpecial = document.getElementById("cube-select-special-snipe");
+            if (selSpecial) selSpecial.value = "";
 
             document.getElementById("web-cube-modal").style.display = "flex";
             renderCubeUI(activeWebUser);
@@ -9660,6 +10547,10 @@
             if (chkSnipe) chkSnipe.checked = false;
             const selSnipe = document.getElementById("cube-select-snipe");
             if (selSnipe) selSnipe.value = "";
+            const chkSpecial = document.getElementById("cube-chk-special-snipe");
+            if (chkSpecial) chkSpecial.checked = false;
+            const selSpecial = document.getElementById("cube-select-special-snipe");
+            if (selSpecial) selSpecial.value = "";
             activeModalTargetEqId = null;
             if (returnToInventoryOnClose) {
                 returnToInventoryOnClose = false;
@@ -9720,11 +10611,68 @@
             if (holdFrags) holdFrags.textContent = (items.cube_fragments || 0) + "개";
             if (holdSnipe) holdSnipe.textContent = (items.snipe_scroll_count || 0) + "장";
 
+            // Special Named Sniper Scrolls Check
+            const SPECIAL_SNIPE_NAMES = {
+                "DIVIDEND_BOOST_PCT": "📈 배당금 증폭 전용 저격",
+                "MINING_CD_RESET": "⚡ 쿨타임 초기화 전용 저격",
+                "STARFORCE_SUCCESS_BOOST": "⭐ 성공률 증가 전용 저격",
+                "GOBLIN_JACKPOT_CHANCE": "👹 황금 고블린 전용 저격",
+                "MINING_YIELD_BOOST": "⛏️ 채굴량 증폭 전용 저격",
+                "MINING_BONUS_CASH": "🪙 확정 현금 전용 저격",
+                "MAHJONG_TILE_BOOST": "🀄 마작 화료 전용 저격",
+                "HEAVY_MINING": "🌋 과충전 채굴 전용 저격",
+                "STARFORCE_DISCOUNT": "🔨 강화비 할인 전용 저격"
+            };
+            const specialScrolls = (user.items && user.items.special_snipe_scrolls) || user.special_snipe_scrolls || (user.bank && user.bank.special_snipe_scrolls) || {};
+            const specialContainer = document.getElementById("cube-special-snipe-container");
+            const specialSelect = document.getElementById("cube-select-special-snipe");
+            if (specialContainer && specialSelect) {
+                const specialEntries = Object.entries(specialScrolls).filter(([_, count]) => count > 0);
+                if (specialEntries.length > 0) {
+                    specialContainer.style.display = "flex";
+                    const curVal = specialSelect.value;
+                    let optHtml = '<option value="">전용 저격 주문서 선택</option>';
+                    specialEntries.forEach(([code, count]) => {
+                        const name = SPECIAL_SNIPE_NAMES[code] || `✨ [${code}] 전용 저격`;
+                        optHtml += `<option value="${code}">${name} (${count}장 보유)</option>`;
+                    });
+                    specialSelect.innerHTML = optHtml;
+                    if (curVal && specialScrolls[curVal]) specialSelect.value = curVal;
+                } else {
+                    specialContainer.style.display = "none";
+                }
+            }
+
             const lockedCount = [eq.is_line1_locked, eq.is_line2_locked, eq.is_line3_locked].filter(Boolean).length;
             const costLabel = document.getElementById("cube-cost-label");
             if (costLabel) {
                 costLabel.textContent = lockedCount > 0 ? "큐브 20개 (또는 30만P)" : "큐브 1개 (또는 1.5만P)";
                 costLabel.style.color = lockedCount > 0 ? "#f472b6" : "#fbbf24";
+            }
+        }
+
+        function onCubeSnipeCheckboxChanged() {
+            const chk = document.getElementById("cube-chk-snipe");
+            const specialChk = document.getElementById("cube-chk-special-snipe");
+            if (chk && chk.checked && specialChk) {
+                specialChk.checked = false;
+            }
+        }
+
+        function onCubeSpecialSnipeCheckboxChanged() {
+            const chk = document.getElementById("cube-chk-snipe");
+            const specialChk = document.getElementById("cube-chk-special-snipe");
+            if (specialChk && specialChk.checked && chk) {
+                chk.checked = false;
+            }
+        }
+
+        function onSpecialSnipeSelectChanged() {
+            const sel = document.getElementById("cube-select-special-snipe");
+            const chk = document.getElementById("cube-chk-special-snipe");
+            if (sel && sel.value && chk) {
+                chk.checked = true;
+                onCubeSpecialSnipeCheckboxChanged();
             }
         }
 
@@ -9759,10 +10707,10 @@
                         renderCubeUI(activeWebUser);
                     }
                 } else {
-                    alert(data.detail || data.reply || "잠금 변경 실패");
+                    showToast("⚠️ " + (data.detail || data.reply || "잠금 변경 실패"));
                 }
             } catch (err) {
-                alert("오류: " + err.message);
+                showToast("⚠️ 오류: " + err.message);
             } finally {
                 isLineLockPending = false;
                 [1, 2, 3].forEach(i => {
@@ -9796,10 +10744,10 @@
                         renderCubeUI(activeWebUser);
                     }
                 } else {
-                    alert(data.detail || data.reply || "보호 설정 실패");
+                    showToast("⚠️ " + (data.detail || data.reply || "보호 설정 실패"));
                 }
             } catch (err) {
-                alert("오류: " + err.message);
+                showToast("⚠️ 오류: " + err.message);
             }
         }
 
@@ -9812,12 +10760,17 @@
             const cubeBox = document.getElementById("cube-3d-box");
             const useSnipe = Boolean(document.getElementById("cube-chk-snipe")?.checked);
             const targetKeyword = useSnipe ? (document.getElementById("cube-select-snipe")?.value || null) : null;
+            const useSpecialSnipe = Boolean(document.getElementById("cube-chk-special-snipe")?.checked);
+            const specialSnipeCode = useSpecialSnipe ? (document.getElementById("cube-select-special-snipe")?.value || null) : null;
 
             if (btn) btn.disabled = true;
-            if (cubeBox) cubeBox.classList.add("cube-spinning");
+            if (cubeBox) {
+                cubeBox.classList.add("cube-spinning");
+                cubeBox.classList.add("cube-charging-pulse");
+            }
             playWebSound("cube_spin");
 
-            // Text rolling effect
+            // Text rolling suspense effect
             [1, 2, 3].forEach(idx => {
                 const el = document.getElementById(`cube-line${idx}-text`);
                 if (el && !eq[`is_line${idx}_locked`]) el.textContent = "⚡ 차원 왜곡 재설정 중...";
@@ -9832,25 +10785,73 @@
                         token: activeWebToken,
                         equipment_id: eq.id,
                         target_keyword: targetKeyword,
-                        use_snipe: Boolean(useSnipe)
+                        use_snipe: Boolean(useSnipe),
+                        special_snipe_code: specialSnipeCode
                     })
                 });
                 const data = await res.json();
 
-                setTimeout(() => {
-                    if (cubeBox) cubeBox.classList.remove("cube-spinning");
-                    if (btn) btn.disabled = false;
+                if (res.ok && data.success) {
+                    const newLines = (data.details && data.details.new_lines) ||
+                        (data.user && data.user.equipped_item && data.user.equipped_item.potential_lines) || [];
 
-                    if (res.ok && data.success) {
+                    // Sequential Staggered Reveals
+                    // Line 1 reveal at 1200ms
+                    setTimeout(() => {
+                        const el1 = document.getElementById("cube-line1-text");
+                        const card1 = document.getElementById("cube-line1-card");
+                        if (el1 && newLines[0]) el1.textContent = newLines[0];
+                        if (card1) {
+                            card1.classList.remove("line-revealed");
+                            void card1.offsetWidth;
+                            card1.classList.add("line-revealed");
+                        }
+                        playWebSound("cube_spin");
+                    }, 1200);
+
+                    // Line 2 reveal at 1650ms
+                    setTimeout(() => {
+                        const el2 = document.getElementById("cube-line2-text");
+                        const card2 = document.getElementById("cube-line2-card");
+                        if (el2 && newLines[1]) el2.textContent = newLines[1];
+                        if (card2) {
+                            card2.classList.remove("line-revealed");
+                            void card2.offsetWidth;
+                            card2.classList.add("line-revealed");
+                        }
+                        playWebSound("cube_spin");
+                    }, 1650);
+
+                    // Line 3 reveal at 2100ms
+                    setTimeout(() => {
+                        const el3 = document.getElementById("cube-line3-text");
+                        const card3 = document.getElementById("cube-line3-card");
+                        if (el3 && newLines[2]) el3.textContent = newLines[2];
+                        if (card3) {
+                            card3.classList.remove("line-revealed");
+                            void card3.offsetWidth;
+                            card3.classList.add("line-revealed");
+                        }
+                        playWebSound("cube_spin");
+                    }, 2100);
+
+                    // Culmination & UI Refresh at 2350ms
+                    setTimeout(() => {
+                        if (cubeBox) {
+                            cubeBox.classList.remove("cube-spinning");
+                            cubeBox.classList.remove("cube-charging-pulse");
+                        }
+                        if (btn) btn.disabled = false;
+
                         const d = data.details || {};
                         if (d.promoted) {
                             playWebSound("cube_tierup");
                             const tag = document.getElementById("cube-tier-tag");
                             if (tag) tag.classList.add("tierup-active");
                             showToast(`🎉✨ [TIER UP!] ${d.new_tier} 등급 승급 대성공!!`);
-                            setTimeout(() => { if (tag) tag.classList.remove("tierup-active"); }, 1000);
+                            setTimeout(() => { if (tag) tag.classList.remove("tierup-active"); }, 1200);
                         } else {
-                            showToast("🔮 큐브 재설정 완료!");
+                            showToast("🔮 잠재능력 재설정 완료!");
                         }
 
                         if (data.user) {
@@ -9858,23 +10859,30 @@
                             updateWebUserBar(activeWebUser);
                             renderCubeUI(activeWebUser);
                         }
-                    } else {
-                        alert(data.detail || data.reply || "큐브 사용 실패");
-                        renderCubeUI(activeWebUser);
+                    }, 2350);
+
+                } else {
+                    if (cubeBox) {
+                        cubeBox.classList.remove("cube-spinning");
+                        cubeBox.classList.remove("cube-charging-pulse");
                     }
-                }, 900);
+                    if (btn) btn.disabled = false;
+                    showToast("⚠️ " + (data.detail || data.reply || "큐브 사용 실패"));
+                    renderCubeUI(activeWebUser);
+                }
 
             } catch (err) {
-                if (cubeBox) cubeBox.classList.remove("cube-spinning");
+                if (cubeBox) {
+                    cubeBox.classList.remove("cube-spinning");
+                    cubeBox.classList.remove("cube-charging-pulse");
+                }
                 if (btn) btn.disabled = false;
-                alert("큐브 요청 오류: " + err.message);
+                showToast("⚠️ 큐브 요청 오류: " + err.message);
             }
         }
 
         async function executeWebCubeBuy(count) {
             if (!activeWebToken) return;
-            const cost = count * 15000;
-            if (!confirm(`미라클 큐브 ${count}개를 ${cost.toLocaleString()}P로 구매하시겠습니까?`)) return;
 
             try {
                 const apiBase = getApiBaseUrl();
@@ -9892,10 +10900,10 @@
                         renderCubeUI(activeWebUser);
                     }
                 } else {
-                    alert(data.detail || data.reply || "구매 실패");
+                    showToast("⚠️ " + (data.detail || data.reply || "구매 실패"));
                 }
             } catch (err) {
-                alert("오류: " + err.message);
+                showToast("⚠️ 오류: " + err.message);
             }
         }
 
@@ -9917,10 +10925,10 @@
                         renderCubeUI(activeWebUser);
                     }
                 } else {
-                    alert(data.detail || data.reply || "환급 실패");
+                    showToast("⚠️ " + (data.detail || data.reply || "환급 실패"));
                 }
             } catch (err) {
-                alert("오류: " + err.message);
+                showToast("⚠️ 오류: " + err.message);
             }
         }
 
@@ -10258,6 +11266,10 @@
         // 4. Web Inventory (가방 & 장비함) Logic
         // =========================================================
         async function openWebInventoryModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                switchTab('inspector');
+                return;
+            }
             if (!activeWebToken) {
                 openWebLoginModal();
                 return;
@@ -10678,8 +11690,8 @@
                 // Category Filter
                 if (currentStockholdersFilter === "long" && b.is_short) return false;
                 if (currentStockholdersFilter === "short" && !b.is_short) return false;
-                if (currentStockholdersFilter === "onex" && b.product_type !== "ONE_X") return false;
-                if (currentStockholdersFilter === "high_lev" && !(b.product_type.includes("TEN") || b.product_type.includes("FIVE") || b.product_type.includes("10") || b.product_type.includes("5"))) return false;
+                if (currentStockholdersFilter === "onex" && b.product_type !== "1X" && b.product_type !== "ONE_X" && b.product_type !== "1x" && !(b.product_name && b.product_name.includes("1X"))) return false;
+                if (currentStockholdersFilter === "high_lev" && !(b.product_type.includes("TEN") || b.product_type.includes("10") || b.product_type.includes("20") || b.product_type.includes("40") || b.product_type.includes("60"))) return false;
 
                 // Search Query Filter
                 if (query) {
@@ -10848,9 +11860,6 @@
                 openWebLoginModal();
                 return;
             }
-            const label = productType;
-            const promptMsg = isAllIn ? `[${label}] 포지션을 전량 매도하시겠습니까?` : `[${label}] 포지션을 ${qty}주 매도하시겠습니까?`;
-            if (!confirm(promptMsg)) return;
 
             try {
                 const apiBase = getApiBaseUrl();
@@ -10875,10 +11884,530 @@
                     fetchStockholdersData();
                     fetchMarketState();
                 } else {
-                    alert(data.detail || data.reply || "매도 처리에 실패했습니다.");
+                    showToast("⚠️ " + (data.detail || data.reply || "매도 처리에 실패했습니다."));
                 }
             } catch (err) {
-                alert("매도 요청 중 오류 발생: " + err.message);
+                showToast("⚠️ 매도 요청 중 오류 발생: " + err.message);
+            }
+        }
+
+        // =========================================================
+        // 13. Central Bank (치즈나베 중앙은행) Web Logic
+        // =========================================================
+        let activeBankData = null;
+
+        function openWebBankModal() {
+            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
+                showToast("ℹ️ 안내 전용 모드에서는 은행 창구를 지원하지 않습니다.");
+                return;
+            }
+            if (!activeWebToken) {
+                openWebLoginModal();
+                return;
+            }
+            document.getElementById("web-bank-modal").style.display = "flex";
+            loadBankStatus();
+        }
+
+        function closeWebBankModal() {
+            document.getElementById("web-bank-modal").style.display = "none";
+        }
+
+        function switchBankTab(tabName) {
+            const tabs = ['deposit', 'savings', 'fund', 'insurance', 'loan'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`bank-tab-btn-${t}`);
+                const panel = document.getElementById(`bank-subtab-${t}`);
+                const isActive = t === tabName;
+                if (btn) {
+                    btn.classList.toggle('active', isActive);
+                    btn.style.background = isActive ? 'linear-gradient(135deg, #1e3a8a, #2563eb)' : '#0f172a';
+                    btn.style.color = isActive ? '#fff' : '#94a3b8';
+                    btn.style.borderColor = isActive ? '#60a5fa' : 'var(--border-color)';
+                }
+                if (panel) {
+                    panel.style.display = isActive ? 'block' : 'none';
+                }
+            });
+        }
+
+        async function loadBankStatus() {
+            if (!activeWebToken) return;
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/info?token=${encodeURIComponent(activeWebToken)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    }
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast("⚠️ 은행 정보 조회 실패: " + (err.detail || res.statusText));
+                }
+            } catch (err) {
+                showToast("⚠️ 은행 통신 오류: " + err.message);
+            }
+        }
+
+        function renderBankUI(bank) {
+            if (!bank) return;
+
+            // Overview Deck
+            const balEl = document.getElementById("bank-deck-balance");
+            const cashEl = document.getElementById("bank-deck-cash");
+            const debtEl = document.getElementById("bank-deck-debt");
+            const credEl = document.getElementById("bank-deck-credit");
+
+            if (balEl) balEl.textContent = `${(bank.bank_balance || 0).toLocaleString()}P`;
+            if (cashEl) cashEl.textContent = `${(bank.points || 0).toLocaleString()}P`;
+            if (debtEl) {
+                const curDebt = bank.debt || 0;
+                const lim = bank.credit?.limit || 0;
+                debtEl.textContent = `${curDebt.toLocaleString()}P / ${lim.toLocaleString()}P`;
+                debtEl.style.color = curDebt > 0 ? '#f87171' : '#4ade80';
+            }
+            if (credEl && bank.credit) {
+                credEl.textContent = `${bank.credit.tier || 4}등급 (${bank.credit.tier_name || 'BBB'})`;
+            }
+
+            // Tab 1: Deposit / Withdraw
+            // (Quick amt buttons use activeBankData / activeWebUser directly)
+
+            // Tab 2: Installment Savings
+            const savActiveCard = document.getElementById("bank-savings-active-card");
+            const savOpenCard = document.getElementById("bank-savings-open-card");
+            if (bank.savings) {
+                if (savActiveCard) savActiveCard.style.display = "block";
+                if (savOpenCard) savOpenCard.style.display = "none";
+                const s = bank.savings;
+                const badge = document.getElementById("bank-sav-badge");
+                const pFill = document.getElementById("bank-sav-progress-fill");
+                const roundsEl = document.getElementById("bank-sav-rounds");
+                const perRoundEl = document.getElementById("bank-sav-per-round");
+                const depEl = document.getElementById("bank-sav-deposited");
+                const estEl = document.getElementById("bank-sav-est-payout");
+
+                if (badge) badge.textContent = `${s.current_rounds} / ${s.target_rounds} 경기`;
+                if (pFill) pFill.style.width = `${Math.min(100, s.progress_pct || 0)}%`;
+                if (roundsEl) roundsEl.textContent = `${s.current_rounds}회 (목표 ${s.target_rounds}회)`;
+                if (perRoundEl) perRoundEl.textContent = `${(s.per_round || 0).toLocaleString()}P`;
+                if (depEl) depEl.textContent = `${(s.total_deposited || 0).toLocaleString()}P`;
+                if (estEl) estEl.textContent = `${(s.estimated_payout || 0).toLocaleString()}P (+20% 특별 만기 이자)`;
+            } else {
+                if (savActiveCard) savActiveCard.style.display = "none";
+                if (savOpenCard) savOpenCard.style.display = "block";
+            }
+
+            // Tab 3: Mahjong Index Fund
+            const f = bank.fund || {};
+            const navBadge = document.getElementById("bank-fund-nav-badge");
+            const myUnits = document.getElementById("bank-fund-my-units");
+            const myInvested = document.getElementById("bank-fund-my-invested");
+            const myVal = document.getElementById("bank-fund-my-valuation");
+            const myPnl = document.getElementById("bank-fund-my-pnl");
+
+            if (navBadge) {
+                const navVal = Number(f.nav || 1000.0);
+                navBadge.textContent = `NAV: ${navVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}P`;
+            }
+            if (myUnits) myUnits.textContent = `${Number(f.units || 0).toFixed(4)}좌`;
+            if (myInvested) myInvested.textContent = `${Number(f.invested || 0).toLocaleString()}P`;
+            if (myVal) myVal.textContent = `${Number(f.valuation || 0).toLocaleString()}P`;
+            if (myPnl) {
+                const pnl = Number(f.pnl || 0);
+                const pnlPct = Number(f.pnl_pct || 0);
+                const pnlSign = pnl >= 0 ? '+' : '';
+                myPnl.textContent = `${pnlSign}${pnl.toLocaleString()}P (${pnlSign}${pnlPct.toFixed(2)}%)`;
+                myPnl.style.color = pnl >= 0 ? '#4ade80' : '#f87171';
+            }
+
+            // Tab 4: Insurance
+            const ins = bank.insurance;
+            const insBadge = document.getElementById("bank-ins-status-badge");
+            const insMatches = document.getElementById("bank-ins-matches");
+            const insClaims = document.getElementById("bank-ins-claims");
+            const insBuyBtn = document.getElementById("bank-ins-buy-btn");
+
+            if (ins && ins.active) {
+                if (insBadge) {
+                    insBadge.textContent = "🛡️ 보장 진행 중";
+                    insBadge.style.background = "rgba(34, 197, 94, 0.25)";
+                    insBadge.style.color = "#4ade80";
+                }
+                if (insMatches) insMatches.textContent = `${ins.matches_left}경기 남음`;
+                if (insClaims) insClaims.textContent = `${ins.claims_left}회 보장 가능`;
+                if (insBuyBtn) {
+                    insBuyBtn.disabled = true;
+                    insBuyBtn.style.opacity = "0.6";
+                    insBuyBtn.style.cursor = "not-allowed";
+                    insBuyBtn.textContent = `🛡️ 현재 보험 보장 적용 중 (${ins.matches_left}경기 남음)`;
+                }
+            } else {
+                if (insBadge) {
+                    insBadge.textContent = "미가입";
+                    insBadge.style.background = "#334155";
+                    insBadge.style.color = "#94a3b8";
+                }
+                if (insMatches) insMatches.textContent = "0경기";
+                if (insClaims) insClaims.textContent = "1회";
+                if (insBuyBtn) {
+                    insBuyBtn.disabled = false;
+                    insBuyBtn.style.opacity = "1";
+                    insBuyBtn.style.cursor = "pointer";
+                    insBuyBtn.textContent = "🏥 50,000P로 파괴 안심 보험 가입하기";
+                }
+            }
+
+            // Tab 5: Credit Loan
+            if (bank.credit) {
+                const c = bank.credit;
+                const loanTier = document.getElementById("bank-loan-tier");
+                const loanScore = document.getElementById("bank-loan-score");
+                const loanRate = document.getElementById("bank-loan-rate");
+                const loanLimit = document.getElementById("bank-loan-limit");
+                const loanCurrent = document.getElementById("bank-loan-current");
+                const loanAvail = document.getElementById("bank-loan-avail");
+
+                if (loanTier) loanTier.textContent = `${c.tier || 4}등급 (${c.tier_name || 'BBB'})`;
+                if (loanScore) loanScore.textContent = `${c.score || 600}점`;
+                if (loanRate) loanRate.textContent = `${c.rate_pct || 1.8}%`;
+                if (loanLimit) loanLimit.textContent = `${(c.limit || 0).toLocaleString()}P`;
+                if (loanCurrent) loanCurrent.textContent = `${(bank.debt || 0).toLocaleString()}P`;
+                if (loanAvail) loanAvail.textContent = `${(c.available || 0).toLocaleString()}P`;
+            }
+        }
+
+        async function executeWebBankDeposit() {
+            if (!activeWebToken) return;
+            const amtVal = document.getElementById("bank-deposit-amt")?.value;
+            if (!amtVal || parseInt(amtVal, 10) <= 0) {
+                showToast("⚠️ 올바른 입금 금액을 입력해주세요.");
+                return;
+            }
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/deposit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`📥 ${data.reply || '예금 입금이 완료되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                    const input = document.getElementById("bank-deposit-amt");
+                    if (input) input.value = "";
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "입금 처리에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 입금 요청 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankWithdraw() {
+            if (!activeWebToken) return;
+            const amtVal = document.getElementById("bank-withdraw-amt")?.value;
+            if (!amtVal || parseInt(amtVal, 10) <= 0) {
+                showToast("⚠️ 올바른 출금 금액을 입력해주세요.");
+                return;
+            }
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/withdraw`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`📤 ${data.reply || '예금 출금이 완료되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                    const input = document.getElementById("bank-withdraw-amt");
+                    if (input) input.value = "";
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "출금 처리에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 출금 요청 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankSavingsOpen() {
+            if (!activeWebToken) return;
+            const amtVal = document.getElementById("bank-sav-input-amt")?.value;
+            const roundsVal = document.getElementById("bank-sav-input-rounds")?.value || "5";
+
+            if (!amtVal || parseInt(amtVal, 10) < 5000) {
+                showToast("⚠️ 경기당 납입 금액은 최소 5,000P 이상이어야 합니다.");
+                return;
+            }
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/savings/open`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        token: activeWebToken,
+                        per_round: amtVal,
+                        rounds: roundsVal
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`📈 ${data.reply || '정기적금 가입이 완료되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "적금 가입에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 적금 요청 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankSavingsCancel() {
+            if (!activeWebToken) return;
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/savings/cancel`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`⚠️ ${data.reply || '적금이 중도해지되고 원금이 보통예금으로 환급되었습니다.'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "적금 해지에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankFundBuy() {
+            if (!activeWebToken) return;
+            const amtVal = document.getElementById("bank-fund-buy-amt")?.value;
+            if (!amtVal || parseInt(amtVal, 10) < 10000) {
+                showToast("⚠️ 펀드 투자 금액은 최소 10,000P 이상이어야 합니다.");
+                return;
+            }
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/fund/buy`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`📈 ${data.reply || '마작 지수 펀드 매수가 체결되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                    const input = document.getElementById("bank-fund-buy-amt");
+                    if (input) input.value = "";
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "펀드 매수에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 펀드 매수 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankFundSell() {
+            if (!activeWebToken) return;
+            const unitsVal = (document.getElementById("bank-fund-sell-units")?.value || "").trim();
+            if (!unitsVal) {
+                showToast("⚠️ 환매할 좌수 또는 '전액'을 입력해주세요.");
+                return;
+            }
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/fund/sell`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken, units: unitsVal })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`📉 ${data.reply || '마작 지수 펀드 환매가 완료되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                    const input = document.getElementById("bank-fund-sell-units");
+                    if (input) input.value = "";
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "펀드 환매에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 펀드 환매 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankInsuranceBuy() {
+            if (!activeWebToken) return;
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/insurance/buy`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`🛡️ ${data.reply || '스타포스 안심 파괴 보험 가입이 완료되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "보험 가입에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 보험 가입 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankLoanBorrow() {
+            if (!activeWebToken) return;
+            const amtVal = document.getElementById("bank-loan-borrow-amt")?.value;
+            if (!amtVal || parseInt(amtVal, 10) <= 0) {
+                showToast("⚠️ 대출 신청 금액을 입력해주세요.");
+                return;
+            }
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/loan/borrow`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`💳 ${data.reply || '신용대출이 정상 실행되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                    const input = document.getElementById("bank-loan-borrow-amt");
+                    if (input) input.value = "";
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "대출 실행에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 대출 요청 오류: " + err.message);
+            }
+        }
+
+        async function executeWebBankLoanRepay() {
+            if (!activeWebToken) return;
+            const amtVal = (document.getElementById("bank-loan-repay-amt")?.value || "").trim();
+            if (!amtVal) {
+                showToast("⚠️ 상환할 금액 또는 '전액'을 입력해주세요.");
+                return;
+            }
+
+            try {
+                const apiBase = getApiBaseUrl();
+                const res = await fetch(`${apiBase}/api/web/bank/loan/repay`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(`💰 ${data.reply || '대출 원금 상환이 완료되었습니다!'}`);
+                    if (data.user) {
+                        activeWebUser = data.user;
+                        updateWebUserBar(activeWebUser);
+                    }
+                    if (data.bank) {
+                        activeBankData = data.bank;
+                        renderBankUI(activeBankData);
+                    } else {
+                        loadBankStatus();
+                    }
+                    const input = document.getElementById("bank-loan-repay-amt");
+                    if (input) input.value = "";
+                } else {
+                    showToast("⚠️ " + (data.detail || data.reply || "상환 처리에 실패했습니다."));
+                }
+            } catch (err) {
+                showToast("⚠️ 상환 요청 오류: " + err.message);
             }
         }
 

@@ -262,7 +262,21 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
 
     cash = u.points
     debt = getattr(u, "debt", 0) or 0
-    net_worth = int(round(cash + total_stock_value - debt))
+    bank_info = te.get_user_bank_info(db, u, state) if db else {
+        "bank_balance": getattr(u, "bank_balance", 0) or 0,
+        "points": cash,
+        "interest_rate_pct": 0.5,
+        "savings": None,
+        "fund": {"units": 0.0, "valuation": 0, "nav": 1000.0, "pnl": 0, "pnl_pct": 0.0},
+        "fund_valuation": 0,
+        "insurance": None,
+        "credit": te.get_user_credit_info(u, market_state=state),
+        "debt": debt,
+        "special_snipe_scrolls": te.get_user_special_snipe_scrolls(u)
+    }
+    bank_bal = int(bank_info.get("bank_balance", 0) or 0)
+    fund_val = int(bank_info.get("fund_valuation", 0) or 0)
+    net_worth = int(round(cash + bank_bal + fund_val + total_stock_value - debt))
 
     # 2. Equipments & Potentials
     equipments = []
@@ -320,6 +334,7 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
         "boost_scroll_count": getattr(u, "boost_scroll_count", 0) or 0,
         "downgrade_scroll_count": getattr(u, "downgrade_scroll_count", 0) or 0,
         "snipe_scroll_count": getattr(u, "snipe_scroll_count", 0) or 0,
+        "special_snipe_scrolls": te.get_user_special_snipe_scrolls(u) if hasattr(te, "get_user_special_snipe_scrolls") else {},
         "cube_count": getattr(u, "cube_count", 0) or 0,
         "cube_fragments": getattr(u, "cube_fragments", 0) or 0,
         "arm_shield": getattr(u, "arm_shield", True),
@@ -342,16 +357,23 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
     cooldown_sec = effective_cd_min * 60
 
     remaining_cd_sec = 0
+    next_mine_time_epoch = 0.0
+    last_mined_epoch = 0.0
     if u.last_mined_at:
         last_t = u.last_mined_at if u.last_mined_at.tzinfo else u.last_mined_at.replace(tzinfo=timezone.utc)
+        last_mined_epoch = last_t.timestamp()
         elapsed = (datetime.now(timezone.utc) - last_t).total_seconds()
         if elapsed < cooldown_sec:
             remaining_cd_sec = int(cooldown_sec - elapsed)
+            next_mine_time_epoch = last_mined_epoch + cooldown_sec
 
     mining_status = {
         "can_mine": remaining_cd_sec <= 0,
         "remaining_cd_sec": remaining_cd_sec,
+        "next_mine_time_epoch": next_mine_time_epoch,
+        "last_mined_epoch": last_mined_epoch,
         "effective_cd_min": effective_cd_min,
+        "effective_cd_sec": cooldown_sec,
         "pickaxe_level": eq_lvl,
         "pickaxe_name": p_info["name"],
         "yield_multiplier": round(p_info["yield_multiplier"] + pot_eff_equipped.get("yield_boost", 0.0), 2),
@@ -394,11 +416,13 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
         "username": u.username,
         "points": u.points,
         "cash": cash,
+        "bank_balance": bank_bal,
         "debt": debt,
         "net_worth": net_worth,
         "stock_value": round(total_stock_value, 1),
         "total_mined": getattr(u, "total_mined", 0.0) or 0.0,
         "credit": credit_info,
+        "bank": bank_info,
         "max_leverage_multiplier": max_lev,
         "beast_heart_count": beast_cnt,
         "positions": positions,
@@ -430,7 +454,7 @@ def get_all_users_inspector_data(db) -> List[Dict[str, Any]]:
     res.sort(key=lambda x: x["net_worth"], reverse=True)
     return res
 
-def sync_docs_market_state(state):
+def sync_docs_market_state(state, db=None):
     """Save latest market state to docs/market_state.json for GitHub Pages."""
     try:
         docs_dir = os.path.join(os.path.dirname(__file__), "docs")
@@ -439,10 +463,28 @@ def sync_docs_market_state(state):
             day_open = data.get("day_open_price", 2034)
             day_diff = state.current_price - day_open
             day_diff_pct = (day_diff / day_open * 100.0) if day_open > 0 else 0.0
+
+            total_users = 0
+            if db is not None:
+                try:
+                    total_users = db.query(models.User).count()
+                except Exception:
+                    pass
+            if total_users == 0:
+                try:
+                    users_file = os.path.join(docs_dir, "users_state.json")
+                    if os.path.exists(users_file):
+                        with open(users_file, "r", encoding="utf-8") as uf:
+                            u_data = json.load(uf)
+                            total_users = u_data.get("count", len(u_data.get("users", [])))
+                except Exception:
+                    pass
+
             payload = {
                 **data,
                 "day_diff": day_diff,
                 "day_diff_pct": round(day_diff_pct, 2),
+                "total_users": total_users,
                 "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
             }
             json_path = os.path.join(docs_dir, "market_state.json")
@@ -473,7 +515,7 @@ def sync_all_docs(db, state=None):
     """Convenience helper to sync both market_state.json and users_state.json."""
     if state is None:
         state = te.get_market_state(db)
-    sync_docs_market_state(state)
+    sync_docs_market_state(state, db=db)
     sync_docs_users_state(db)
 
 latest_tunnel_url: Optional[str] = None
@@ -1610,6 +1652,7 @@ class WebCubeUseRequest(BaseModel):
     target_keyword: Optional[str] = None
     use_snipe: Optional[bool] = False
     lock_lines: Optional[List[int]] = None
+    special_snipe_code: Optional[str] = None
 
 class WebCubeBuyRequest(BaseModel):
     token: str
@@ -1656,6 +1699,42 @@ class WebLotteryBuyRequest(BaseModel):
     token: str
     count: Optional[Union[int, str]] = 1
     lottery_type: Optional[str] = "basic"
+
+class WebBankDepositRequest(BaseModel):
+    token: str
+    amount: Union[int, str]
+
+class WebBankWithdrawRequest(BaseModel):
+    token: str
+    amount: Union[int, str]
+
+class WebBankSavingsOpenRequest(BaseModel):
+    token: str
+    per_round: Union[int, str]
+    rounds: Optional[Union[int, str]] = "5"
+
+class WebBankSavingsCancelRequest(BaseModel):
+    token: str
+
+class WebBankFundBuyRequest(BaseModel):
+    token: str
+    amount: Union[int, str]
+
+class WebBankFundSellRequest(BaseModel):
+    token: str
+    units: Optional[Union[int, float, str]] = "전부"
+
+class WebBankInsuranceBuyRequest(BaseModel):
+    token: str
+
+class WebBankLoanBorrowRequest(BaseModel):
+    token: str
+    amount: Union[int, str]
+
+class WebBankLoanRepayRequest(BaseModel):
+    token: str
+    amount: Optional[Union[int, str]] = "전액"
+
 
 
 # ---------------------------------------------------------
@@ -2256,6 +2335,45 @@ async def api_transfer(req: TransferRequest, db=Depends(get_db)):
 # ---------------------------------------------------------
 # Web Desk & Interactive Lounge Endpoints
 # ---------------------------------------------------------
+def should_broadcast_web_notice(action_type: str, details: Optional[Dict[str, Any]], reply: str) -> bool:
+    """Filter to ensure web actions do not spam stream chat, only grand milestones."""
+    if not details or not reply:
+        return False
+
+    # 1. Starforce Pickaxe Milestones: exactly 15, 20, 25, 30 stars!
+    if action_type == "enhancement":
+        outcome = str(details.get("outcome", ""))
+        new_level = int(details.get("new_level", 0))
+        if outcome == "success" and new_level in [15, 20, 25, 30]:
+            return True
+        return False
+
+    # 2. Casino Games: Slots, Dice, Race, Mahjong
+    if action_type in ["slot", "dice", "race", "mahjong", "casino"]:
+        payout = int(details.get("gross_payout") or details.get("net_payout") or details.get("payout") or 0)
+        is_jackpot = bool(details.get("jackpot") or details.get("is_jackpot"))
+        bet_type = str(details.get("bet_type", ""))
+        won = bool(details.get("won", False))
+        if won and (payout >= 500000 or is_jackpot or bet_type == "exact"):
+            return True
+        return False
+
+    # 3. Lottery: 1st prize or payout >= 500,000P
+    if action_type == "lottery":
+        rank = details.get("rank") or details.get("prize_rank")
+        payout = int(details.get("prize") or details.get("payout") or 0)
+        if rank in [1, "1등"] or payout >= 500000:
+            return True
+        return False
+
+    return False
+
+def maybe_dispatch_web_grand_notice(action_type: str, details: Optional[Dict[str, Any]], reply: str):
+    """Dispatches a chat notice only if it qualifies as a grand celebration."""
+    if reply and should_broadcast_web_notice(action_type, details, reply):
+        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+
+
 def authenticate_web_user(db: Session, token: Optional[str]) -> User:
     """Helper to authenticate user via web session token."""
     if not token:
@@ -2378,7 +2496,6 @@ async def api_web_transfer(req: WebTransferRequest, db=Depends(get_db)):
         "market_state": serialize_market_state(state),
         "recent_trades": list(recent_trades)
     })
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     sync_all_docs(db, state)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
     return {"success": True, "reply": reply, "details": details, "user": user_data}
@@ -2404,7 +2521,6 @@ async def api_web_exchange_buy(req: WebExchangeBuyRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_buy_exchange(db, user.id, user.username, req.listing_token)
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2420,7 +2536,6 @@ async def api_web_exchange_sell_item(req: WebExchangeSellItemRequest, db=Depends
     )
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2436,7 +2551,6 @@ async def api_web_exchange_sell_equipment(req: WebExchangeSellEquipmentRequest, 
     )
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2450,7 +2564,6 @@ async def api_web_exchange_cancel(req: WebExchangeCancelRequest, db=Depends(get_
     ok, reply, details = te.execute_cancel_exchange(db, user.id, user.username, req.listing_token)
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2478,6 +2591,7 @@ async def api_web_arena_open(req: WebArenaOpenRequest, db=Depends(get_db)):
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    await manager.broadcast({"type": "pvp_open", "data": details, "reply": reply})
     return {"success": True, "reply": reply, "details": details}
 
 
@@ -2492,6 +2606,7 @@ async def api_web_arena_join(req: WebArenaJoinRequest, db=Depends(get_db)):
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    await manager.broadcast({"type": "pvp_duel", "data": details, "reply": reply})
     return {"success": True, "reply": reply, "details": details, "user": user_data}
 
 
@@ -2503,6 +2618,7 @@ async def api_web_arena_challenge(req: WebArenaChallengeRequest, db=Depends(get_
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    await manager.broadcast({"type": "pvp_challenge", "data": details, "reply": reply})
     return {"success": True, "reply": reply, "details": details}
 
 
@@ -2517,6 +2633,7 @@ async def api_web_arena_accept(req: WebArenaActionRequest, db=Depends(get_db)):
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    await manager.broadcast({"type": "pvp_duel", "data": details, "reply": reply})
     return {"success": True, "reply": reply, "details": details, "user": user_data}
 
 
@@ -2528,6 +2645,7 @@ async def api_web_arena_decline(req: WebArenaActionRequest, db=Depends(get_db)):
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    await manager.broadcast({"type": "pvp_declined", "data": details, "reply": reply})
     return {"success": True, "reply": reply, "details": details}
 
 
@@ -2562,7 +2680,6 @@ async def api_web_trade_stock(req: WebStockTradeRequest, db=Depends(get_db)):
             "market_state": serialize_market_state(state),
             "recent_trades": list(recent_trades)
         })
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2576,8 +2693,6 @@ async def api_web_mining_mine(req: WebMineRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_mining(db, user.id, user.username)
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    if reply:
-        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     state = te.get_market_state(db)
     leaderboard = te.get_leaderboard(db, top_n=3)
     await manager.broadcast({
@@ -2618,7 +2733,7 @@ async def api_web_enhancement_upgrade(req: WebEnhanceRequest, db=Depends(get_db)
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     if reply:
-        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+        maybe_dispatch_web_grand_notice("enhancement", details, reply)
     state = te.get_market_state(db)
     leaderboard = te.get_leaderboard(db, top_n=3)
     await manager.broadcast({
@@ -2641,12 +2756,11 @@ async def api_web_cube_use(req: WebCubeUseRequest, db=Depends(get_db)):
         item_id_or_index=str(req.equipment_id) if req.equipment_id else None,
         target_keyword=req.target_keyword,
         use_snipe=bool(req.use_snipe),
-        lock_lines=req.lock_lines
+        lock_lines=req.lock_lines,
+        special_snipe_code=req.special_snipe_code
     )
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    if reply:
-        asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     state = te.get_market_state(db)
     await manager.broadcast({
         "type": "cube_used",
@@ -2743,7 +2857,6 @@ async def api_web_merchant_buy(req: WebMerchantBuyRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_buy_merchant_item(db, user.id, user.username, req.item_key, str(req.quantity or 1))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2764,7 +2877,7 @@ async def api_web_casino_slot(req: WebCasinoSlotRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_slot_gamble(db, user.id, user.username, str(req.bet))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    maybe_dispatch_web_grand_notice("slot", details, reply)
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2778,7 +2891,7 @@ async def api_web_casino_dice(req: WebCasinoDiceRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_dice_gamble(db, user.id, user.username, req.choice, str(req.bet))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    maybe_dispatch_web_grand_notice("dice", details, reply)
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2792,7 +2905,7 @@ async def api_web_casino_race(req: WebCasinoRaceRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_yakuman_race_gamble(db, user.id, user.username, req.runner, str(req.bet))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    maybe_dispatch_web_grand_notice("race", details, reply)
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2806,7 +2919,7 @@ async def api_web_casino_mahjong(req: WebCasinoMahjongRequest, db=Depends(get_db
     ok, reply, details = te.execute_mahjong_tile_gamble(db, user.id, user.username, req.choice, str(req.bet))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    maybe_dispatch_web_grand_notice("mahjong", details, reply)
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
@@ -2831,11 +2944,144 @@ async def api_web_lottery_buy(req: WebLotteryBuyRequest, db=Depends(get_db)):
     ok, reply, details = te.execute_buy_lottery(db, user.id, user.username, count=cnt, lottery_type=req.lottery_type or "basic")
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
-    asyncio.create_task(dispatch_chat_notice(reply, fallback_bot=bot_instance))
+    maybe_dispatch_web_grand_notice("lottery", details, reply)
     sync_all_docs(db)
     state = te.get_market_state(db)
     user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
     return {"success": True, "reply": reply, "details": details, "user": user_data, "lottery": te.get_lottery_event_state(db)}
+
+
+# ---------------------------------------------------------
+# Central Bank (치즈나베 중앙은행) Web Endpoints
+# ---------------------------------------------------------
+@app.get("/api/web/bank/info")
+async def api_web_bank_info(
+    token: Optional[str] = None,
+    x_web_token: Optional[str] = Header(None, alias="x-web-token"),
+    db=Depends(get_db)
+):
+    """Fetches Central Bank account details (demand deposit, savings, fund, insurance, loan)."""
+    eff_token = token or x_web_token
+    user = authenticate_web_user(db, eff_token)
+    info = te.get_user_bank_info(user, db=db)
+    return {"success": True, "bank": info}
+
+
+@app.post("/api/web/bank/deposit")
+async def api_web_bank_deposit(req: WebBankDepositRequest, db=Depends(get_db)):
+    """Deposit cash into demand deposit (+0.5% interest per round)."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_bank_deposit(db, user.id, user.username, str(req.amount))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/withdraw")
+async def api_web_bank_withdraw(req: WebBankWithdrawRequest, db=Depends(get_db)):
+    """Withdraw cash from demand deposit."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_bank_withdraw(db, user.id, user.username, str(req.amount))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/savings/open")
+async def api_web_bank_savings_open(req: WebBankSavingsOpenRequest, db=Depends(get_db)):
+    """Opens periodic installment savings account (+20% bonus interest at maturity)."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_open_savings(db, user.id, user.username, str(req.per_round), str(req.rounds or 5))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/savings/cancel")
+async def api_web_bank_savings_cancel(req: WebBankSavingsCancelRequest, db=Depends(get_db)):
+    """Cancels active installment savings and refunds principal."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_cancel_savings(db, user.id, user.username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/fund/buy")
+async def api_web_bank_fund_buy(req: WebBankFundBuyRequest, db=Depends(get_db)):
+    """Invests points in Mahjong Index Fund."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_buy_fund(db, user.id, user.username, str(req.amount))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/fund/sell")
+async def api_web_bank_fund_sell(req: WebBankFundSellRequest, db=Depends(get_db)):
+    """Redeems Mahjong Index Fund units for cash."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_sell_fund(db, user.id, user.username, str(req.units or "전부"))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/insurance/buy")
+async def api_web_bank_insurance_buy(req: WebBankInsuranceBuyRequest, db=Depends(get_db)):
+    """Purchases Starforce Destruction Insurance (5 rounds coverage, 1,000,000P payout)."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_buy_insurance(db, user.id, user.username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/loan/borrow")
+async def api_web_bank_loan_borrow(req: WebBankLoanBorrowRequest, db=Depends(get_db)):
+    """Borrows loan from central treasury according to credit tier."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_borrow(db, user.id, user.username, str(req.amount))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
+
+
+@app.post("/api/web/bank/loan/repay")
+async def api_web_bank_loan_repay(req: WebBankLoanRepayRequest, db=Depends(get_db)):
+    """Repays outstanding debt to central treasury."""
+    user = authenticate_web_user(db, req.token)
+    ok, reply, details = te.execute_repay(db, user.id, user.username, str(req.amount or "전액"))
+    if not ok:
+        raise HTTPException(status_code=400, detail=reply)
+    sync_all_docs(db)
+    state = te.get_market_state(db)
+    user_data = serialize_user_inspector_data(user, state, time.time(), db=db)
+    return {"success": True, "reply": reply, "details": details, "user": user_data, "bank": te.get_user_bank_info(user, db=db)}
 
 
 

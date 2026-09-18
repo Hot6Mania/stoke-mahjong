@@ -107,7 +107,7 @@ HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내]
 • 상인: !신비상인, !상인구매 [1/2/3/4] [수량], !아이템 (파방/상승/하강/잠재저격 한정 판매)
 • 거래소: !거래소, !아이템판매 [파방/하강/상승/저격/큐브] [수량] [가격], !장비등록 [번호] [가격], !거래소구매 [번호], !거래소취소 [번호]
 • 장비: !상태창, !내장비, !장착 [번호], !강화 [파방/하강/상승/풀], !주문서 [파방/하강/상승] [on/off], !큐브구매 [수량], !큐브 [번호] [저격옵션], !저격목록, !큐브잠금 [번호], !옵션잠금 [1~3], !큐브조각, !피버, !곡괭이구매 [0/5/10]
-• 도박: !슬롯 [금액], !주사위 [홀/짝/대/소] [금액], !마작 [만/삭/통 or 1만~9통] [금액], !경마 [대삼원/사안커/국사무쌍/구련보등] [금액], !카지노, !슬롯확률
+• 도박: !슬롯 [금액], !주사위 [홀/짝/대/소] [금액], !마작 [만/삭/통 or 1만~9통] [금액], !경마 [대삼원/스안커/국사무쌍/구련보등] [금액], !카지노, !슬롯확률
 • 투기장: !대결 @유저 [금액], !수락, !거절, !투기장 오픈 [금액], !투기장 참가 (⚔️ 1:1 맞짱 주사위 데스매치)
 • 종목: 1X, 2X, 3X, 5X, 10X (레버리지) / INV, 2X_INV~10X_INV (인버스) [야수의 심장: 20X, 40X, 60X] (약어: !약어)
 📖 상세 웹 가이드: {GUIDE_WEB_URL}"""
@@ -177,6 +177,33 @@ def handle_chat_command(
     tokens = msg.split()
     if len(tokens) > 1 and tokens[0] == "!":
         tokens = [f"!{tokens[1]}"] + tokens[2:]
+
+    # Normalize separated leverage & direction tokens (e.g. ['!40', '롱', '올인'] -> ['!40롱', '올인'], ['!매수', '40', '롱', '올인'] -> ['!매수', '40롱', '올인'])
+    merged_tokens = []
+    skip_next = 0
+    for i, t in enumerate(tokens):
+        if skip_next > 0:
+            skip_next -= 1
+            continue
+        has_bang = t.startswith("!")
+        raw_num = t[1:] if has_bang else t
+        is_lev_num = raw_num in SUPPORTED_LEVERAGE_PREFIXES
+        is_lev_bae = raw_num.endswith("배") and raw_num[:-1] in SUPPORTED_LEVERAGE_PREFIXES
+        if (is_lev_num or is_lev_bae) and i + 1 < len(tokens):
+            next_t = tokens[i+1].strip().lower()
+            next2_t = tokens[i+2].strip().lower() if i + 2 < len(tokens) else ""
+            if is_lev_num and next_t == "배" and next2_t in ["롱", "숏", "인버스", "곱버스"]:
+                combo = f"!{raw_num}배{next2_t}" if has_bang else f"{raw_num}배{next2_t}"
+                merged_tokens.append(combo)
+                skip_next = 2
+                continue
+            elif next_t in ["롱", "숏", "배", "배롱", "배숏", "인", "곱", "인버스", "곱버스", "레버", "레버리지"]:
+                combo = f"!{raw_num}{next_t}" if has_bang else f"{raw_num}{next_t}"
+                merged_tokens.append(combo)
+                skip_next = 1
+                continue
+        merged_tokens.append(t)
+    tokens = merged_tokens
     cmd = tokens[0].lower()
 
     # 1. Help / System Guide Commands
@@ -466,6 +493,8 @@ def handle_chat_command(
             if clean_t in ["빚", "신용", "대출", "빚으로", "빚올인", "빚투", "신용올인"]:
                 is_margin = True
             elif parsed_prod:
+                if product_str and product_str != "1X" and clean_t in ["롱", "기본", "현물", "주", "배"]:
+                    continue
                 product_str = parsed_prod.value
             elif clean_t in SUPPORTED_LEVERAGE_PREFIXES:
                 product_str = f"{clean_t}X"
@@ -490,7 +519,10 @@ def handle_chat_command(
         direct_prod = parse_product_type(cand_sub)
 
         if direct_prod:
-            direct_qty = tokens[1] if len(tokens) >= 2 else "1"
+            rem_tokens = tokens[1:]
+            if rem_tokens and rem_tokens[0].strip().strip("'\"`’‘“”,;[]()").lower() in ["롱", "숏", "배", "배롱", "배숏", "인", "곱", "인버스", "곱버스", "레버", "레버리지"]:
+                rem_tokens = rem_tokens[1:]
+            direct_qty = rem_tokens[0] if rem_tokens else "1"
         else:
             # Check attached forms without space (e.g. !10배올인, !10롱올인, !10배풀매수, !10배전량, !10배매도, !10배10)
             from trading_engine import PRODUCT_SYNONYMS
@@ -1216,6 +1248,103 @@ def handle_chat_command(
         event = {"type": "account_transfer", "data": details} if success and details else None
         return reply, event
 
+    # 12-2. Central Bank (치즈나베 중앙은행)
+    if cmd in ["!은행", "!중앙은행", "!bank"]:
+        user = get_or_create_user(db, user_id, username)
+        info = te.get_user_bank_info(db, user)
+        sav = info.get("savings")
+        sav_str = f"{sav['per_round']:,}P ({sav['current_rounds']}/{sav['target_rounds']}회 | 누적: {sav['total_deposited']:,}P | 만기예상: {sav['estimated_payout']:,}P)" if sav else "미가입 (!적금 [회당금액])"
+        fund = info.get("fund", {})
+        fund_str = f"{fund.get('units', 0):,.4f}좌 (평가: {fund.get('valuation', 0):,}P | 수익률: {fund.get('pnl_pct', 0.0):+.2f}%)" if fund.get("units", 0) > 0 else "미보유 (!펀드매수 [금액])"
+        ins = info.get("insurance")
+        ins_str = f"가입 중 ({ins.get('matches_left', 0)}경기 남음 | 보장: {ins.get('coverage_amount', 1000000):,}P)" if ins else "미가입 (!보험 가입 [50,000P])"
+
+        report = (
+            f"🏛️ [치즈나베 중앙은행] {user.username}님의 종합 금융 계좌\n"
+            f"• 보통예금 잔액: {info['bank_balance']:,}P (경기당 +0.5% 복리 이자 지급 | !입금, !출금)\n"
+            f"• 정기적금: {sav_str}\n"
+            f"• 마작 지수 펀드: {fund_str}\n"
+            f"• 스타포스 파괴보험: {ins_str}\n"
+            f"• 신용 등급: {info['credit']['tier_name']} (대출 한도: {info['credit']['loan_limit']:,}P | 현재 빚: {info['debt']:,}P | !대출, !상환)\n"
+            f"• 보유 현금: {user.points:,}P"
+        )
+        return report, None
+
+    if cmd in ["!입금", "!예금", "!deposit"]:
+        if len(tokens) < 2:
+            return "💡 [보통예금 입금 사용법] !입금 [금액/올인] (예: !입금 50000, !입금 올인 | 경기 종료마다 +0.5% 복리 이자)", None
+        success, reply, details = te.execute_bank_deposit(db, user_id, username, tokens[1])
+        event = {"type": "bank_deposit", "data": details} if success and details else None
+        return reply, event
+
+    if cmd in ["!출금", "!인출", "!withdraw"]:
+        if len(tokens) < 2:
+            return "💡 [보통예금 출금 사용법] !출금 [금액/전액] (예: !출금 50000, !출금 전액)", None
+        success, reply, details = te.execute_bank_withdraw(db, user_id, username, tokens[1])
+        event = {"type": "bank_withdraw", "data": details} if success and details else None
+        return reply, event
+
+    if cmd in ["!적금", "!정기적금", "!적금가입", "!적금해지"]:
+        if cmd == "!적금해지" or (len(tokens) > 1 and tokens[1] in ["해지", "취소", "중도해지"]):
+            success, reply, details = te.execute_cancel_savings(db, user_id, username)
+            event = {"type": "bank_savings_cancel", "data": details} if success and details else None
+            return reply, event
+        if len(tokens) < 2:
+            return (
+                "💡 [정기적금 사용법] !적금 [회당금액] [판수(5 or 10)] 또는 !적금 해지\n"
+                "• 매 경기 마작 정산 시 지정 금액을 자동 적립하며, 만기 완납 시 +20% 보너스 이자 지급!\n"
+                "• 예시: !적금 10000 5, !적금 50000 10, !적금 해지"
+            ), None
+        per_amt = tokens[1]
+        rounds_val = tokens[2] if len(tokens) > 2 else "5"
+        success, reply, details = te.execute_open_savings(db, user_id, username, per_amt, rounds_val)
+        event = {"type": "bank_savings_open", "data": details} if success and details else None
+        return reply, event
+
+    if cmd in ["!펀드", "!마작펀드", "!펀드매수", "!펀드환매"]:
+        if cmd == "!펀드매수" or (len(tokens) > 1 and tokens[1] in ["매수", "구매", "투자"]):
+            amt_str = tokens[2] if len(tokens) > 2 else (tokens[1] if cmd == "!펀드매수" and len(tokens) > 1 else "올인")
+            success, reply, details = te.execute_buy_fund(db, user_id, username, amt_str)
+            event = {"type": "bank_fund_buy", "data": details} if success and details else None
+            return reply, event
+        if cmd == "!펀드환매" or (len(tokens) > 1 and tokens[1] in ["환매", "매도", "판매"]):
+            u_str = tokens[2] if len(tokens) > 2 else (tokens[1] if cmd == "!펀드환매" and len(tokens) > 1 else "전부")
+            success, reply, details = te.execute_sell_fund(db, user_id, username, u_str)
+            event = {"type": "bank_fund_sell", "data": details} if success and details else None
+            return reply, event
+        user = get_or_create_user(db, user_id, username)
+        info = te.get_user_bank_info(db, user)
+        f_info = info.get("fund", {})
+        state = get_market_state(db)
+        return (
+            f"🏛️📊 [치즈나베 마작 지수 펀드]\n"
+            f"• 현재 1좌 기준가(NAV): {getattr(state, 'fund_nav', 1000.0):,.2f}P\n"
+            f"• 내 보유 좌수: {f_info.get('units', 0):,.4f}좌 (투자원금: {f_info.get('invested', 0):,}P | 평가금: {f_info.get('valuation', 0):,}P | 손익: {f_info.get('pnl', 0):+,}P ({f_info.get('pnl_pct', 0.0):+.2f}%))\n"
+            f"• 사용법: !펀드매수 [금액/올인], !펀드환매 [좌수/전부]"
+        ), None
+
+    if cmd in ["!보험", "!파괴보험", "!보험가입", "!안심보험"]:
+        if len(tokens) > 1 and tokens[1] in ["가입", "신청", "구매"]:
+            success, reply, details = te.execute_buy_insurance(db, user_id, username)
+            event = {"type": "bank_insurance_buy", "data": details} if success and details else None
+            return reply, event
+        user = get_or_create_user(db, user_id, username)
+        b_data = te.get_user_bank_data(user)
+        ins = b_data.get("insurance")
+        if ins and ins.get("active"):
+            return (
+                f"🏥🛡️ [스타포스 안심 파괴 보험 가입 중]\n"
+                f"• 보장 상태: 유효 (잔여 {ins.get('matches_left', 0)}경기 동안 보장)\n"
+                f"• 보장 혜택: 15성 이상 스타포스 실패로 파괴 시 보통예금으로 1,000,000P 즉시 지급!\n"
+                f"• 남은 보상 청구 가능 횟수: {ins.get('claims_left', 1)}회"
+            ), None
+        return (
+            "🏥🛡️ [스타포스 안심 파괴 보험]\n"
+            "• 보험료: 50,000P (5경기 동안 유효)\n"
+            "• 보장 혜택: 15성 이상 강화 중 폭발 파괴 발생 시 즉시 1,000,000P 위로 보상금 보통예금 입금!\n"
+            "• 가입 명령어: !보험 가입"
+        ), None
+
     # 13. Bankruptcy / Rehabilitation (Na-bae Judge's Court)
     if cmd in ["!파산신청", "!개인회생", "!파산", "!회생", "!회생신청", "!개인파산", "!회생신청서", "!파산신청서", "!워크아웃", "!구제", "!구제신청"]:
         reason = " ".join(tokens[1:]) if len(tokens) > 1 else ""
@@ -1327,26 +1456,46 @@ def handle_chat_command(
                 event = {"type": "casino_dice", "data": {**details, "dice1": d1, "dice2": d2, "dice_sum": dice_sum, "user_choice": choice_str, "win": details["won"], "is_push": details.get("is_push", False), "payout": details["net_payout"], "bet_amount": details["bet"]}}
         return reply, event
 
-    # 17-1. Mahjong Tile Guess Gamble (!마작 [만/삭/통 or 1만~9통] [베팅금])
-    if cmd in ["!마작", "!마작패", "!패맞추기", "!mahjong"]:
+    # 17-1. Mahjong Tile Guess Gamble (!마작 [만/삭/통 or 1만~9통 or 1만,4만,7만] [베팅금])
+    if cmd in ["!마작", "!마작패", "!패맞추기", "!mahjong", "!화료", "!화료패", "!대기", "!대기패"]:
         if len(tokens) < 3:
             return (
-                "🀄 [마작패 맞추기] 사용법: !마작 [만/삭/통 or 1만~9통] [베팅금/올인]\n"
+                "🀄 [마작패 / 화료패 맞추기] 사용법: !마작 [선택패들] [베팅금] 또는 !화료 [패목록] [베팅금]\n"
                 "• 수패 맞추기 (만/삭/통): 1/3 확률, 배당 2.7배 (RTP 90%)\n"
                 "• 1종 정확히 맞추기 (1만~9통 27종): 1/27 확률, 배당 24.3배 대박! (RTP 90%)\n"
-                "💡 곡괭이 잠재능력(마작패 화료 배당 보너스) 장착 시 당첨금 최대 +11.1% 추가 지급!\n"
-                "(예: !마작 만 10000, !마작 7통 5000, !마작 통 올인)"
+                "• 화료패(다면 대기) 맞추기: 원하는 만큼 여러 개 패 선택 가능! (개수 늘어날수록 배율 자동 조정)\n"
+                "  - 2종 대기: 12.15배 | 3종 대기: 8.10배 | 4종: 6.08배 | 9종: 2.70배\n"
+                "💡 예시: !마작 만 10000 | !마작 7통 5000 | !화료 1만,4만,7만 10000 | !화료 147만 5000 | !마작 1만 4만 7만 올인"
             ), None
-        choice_str = tokens[1]
-        bet_str = tokens[2]
-        if choice_str.isdigit() or choice_str in ["올인", "all", "전액"]:
-            choice_str, bet_str = tokens[2], tokens[1]
+
+        def is_bet_token(tok: str) -> bool:
+            clean = tok.strip().lower().replace(",", "")
+            if clean in ["올인", "all", "전액", "풀베팅", "최대", "max"]:
+                return True
+            if clean.isdigit():
+                return True
+            if (clean.endswith("만") or clean.endswith("천") or clean.endswith("k")):
+                sub = clean[:-1]
+                if sub.isdigit() or sub.replace(".", "", 1).isdigit():
+                    return True
+            return False
+
+        if is_bet_token(tokens[-1]):
+            bet_str = tokens[-1]
+            choice_str = " ".join(tokens[1:-1])
+        elif is_bet_token(tokens[1]):
+            bet_str = tokens[1]
+            choice_str = " ".join(tokens[2:])
+        else:
+            choice_str = tokens[1]
+            bet_str = tokens[2]
 
         success, reply, details = execute_mahjong_tile_gamble(db, user_id, username, choice_str, bet_str)
         event = None
         if success and details:
+            is_jackpot = (details.get("bet_type") == "exact") or (details.get("multiplier", 0) >= 10.0)
             if details.get("won"):
-                event = {"type": "casino_jackpot" if details.get("bet_type") == "exact" else "casino_spin", "data": {**details, "gamble_type": "mahjong", "payout": details["net_payout"], "win": True}}
+                event = {"type": "casino_jackpot" if is_jackpot else "casino_spin", "data": {**details, "gamble_type": "mahjong", "payout": details["net_payout"], "win": True}}
             else:
                 event = {"type": "casino_spin", "data": {**details, "gamble_type": "mahjong", "payout": details["net_payout"], "win": False}}
         return reply, event
@@ -1357,11 +1506,11 @@ def handle_chat_command(
             return (
                 "🏇 [역만 4대 천왕 경마 레이스] 사용법: !경마 [말이름/번호] [베팅금/올인] (또는 !레이스)\n"
                 "• 1번마 🐉 대삼원 (배당 3.6배, 우승 확률 25%)\n"
-                "• 2번마 🀄 사안커 (배당 3.6배, 우승 확률 25%)\n"
+                "• 2번마 🀄 스안커 (배당 3.6배, 우승 확률 25%)\n"
                 "• 3번마 🌸 국사무쌍 (배당 3.6배, 우승 확률 25%)\n"
                 "• 4번마 ⚡ 구련보등 (배당 3.6배, 우승 확률 25%)\n"
                 "💡 곡괭이 잠재능력(역만 레이스 2등 세이프티) 장착 시 2등 준우승 시 최대 40% 베팅금 환급!\n"
-                "(예: !경마 대삼원 10000, !레이스 3 5000, !경마 사안커 올인)"
+                "(예: !경마 대삼원 10000, !레이스 2 5000, !경마 스안커 올인)"
             ), None
         choice_str = tokens[1]
         bet_str = tokens[2]
@@ -1544,12 +1693,12 @@ def handle_chat_command(
 
     if cmd in ["!수락", "!승낙", "!받기", "!accept", "!yes"]:
         success, reply, details = accept_pvp_challenge(db, user_id, username)
-        event = {"type": "pvp_duel", "data": details} if success and details else None
+        event = {"type": "pvp_duel", "data": details, "reply": reply} if success and details else None
         return reply, event
 
     if cmd in ["!거절", "!런", "!도망", "!decline", "!no"]:
         success, reply, details = decline_pvp_challenge(db, user_id, username)
-        event = {"type": "pvp_declined", "data": details} if success and details else None
+        event = {"type": "pvp_declined", "data": details, "reply": reply} if success and details else None
         return reply, event
 
     if cmd in ["!투기장", "!아레나", "!arena", "!투기장오픈", "!투기장참가"]:
@@ -1557,13 +1706,13 @@ def handle_chat_command(
             if len(tokens) < 2:
                 return "⚔️ [투기장 공개 개설] 사용법: !투기장 오픈 [금액/올인] (예: !투기장 오픈 30000)", None
             success, reply, details = open_public_arena_match(db, user_id, username, tokens[1])
-            event = {"type": "pvp_open", "data": details} if success and details else None
+            event = {"type": "pvp_open", "data": details, "reply": reply} if success and details else None
             return reply, event
 
         if cmd == "!투기장참가":
             target_host = tokens[1] if len(tokens) > 1 else None
             success, reply, details = join_public_arena_match(db, user_id, username, target_host)
-            event = {"type": "pvp_duel", "data": details} if success and details else None
+            event = {"type": "pvp_duel", "data": details, "reply": reply} if success and details else None
             return reply, event
 
         if len(tokens) == 1:
@@ -1640,7 +1789,7 @@ def handle_chat_command(
         divs = settle_res.get("dividends", [])
         div_count = len(divs)
         div_total = sum(d.get("payout", 0) or d.get("amount", 0) for d in divs)
-        pct_label = "1위 우승 5% 1X" if rank_val == 1 else ("2위 준우승 1% 1X" if rank_val == 2 else "1X")
+        pct_label = "1위 우승 8% 1X" if rank_val == 1 else ("2위 준우승 3% 1X" if rank_val == 2 else ("3위 1% 1X" if rank_val == 3 else "1X"))
         div_label = f" | 🎁 {pct_label} 배당: {div_count}명(+{div_total:,}P)" if div_count > 0 else ""
         liq_count = len(settle_res.get("liquidations", []))
         liq_label = f" | 🚨청산 {liq_count}건" if liq_count > 0 else ""

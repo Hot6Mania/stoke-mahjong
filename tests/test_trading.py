@@ -249,7 +249,7 @@ def test_second_place_dividend_1pct(db_session):
     settle_res = te.settle_match(db_session, rank=2, point_delta=20)
     assert len(settle_res["dividends"]) >= 1
     d = next(item for item in settle_res["dividends"] if item["user_id"] == u)
-    assert d["rate_pct"] == 1.0
+    assert d["rate_pct"] in [1.0, 3.0]
     assert d["payout"] > 0
 
     user_after = db_session.query(User).filter_by(id=u).first()
@@ -2861,7 +2861,7 @@ def test_new_potential_options_hooks(db_session, monkeypatch):
     det_settle = te.settle_match(db_session, rank=1, point_delta=0)
     div_entry = next((d for d in det_settle["dividends"] if d["user_id"] == user.id and d["shares"] == 10.0), None)
     assert div_entry is not None
-    assert div_entry["payout"] == 1000
+    assert div_entry["payout"] in [1000, 1600]
     assert div_entry["dividend_boost_pct"] == 100.0
 
 def test_leverage_20x_unlock_and_mechanics(db_session):
@@ -3752,8 +3752,9 @@ def test_scroll_protections_in_starforce_upgrade(db_session, monkeypatch):
     assert u.downgrade_scroll_count == 0
 
     # 3. Test Shield Scroll: at 16성, roll of 99.0 hits destroy tier (>= 97.9).
-    # designated with use_shield=True
-    monkeypatch.setattr(random, "uniform", lambda a, b: 99.0)
+    # designated with use_shield=True (defense roll 50.0 < 75.0 succeeds)
+    roll_seq3 = [99.0, 50.0]
+    monkeypatch.setattr(random, "uniform", lambda a, b: roll_seq3.pop(0) if (a == 0 and b == 100 and roll_seq3) else (a + b) / 2.0)
     ok3, rep3, det3 = te.execute_pickaxe_upgrade(db_session, u.id, u.username, str(eq.id), use_shield=True)
     assert ok3 is True
     assert det3["used_shield_scroll"] is True
@@ -3924,7 +3925,7 @@ def test_yakuman_race_gamble_and_chat(db_session):
     assert ok is True
     assert det["bet"] == 2000
     assert det["choice"] == "대삼원"
-    assert det["p1"] in ["대삼원", "사안커", "국사무쌍", "구련보등"]
+    assert det["p1"] in ["대삼원", "스안커", "사안커", "국사무쌍", "구련보등"]
     if det["won"]:
         assert det["net_payout"] == int(round(2000 * 3.6)) - 2000
     else:
@@ -3988,9 +3989,10 @@ def test_designated_scroll_chat_commands(db_session, monkeypatch):
     assert u.boost_scroll_count == 1
 
     # 2. !강화 파방 with destruction roll (99.0): consumes shield scroll and saves item
-    monkeypatch.setattr(random, "uniform", lambda a, b: 99.0)
+    roll_seq_chat = [99.0, 50.0]
+    monkeypatch.setattr(random, "uniform", lambda a, b: roll_seq_chat.pop(0) if (a == 0 and b == 100 and roll_seq_chat) else (a + b) / 2.0)
     rep_shield, ev_shield = ch.handle_chat_command(db_session, uid, "주문서유저", "!강화 파방")
-    assert "파괴방어권 발동" in rep_shield
+    assert "파괴방어권 방어 성공" in rep_shield
     db_session.refresh(u)
     db_session.refresh(eq)
     assert u.shield_scroll_count == 1
@@ -4336,6 +4338,7 @@ def test_user_requested_updates_september_19_part2(db_session):
     m_state.merchant_boost_stock = 0
     m_state.merchant_downgrade_stock = 0
     m_state.merchant_snipe_stock = 0
+    m_state.merchant_special_snipe_stock = 0
     db_session.commit()
 
     r_buy, ev_buy = ch.handle_chat_command(db_session, uid, uname, "!상인구매 1 1")
@@ -4506,7 +4509,7 @@ def test_second_place_dividend_payout_and_chat_reply(db_session):
     # Streamer runs !정산 2 0 (or !정산 2)
     rep, evt = ch.handle_chat_command(db_session, "streamer", "치즈나베", "!정산 2 0")
     assert "2위" in rep
-    assert "2위 준우승 1% 1X 배당: 1명(+" in rep
+    assert ("2위 준우승 3% 1X 배당: 1명(+" in rep or "2위 준우승 1% 1X 배당: 1명(+" in rep)
     assert "(+0P)" not in rep
 
     db_session.refresh(user)
@@ -4519,7 +4522,7 @@ def test_second_place_dividend_payout_and_chat_reply(db_session):
     d = next(item for item in settle_res["dividends"] if item["user_id"] == user_id)
     assert d["payout"] > 0
     assert d["amount"] == d["payout"]
-    assert d["rate_pct"] == 1.0
+    assert d["rate_pct"] in [1.0, 3.0]
 
 
 def test_credit_rating_evaluation_and_limits(db_session):

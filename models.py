@@ -65,6 +65,9 @@ class User(Base):
     arm_snipe = Column(Boolean, default=False, nullable=False)
     repay_count = Column(Integer, default=0, nullable=False)
     total_repaid = Column(Integer, default=0, nullable=False)
+    bank_balance = Column(Integer, default=0, nullable=False)
+    bank_data = Column(String, default="{}", nullable=True)
+    special_snipe_scrolls = Column(String, default="{}", nullable=True)
     web_pin = Column(String, nullable=True)
     web_token = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -125,6 +128,12 @@ class MarketState(Base):
     merchant_downgrade_stock = Column(Integer, default=8, nullable=False)
     merchant_snipe_price = Column(Integer, default=500000, nullable=False)
     merchant_snipe_stock = Column(Integer, default=4, nullable=False)
+    merchant_special_snipe_code = Column(String, nullable=True)
+    merchant_special_snipe_name = Column(String, nullable=True)
+    merchant_special_snipe_desc = Column(String, nullable=True)
+    merchant_special_snipe_price = Column(Integer, default=750000, nullable=False)
+    merchant_special_snipe_stock = Column(Integer, default=0, nullable=False)
+    fund_nav = Column(Float, default=1000.0, nullable=False)
 
 class LimitOrder(Base):
     __tablename__ = "orders_limit"
