@@ -108,6 +108,7 @@ def init_db():
                 "ALTER TABLE user_equipments ADD COLUMN is_line3_locked BOOLEAN DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN repay_count INTEGER DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN total_repaid INTEGER DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN treasury_donation_total INTEGER DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN web_pin VARCHAR",
                 "ALTER TABLE users ADD COLUMN web_token VARCHAR",
                 "ALTER TABLE users ADD COLUMN bank_balance INTEGER DEFAULT 0",
@@ -133,6 +134,7 @@ def init_db():
                 "UPDATE market_state SET merchant_boost_price = 350000 WHERE merchant_boost_price < 250000",
                 "UPDATE market_state SET merchant_downgrade_price = 400000 WHERE merchant_downgrade_price < 300000",
                 "UPDATE market_state SET merchant_snipe_price = 500000 WHERE merchant_snipe_price < 350000",
+                "UPDATE users SET repay_count = 0, total_repaid = 0",
             ]:
                 try:
                     conn.execute(sqlalchemy.text(col_sql))
@@ -163,7 +165,7 @@ def init_db():
             if not getattr(state, "current_rank_name", None):
                 state.current_rank_name = "작성3"
                 updated = True
-            if getattr(state, "treasury_pool", None) is None or state.treasury_pool < 50000.0:
+            if getattr(state, "treasury_pool", None) is None:
                 state.treasury_pool = 500000.0
                 updated = True
             if getattr(state, "day_open_price", None) is None or state.day_open_price <= 0:

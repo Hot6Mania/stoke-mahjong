@@ -19,6 +19,7 @@ from trading_engine import (
     execute_mining,
     execute_borrow,
     execute_repay,
+    execute_treasury_donate,
     get_user_credit_info,
     format_user_credit_report,
     execute_bankruptcy,
@@ -115,7 +116,7 @@ NEWBIE_GUIDE_MESSAGE = f"""🔰 [마작 주식 & 금융 시스템 처음 오신 
 
 HELP_MESSAGE = f"""📈 [마작 주식 명령어 안내] (💡 처음 오신 분 입문: !도움말 또는 !설명)
 • 거래: !매수 [종목] [수량/올인], !매도 [종목] [수량/전량], !청산
-• 금융: !내정보, !신용등급, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !채굴, !자동채굴 [on/off/갱신], !인증 [코드], !웹로그인, !비번 [4자리], !국고, !남은시간, !쿨타임
+• 금융: !내정보, !신용등급, !송금 [닉네임] [금액], !대출 [금액/최대], !상환, !기부 [금액], !채굴, !자동채굴 [on/off/갱신], !인증 [코드], !웹로그인, !비번 [4자리], !국고, !남은시간, !쿨타임
 • 복권: !동복권 [수량], !은복권 [수량], !금복권 [수량], !복권 [동/은/금] [수량], !복권확률 (동 1천P / 은 5천P / 금 2만P 초대박!)
 • 상인: !신비상인, !상인구매 [1~7] [수량], !아이템 (파방/상승/하강/잠재저격/절대파방/절대하강 한정 판매)
 • 거래소: !거래소, !아이템판매 [파방/하강/상승/저격/큐브] [수량] [가격], !장비등록 [번호] [가격], !거래소구매 [번호], !거래소취소 [번호]
@@ -243,6 +244,17 @@ def handle_chat_command(
                 return GUIDE_LIMIT, None
             elif sub in ["청산", "liquidate"]:
                 return GUIDE_LIQUIDATE, None
+            elif sub in ["강화", "스타포스", "주문서", "upgrade", "sf"]:
+                return (
+                    "🔨 [스타포스 곡괭이 강화 & 주문서 가이드]\n"
+                    "• 강화 시도: !강화 [장비번호/옵션] (예: !강화, !강화 1, !강화 파방, !강화 하강, !강화 풀)\n"
+                    "• 🛡️ 일반 파괴방어권: 15성+ 실패 시 60% 확률 방어 (40% 뚫림 위험!)\n"
+                    "• 📉 일반 하강방지권: 실패 시 70% 확률로 등급 하락 방어 (30% 하락 위험!)\n"
+                    "• 🛡️✨ 절대 파괴방어권: 15성+ 폭발 파괴 100% 무적 결계 방어 (신비상인)\n"
+                    "• 📉✨ 절대 하강방지권: 등급 하락 100% 무적 결계 방어 (신비상인)\n"
+                    "• ⚡ 강화확률상승권: 성공률 +25% 곱연산 증폭\n"
+                    "• 주문서 상시 설정: !주문서 (파방/하강/상승/절대파방/절대하강 on/off)"
+                ), None
             elif sub in ["약어", "단축어", "alias"]:
                 return (
                     "🏷️ [종목 약어 & 단축어 가이드]\n"
@@ -851,11 +863,20 @@ def handle_chat_command(
         s_cnt = getattr(user, "shield_scroll_count", 0) or 0
         b_cnt = getattr(user, "boost_scroll_count", 0) or 0
         d_cnt = getattr(user, "downgrade_scroll_count", 0) or 0
+        s100_cnt = getattr(user, "shield_100_scroll_count", 0) or 0
+        d100_cnt = getattr(user, "downgrade_100_scroll_count", 0) or 0
         snipe_cnt = getattr(user, "snipe_scroll_count", 0) or 0
         c_cnt = getattr(user, "cube_count", 0) or 0
         f_cnt = getattr(user, "cube_fragments", 0) or 0
         m_state = get_merchant_state(db)
         m_status = "🛒 [신비상인 마을 체류중!]" if m_state.get("is_active") else "🔒 [신비상인 부재중]"
+
+        abs_lines = []
+        if s100_cnt > 0:
+            abs_lines.append(f"• 🛡️✨ [100% 확정] 절대 파괴방어권: {s100_cnt:,}장 (15성+ 폭발 파괴 100% 완벽 방어)")
+        if d100_cnt > 0:
+            abs_lines.append(f"• 📉✨ [100% 확정] 절대 하강방지권: {d100_cnt:,}장 (강화 실패 시 등급 하락 100% 완벽 방어)")
+        abs_block = ("\n" + "\n".join(abs_lines)) if abs_lines else ""
 
         special_scrolls = get_user_special_snipe_scrolls(user)
         special_lines = []
@@ -877,14 +898,15 @@ def handle_chat_command(
 
         msg = (
             f"🎒 [{user.username}님의 소비 아이템 보따리]\n"
-            f"• 🛡️ 파괴방어권: {s_cnt:,}장 (15성+ 실패 시 폭발 파괴 100% 방어)\n"
+            f"• 🛡️ 파괴방어권: {s_cnt:,}장 (15성+ 실패 시 60% 확률로 파괴 방어 | 40% 뚫림 주의)\n"
             f"• ⚡ 강화확률상승권: {b_cnt:,}장 (스타포스 성공률 +10%p 보너스)\n"
-            f"• 📉 하강방지권: {d_cnt:,}장 (스타포스 실패 시 등급 하락 100% 방어)\n"
+            f"• 📉 하강방지권: {d_cnt:,}장 (강화 실패 시 70% 확률로 등급 하락 방어 | 30% 하강 주의){abs_block}\n"
             f"• 🎯 잠재저격주문서: {snipe_cnt:,}장 (!큐브 저격 [옵션] 사용 시 원하는 옵션 35% 저격 + 가중치 3.5배)\n"
             f"• 🔮 미라클 큐브: {c_cnt:,}개 (!큐브 [번호] 사용)\n"
             f"• 🧩 큐브 조각: {f_cnt:,}개 (10개당 15,000P 환급){sp_block}\n"
-            f"💡 주문서 사용법: 강화 시 직접 지정하여 사용합니다. (예: !강화 파방, !강화 하강, !강화 상승, !강화 풀 | 상시 설정: !주문서)\n"
-            f"💡 신비상인 구매: !상인구매 [1/2/3/4/5] [수량] ({m_status}) | 유저 거래소: !거래소, !아이템판매"
+            f"💡 방어 안내: 일반 파방(60%) 및 하강방지권(70%)은 '확률'로 적용됩니다! (100% 무적 방어는 신비상인의 절대 주문서 필요)\n"
+            f"💡 주문서 사용법: 강화 시 직접 지정하여 사용합니다. (예: !강화 파방, !강화 하강, !강화 절대파방, !강화 풀 | 상시 설정: !주문서)\n"
+            f"💡 신비상인 구매: !상인구매 [1~7] [수량] ({m_status}) | 유저 거래소: !거래소, !아이템판매"
         )
         return msg, None
 
@@ -1249,9 +1271,16 @@ def handle_chat_command(
         pool = int(info["treasury_pool"])
         reply = (
             f"🏛️ [마작 국고 현황] 채굴 풀: {pool:,}P | "
-            f"거래 수수료: 1% 국고 자동 적립 | 승리 배당: 1위 5% / 2위 1% | 채굴: !채굴 (15분 쿨)"
+            f"거래 수수료: 1% 국고 자동 적립 | 국고 기부: !기부 [금액] (신용점수/칭호 부여) | 채굴: !채굴 (15분 쿨)"
         )
         return reply, None
+
+    # 9-1. Voluntary Treasury Donation (!기부, !국고기부, !후원)
+    if cmd in ["!기부", "!국고기부", "!후원", "!기부하기", "!국고후원"]:
+        amount_str = tokens[1] if len(tokens) >= 2 else ""
+        success, reply, details = execute_treasury_donate(db, user_id, username, amount_str)
+        event = {"type": "treasury_donation", "data": details} if success and details else None
+        return reply, event
 
     # 10. Dividend Policy Query
     if cmd in ["!배당", "!배당금"]:
@@ -1901,7 +1930,7 @@ def handle_chat_command(
         divs = settle_res.get("dividends", [])
         div_count = len(divs)
         div_total = sum(d.get("payout", 0) or d.get("amount", 0) for d in divs)
-        pct_label = "1위 우승 8% 1X" if rank_val == 1 else ("2위 준우승 3% 1X" if rank_val == 2 else ("3위 1% 1X" if rank_val == 3 else "1X"))
+        pct_label = "1위 우승 5% 1X" if rank_val == 1 else ("2위 준우승 1% 1X" if rank_val == 2 else "")
         div_label = f" | 🎁 {pct_label} 배당: {div_count}명(+{div_total:,}P)" if div_count > 0 else ""
         liq_count = len(settle_res.get("liquidations", []))
         liq_label = f" | 🚨청산 {liq_count}건" if liq_count > 0 else ""

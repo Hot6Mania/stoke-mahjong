@@ -336,6 +336,8 @@ TRANSFER_HIGH_TAX_RATE: float = 0.002     # 10만P 이상 0.2% 이체 수수료
 # ==========================================
 
 CUBE_COST: int = 15000
+CUBE_LINE_LOCK_MULTIPLIER: int = 60  # 라인 잠금 큐브 소모 배율 (기존 20배 -> 60배 인상, 유저 자산풀 2억P/4천만P/100만P 고려 3배 상향)
+CUBE_LINE_LOCK_COST: int = CUBE_LINE_LOCK_MULTIPLIER * CUBE_COST  # 900,000P
 CUBE_FRAGMENT_EXCHANGE_COST: int = 10
 CUBE_FRAGMENT_EXCHANGE_REWARD: int = 15000
 
@@ -1281,7 +1283,7 @@ def get_market_state(db: Session) -> MarketState:
         if not getattr(state, "current_rank_name", None):
             state.current_rank_name = "작성3"
             updated = True
-        if getattr(state, "treasury_pool", None) is None or state.treasury_pool < 50000.0:
+        if getattr(state, "treasury_pool", None) is None:
             state.treasury_pool = DEFAULT_TREASURY_POOL
             updated = True
         if getattr(state, "day_open_price", None) is None or state.day_open_price <= 0:
@@ -1422,7 +1424,7 @@ def get_user_credit_info(
     - Net Worth / Assets: -150 ~ +200 pts
     - Collateral / Equipment: 0 ~ +180 pts
     - Income / Mining: 0 ~ +120 pts
-    - Repayment History: 0 ~ +150 pts
+    - Repayment History: 0 pts (즉시상환 꼼수 방지 및 기존 이력 무시)
     - Donation VIP: 0 ~ +80 pts
     - Debt Overleverage: 0 ~ -200 pts
     - Bankruptcy history: -350 pts
@@ -1544,58 +1546,40 @@ def get_user_credit_info(
     else:
         mining_score = 0
 
-    # Factor 4: Repayment History score (0 ~ +150)
-    cnt_pts = min(60, repay_count * 10)
-    if total_repaid >= 10000000:
-        amt_pts = 90
-    elif total_repaid >= 3000000:
-        amt_pts = 60
-    elif total_repaid >= 1000000:
-        amt_pts = 40
-    elif total_repaid >= 200000:
-        amt_pts = 20
-    elif total_repaid >= 1:
-        amt_pts = 10
-    else:
-        amt_pts = 0
-    repayment_score = cnt_pts + amt_pts
+    # Factor 4: Repayment History score (0 pts, backward-compatibility)
+    repayment_score = 0
 
-    # Factor 5: Donation VIP score (0 ~ +80)
+    # Factor 5: National Treasury & VIP Donation score (0 ~ +100)
+    # [국고 기부 활성화] 국고에 자발적으로 기여한 유저에게 국가 보증 신용점수 우대
     donation_score = 0
+    t_donated = getattr(user, "treasury_donation_total", 0) or 0
+    if t_donated >= 5000000:
+        donation_score = 100
+    elif t_donated >= 2000000:
+        donation_score = 75
+    elif t_donated >= 500000:
+        donation_score = 50
+    elif t_donated >= 100000:
+        donation_score = 25
+    elif t_donated >= 10000:
+        donation_score = 10
+
+    # Also credit real-money stream donations if any
     donations = getattr(user, "donations", None)
-    if donations:
+    if donations and len(donations) > 0:
         d_cnt = len(donations)
-        if d_cnt >= 5:
-            donation_score = 80
-        elif d_cnt >= 2:
-            donation_score = 50
-        elif d_cnt >= 1:
-            donation_score = 30
+        ext_score = 80 if d_cnt >= 5 else (50 if d_cnt >= 2 else 30)
+        donation_score = max(donation_score, ext_score)
 
-    # Factor 6: Debt Overleverage penalty (0 ~ -200)
-    gross_assets = max(0.0, cash + stock_value)
-    if debt <= 0:
-        debt_penalty = 20  # clean credit bonus!
-    else:
-        if gross_assets <= 0:
-            debt_penalty = -200
-        else:
-            ratio = debt / gross_assets
-            if ratio > 2.0:
-                debt_penalty = -200
-            elif ratio > 1.2:
-                debt_penalty = -120
-            elif ratio > 0.7:
-                debt_penalty = -60
-            elif ratio > 0.3:
-                debt_penalty = -20
-            else:
-                debt_penalty = 0
+    # Factor 6: Debt Overleverage penalty (0 pts)
+    # [개선] 부채는 순자산(Net Worth = 자산 - 빚)에서 이미 1회 정확히 반영되므로,
+    # 정상적인 대출 이용자에게 이중 감점을 가하던 부채위험도 패널티를 완전 폐지합니다.
+    debt_penalty = 0
 
-    # Factor 7: Bankruptcy Penalty (0 ~ -350)
+    # Factor 7: Bankruptcy Penalty (Tier 10 default, -500)
     bankruptcy_penalty = 0
     if getattr(user, "last_bankrupt_at", None) is not None:
-        bankruptcy_penalty = -350
+        bankruptcy_penalty = -500
 
     # Compute Total Score clamped [0, 1000]
     raw_score = (
@@ -1603,9 +1587,7 @@ def get_user_credit_info(
         + asset_score
         + collateral_score
         + mining_score
-        + repayment_score
         + donation_score
-        + debt_penalty
         + bankruptcy_penalty
     )
     final_score = max(0, min(1000, int(round(raw_score))))
@@ -1661,16 +1643,17 @@ def format_user_credit_report(user: User, db: Session) -> str:
     report = (
         f"💳 [나베신용평가원] {user.username}님의 신용평가 보고서\n"
         f"• 신용등급: {info['tier_name']} (신용점수: {info['score']}점 / 1,000점)\n"
-        f"• 대출 한도: {info['loan_limit']:,}P (현재 빚: {info['debt']:,}P | 대출 가능: {info['available_borrow']:,}P)\n"
+        f"• 대출 한도: {info['loan_limit']:,}P (현재 채무: {info['debt']:,}P | 대출 가능: {info['available_borrow']:,}P)\n"
         f"• 적용 금리: 경기당 {info['interest_rate_pct']:.1f}% (기준금리 2.0%)\n"
-        f"• 신용 평가 요인:\n"
-        f"  - 순자산: {info['net_worth']:,}P ({plus_minus(f['asset_score'])}점)\n"
-        f"  - 장비/담보: {plus_minus(f['collateral_score'])}점 | 채굴 실적: {plus_minus(f['mining_score'])}점\n"
-        f"  - 상환 실적: {plus_minus(f['repayment_score'])}점 | 부채 위험도: {plus_minus(f['debt_penalty'])}점"
+        f"• 📊 신용 평가 구성 (4대 핵심 건전성 지표):\n"
+        f"  - 💰 순자산 건전성: {info['net_worth']:,}P ({plus_minus(f['asset_score'])}점)\n"
+        f"  - ⛏️ 담보 장비 가치: {plus_minus(f['collateral_score'])}점 | ⚡ 경제 활동: {plus_minus(f['mining_score'])}점"
     )
-    if f["bankruptcy_penalty"] < 0:
+    if f.get("donation_score", 0) > 0:
+        report += f" | 🏛️ 국고 기여: +{f['donation_score']}점"
+    if f.get("bankruptcy_penalty", 0) < 0:
         report += f"\n  - ⚠️ 파산 이력 감점: {f['bankruptcy_penalty']}점"
-    report += "\n💡 신용 올리기: 성실한 채굴, 곡괭이 강화, 대출금 정상 상환 시 신용점수가 대폭 상승합니다!"
+    report += "\n💡 신용 올리기: 성실한 채굴, 곡괭이 강화, 순자산 축적 및 국고 기부(!기부) 시 신용점수가 대폭 상승합니다!"
     return report
 
 def execute_buy(
@@ -2684,8 +2667,8 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         r = int(rank)
     except (ValueError, TypeError):
         r = 0
-    # Buffed Dividend Rates: 1st place 8%, 2nd place 3%, 3rd place 1%
-    div_rate = 0.08 if r == 1 else (0.03 if r == 2 else (0.01 if r == 3 else 0.0))
+    # PoS Victory Dividend: 1st place pays 5%, 2nd place pays 1%, 3rd/4th place pays 0%
+    div_rate = 0.05 if r == 1 else (0.01 if r == 2 else 0.0)
 
     if div_rate > 0:
         all_positions = db.query(Position).filter(Position.quantity > 0).all()
@@ -3719,7 +3702,7 @@ MERCHANT_ITEMS = {
         "name": "🛡️ 파괴방어권",
         "aliases": ["1", "파괴방어권", "파괴방지권", "파괴방어", "파방", "파방권", "shield", "protect"],
         "field": "shield_scroll_count",
-        "desc": "15성+ 스타포스 강화 실패 시 폭발 파괴 100% 방어",
+        "desc": "15성+ 강화 실패 시 폭발 파괴를 60% 확률로 방어 (40% 뚫림 파괴 위험, 100% 무적은 절대방어권 필요)",
         "min_price": 350000,
         "max_price": 700000,
         "min_stock": 2,
@@ -3741,7 +3724,7 @@ MERCHANT_ITEMS = {
         "name": "📉 하강방지권",
         "aliases": ["3", "하강방지권", "하강방어권", "하강권", "하강방지", "downgrade", "safe"],
         "field": "downgrade_scroll_count",
-        "desc": "스타포스 강화 실패 시 등급(성수) 하락 100% 방어",
+        "desc": "강화 실패 시 등급(성수) 하락을 70% 확률로 방어 (30% 하락 위험, 100% 무적은 절대하강방지권 필요)",
         "min_price": 300000,
         "max_price": 550000,
         "min_stock": 3,
@@ -4007,7 +3990,7 @@ def get_merchant_state(
             "name": "🛡️ 파괴방어권",
             "price": getattr(state, "merchant_shield_price", 500000) or 500000,
             "stock": getattr(state, "merchant_shield_stock", 5) or 0,
-            "desc": "15성+ 강화 실패 시 폭발 파괴 75% 방어 (25% 확률로 폭발할 수 있음!)"
+            "desc": "15성+ 강화 실패 시 폭발 파괴를 60% 확률로 방어 (40% 뚫림 파괴 위험, 100% 무적은 절대방어권 필요)"
         },
         "boost": {
             "id": 2,
@@ -4021,7 +4004,7 @@ def get_merchant_state(
             "name": "📉 하강방지권",
             "price": getattr(state, "merchant_downgrade_price", 400000) or 400000,
             "stock": getattr(state, "merchant_downgrade_stock", 8) or 0,
-            "desc": "강화 실패 시 등급(성수) 하락 80% 방어 (20% 확률로 하락할 수 있음)"
+            "desc": "강화 실패 시 등급(성수) 하락을 70% 확률로 방어 (30% 하락 위험, 100% 무적은 절대하강방지권 필요)"
         },
         "snipe": {
             "id": 4,
@@ -6989,11 +6972,11 @@ def execute_cube_use(
     - If target_keyword is specified or use_snipe=True, consumes 1 generic snipe scroll (!상인구매 4)
       and provides 35% targeted snipe chance on Line 1 + 3.5x weight across all lines.
     - Equipment Cube Lock: If target_item.is_cube_locked is True, cube rerolls are blocked.
-    - Potential Line Lock: If lines are locked, consumes 20x current price (300,000P or 20 cubes) and preserves locked lines.
+    - Potential Line Lock: If lines are locked, consumes 60x current price (900,000P or 60 cubes) and preserves locked lines.
     - Tier order: NONE -> RARE -> EPIC -> UNIQUE -> LEGENDARY
     - Promotion rates: NONE->RARE 100%, RARE->EPIC 15%, EPIC->UNIQUE 3.5%, UNIQUE->LEGENDARY 1.4%
     - Pity guarantees: RARE->EPIC 10 cubes, EPIC->UNIQUE 42 cubes, UNIQUE->LEGENDARY 107 cubes
-    - 1 Cube Fragment per normal use (20 fragments for 20x line-locked use).
+    - 1 Cube Fragment per normal use (60 fragments for 60x line-locked use).
     """
     state = get_market_state(db)
     user = get_or_create_user(db, user_id, username)
@@ -7035,17 +7018,17 @@ def execute_cube_use(
     frag_gain = 1
 
     if effective_locked:
-        required_cubes = 20
-        total_point_cost = required_cubes * CUBE_COST  # 300,000P
+        required_cubes = CUBE_LINE_LOCK_MULTIPLIER
+        total_point_cost = required_cubes * CUBE_COST  # 900,000P
         if user_cube_count >= required_cubes:
             user.cube_count = user_cube_count - required_cubes
-            cost_desc = "보유 큐브 20개 소모 (라인 잠금 20배)"
+            cost_desc = f"보유 큐브 {required_cubes}개 소모 (라인 잠금 {required_cubes}배)"
         else:
             needed_cubes = required_cubes - user_cube_count
             needed_points = needed_cubes * CUBE_COST
             if user.points < needed_points:
                 return False, (
-                    f"⚠️ 잠재 라인 잠금 큐브는 현 가격의 20배(큐브 20개 또는 {total_point_cost:,}P)가 필요합니다!\n"
+                    f"⚠️ 잠재 라인 잠금 큐브는 현 가격의 {required_cubes}배(큐브 {required_cubes}개 또는 {total_point_cost:,}P)가 필요합니다!\n"
                     f"현재 보유: 큐브 {user_cube_count}개, 잔고 {user.points:,}P (부족: {needed_points - user.points:,}P)\n"
                     f"💡 라인 잠금 해제: !옵션잠금 해제"
                 ), None
@@ -7054,11 +7037,11 @@ def execute_cube_use(
             used_cubes = user_cube_count
             user.cube_count = 0
             if used_cubes > 0:
-                cost_desc = f"큐브 {used_cubes}개 + {needed_points:,}P 소모 (라인 잠금 20배)"
+                cost_desc = f"큐브 {used_cubes}개 + {needed_points:,}P 소모 (라인 잠금 {required_cubes}배)"
             else:
-                cost_desc = f"{total_point_cost:,}P 소모 (라인 잠금 20배)"
-        frag_gain = 20
-        user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + 20
+                cost_desc = f"{total_point_cost:,}P 소모 (라인 잠금 {required_cubes}배)"
+        frag_gain = required_cubes
+        user.cube_fragments = (getattr(user, "cube_fragments", 0) or 0) + required_cubes
     else:
         if user_cube_count <= 0:
             return False, (
@@ -7399,7 +7382,7 @@ def execute_potential_line_lock(
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Execute !옵션잠금 [1~3] [on/off] (Lock individual potential lines during cube rerolls).
-    Rolling with locked lines costs 20x the cube price (300,000P or 20 cubes).
+    Rolling with locked lines costs 60x the cube price (900,000P or 60 cubes).
     """
     user = get_or_create_user(db, user_id, username)
     target_item = find_user_equipment(db, user, item_id_or_index)
@@ -7431,7 +7414,7 @@ def execute_potential_line_lock(
         l2_tag = "🔒 [잠금]" if target_item.is_line2_locked else "🔓 [해제]"
         l3_tag = "🔒 [잠금]" if target_item.is_line3_locked else "🔓 [해제]"
         locked_cnt = sum([target_item.is_line1_locked, target_item.is_line2_locked, target_item.is_line3_locked])
-        cost_tip = "현 가격의 20배(300,000P 또는 큐브 20개)" if locked_cnt > 0 else "기본 큐브 1개(15,000P)"
+        cost_tip = f"현 가격의 {CUBE_LINE_LOCK_MULTIPLIER}배({CUBE_LINE_LOCK_COST:,}P 또는 큐브 {CUBE_LINE_LOCK_MULTIPLIER}개)" if locked_cnt > 0 else f"기본 큐브 1개({CUBE_COST:,}P)"
         return True, (
             f"🔮📋 [장비 #{target_item.id} {target_item.name}] 잠재 옵션 라인 잠금 현황:\n"
             f"  • 줄 1: {l1_desc} {l1_tag}\n"
@@ -7512,7 +7495,7 @@ def execute_potential_line_lock(
     l2_tag = "🔒 [잠금]" if target_item.is_line2_locked else "🔓 [해제]"
     l3_tag = "🔒 [잠금]" if target_item.is_line3_locked else "🔓 [해제]"
     locked_cnt = sum([target_item.is_line1_locked, target_item.is_line2_locked, target_item.is_line3_locked])
-    cost_tip = "현 가격의 20배(300,000P 또는 큐브 20개)" if locked_cnt > 0 else "기본 큐브 1개(15,000P)"
+    cost_tip = f"현 가격의 {CUBE_LINE_LOCK_MULTIPLIER}배({CUBE_LINE_LOCK_COST:,}P 또는 큐브 {CUBE_LINE_LOCK_MULTIPLIER}개)" if locked_cnt > 0 else f"기본 큐브 1개({CUBE_COST:,}P)"
 
     if switched:
         action_note = f" (기존 {other_locked[0]}번줄 해제 ➔ {target_line}번줄 잠금 전환)"
@@ -7717,7 +7700,7 @@ def get_user_inventory_status(db: Session, user_id: str, username: str) -> str:
         "💡 명령어 안내:\n"
         "• 상세 스펙 확인: !곡괭이 [번호] (예: !곡괭이 1, !곡괭이 2)\n"
         "• 장비 교체: !장착 [장비번호]\n"
-        "• 큐브 잠금(보호): !큐브잠금 [장비번호] | 라인 잠금(20배): !옵션잠금 [1~3] (전체해제: !옵션잠금 해제)\n"
+        "• 큐브 잠금(보호): !큐브잠금 [장비번호] | 라인 잠금(60배): !옵션잠금 [1~3] (전체해제: !옵션잠금 해제)\n"
         "• 큐브 사용: !큐브 [장비번호] [저격 옵션] (예: !큐브 1, !큐브 저격 고블린)\n"
         "• 소비 아이템 확인: !아이템 (상인구매: !상인구매 [1/2/3/4] [수량] | 거래소: !거래소)\n"
         "• 선택 강화: !강화 [장비번호] [파방/하강/상승/풀]\n"
@@ -8072,6 +8055,95 @@ def execute_repay(
         "remaining_debt": user.debt,
         "cash": user.points,
         "treasury_pool": state.treasury_pool
+    }
+    return True, reply, details
+
+def execute_treasury_donate(
+    db: Session,
+    user_id: str,
+    username: str,
+    amount_str: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Execute !국고기부 / !기부 [금액/전액/올인] (Voluntary National Treasury Donation).
+    100% of donated points go straight into the national treasury pool (state.treasury_pool).
+    Donators receive prestigious honorary titles and VIP credit score bonuses!
+    """
+    state = get_market_state(db)
+    user = get_or_create_user(db, user_id, username)
+
+    if user.points <= 0:
+        return False, "⚠️ 보유 포인트가 0P라 기부할 수 없습니다! (!채굴 등으로 포인트를 모아주세요)", None
+
+    cleaned = (amount_str or "").strip().lower()
+    if cleaned in ["전액", "올인", "all", "max", "최대"]:
+        donate_amount = user.points
+    else:
+        try:
+            val_str = cleaned.replace(",", "").replace("p", "").replace("원", "")
+            if val_str.endswith("만"):
+                val = int(float(val_str[:-1]) * 10000)
+            elif val_str.endswith("억"):
+                val = int(float(val_str[:-1]) * 100000000)
+            else:
+                val = int(val_str)
+
+            if val < 1000:
+                return False, "⚠️ 최소 기부 금액은 1,000P 이상입니다.", None
+            if user.points < val:
+                return False, f"⚠️ 보유 포인트가 부족합니다! (보유: {user.points:,}P / 요청: {val:,}P)", None
+            donate_amount = val
+        except ValueError:
+            return False, "💡 국고 기부 사용법: !기부 [금액/전액] (예: !기부 100000, !기부 50만, !기부 전액 | 신용점수 및 애국 칭호 획득)", None
+
+    # Deduct points and credit to treasury
+    user.points -= donate_amount
+    if getattr(state, "treasury_pool", None) is None:
+        state.treasury_pool = DEFAULT_TREASURY_POOL
+    state.treasury_pool += donate_amount
+
+    user.treasury_donation_total = (getattr(user, "treasury_donation_total", 0) or 0) + donate_amount
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(state)
+
+    total_donated = user.treasury_donation_total
+
+    # Determine honorary title
+    if total_donated >= 50000000:
+        title = "🌌 [구국의 영웅]"
+    elif total_donated >= 10000000:
+        title = "💎 [마작특별시 명예시장]"
+    elif total_donated >= 2000000:
+        title = "👑 [국가재정위원장]"
+    elif total_donated >= 500000:
+        title = "🏛️ [국고 후원자]"
+    elif total_donated >= 100000:
+        title = "🎖️ [애국 시민]"
+    else:
+        title = "🌱 [따뜻한 후원자]"
+
+    new_credit = get_user_credit_info(user, db=db, market_state=state)
+
+    reply = (
+        f"🏛️💖 [국고 기부 쾌척] {user.username}님이 마작 국고에 {donate_amount:,}P를 기부하셨습니다!\n"
+        f"👑 기부 명예 칭호: {title} (누적 기부: {total_donated:,}P)\n"
+        f"🏛️ 현재 국고 잔고: {int(state.treasury_pool):,}P (잔여 현금: {user.points:,}P)\n"
+        f"📈 기부 공로로 신용등급: {new_credit['tier_name']} (신용: {new_credit['score']}점, 대출 한도: {new_credit['loan_limit']:,}P) "
+        f"\"공동체를 위한 따뜻한 헌신에 감사드립니다!\""
+    )
+    details = {
+        "user_id": user.id,
+        "username": user.username,
+        "donated_amount": donate_amount,
+        "total_donated": total_donated,
+        "title": title,
+        "remaining_points": user.points,
+        "treasury_pool": state.treasury_pool,
+        "credit_score": new_credit["score"],
+        "credit_tier": new_credit["tier_name"],
+        "loan_limit": new_credit["loan_limit"]
     }
     return True, reply, details
 

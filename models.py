@@ -69,6 +69,7 @@ class User(Base):
     arm_downgrade_100 = Column(Boolean, default=True, nullable=False)
     repay_count = Column(Integer, default=0, nullable=False)
     total_repaid = Column(Integer, default=0, nullable=False)
+    treasury_donation_total = Column(Integer, default=0, nullable=False)
     bank_balance = Column(Integer, default=0, nullable=False)
     bank_data = Column(String, default="{}", nullable=True)
     special_snipe_scrolls = Column(String, default="{}", nullable=True)

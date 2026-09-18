@@ -4440,7 +4440,7 @@ def test_potential_line_lock_twenty_times_cost(db_session):
     user_id = "test_line_lock_user"
     user = te.get_or_create_user(db_session, user_id, "라인락유저")
     user.points = 10000000
-    user.cube_count = 50
+    user.cube_count = 100
     db_session.commit()
 
     eq = te.get_user_equipped_item(db_session, user)
@@ -4478,28 +4478,28 @@ def test_potential_line_lock_twenty_times_cost(db_session):
     assert eq.is_line1_locked is True
     assert eq.is_line2_locked is False
 
-    # 3. Roll cube with line 1 locked: consumes 20 cubes and keeps line 1
+    # 3. Roll cube with line 1 locked: consumes 60 cubes and keeps line 1
     prev_cubes = user.cube_count
     prev_frags = user.cube_fragments or 0
     rep_cube, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!큐브")
     assert "라인 1줄 잠금 적용" in rep_cube
-    assert "보유 큐브 20개 소모" in rep_cube
+    assert "보유 큐브 60개 소모" in rep_cube
     assert "🔒[잠금유지]" in rep_cube
     db_session.refresh(user)
     db_session.refresh(eq)
-    assert user.cube_count == prev_cubes - 20
-    assert user.cube_fragments == prev_frags + 20
+    assert user.cube_count == prev_cubes - 60
+    assert user.cube_fragments == prev_frags + 60
     assert json.loads(eq.potential_line_1) == l1
 
-    # 4. Roll cube with points when cubes < 20 (pays in points directly at 20x price)
+    # 4. Roll cube with points when cubes < 60 (pays in points directly at 60x price: 900,000P)
     user.cube_count = 0
     user.points = 1000000
     db_session.commit()
     rep_cube2, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!큐브")
-    assert "300,000P 소모 (라인 잠금 20배)" in rep_cube2
+    assert "900,000P 소모 (라인 잠금 60배)" in rep_cube2
     db_session.refresh(user)
-    assert user.points == 700000
-    assert user.cube_fragments == prev_frags + 40
+    assert user.points == 100000
+    assert user.cube_fragments == prev_frags + 120
 
     # 5. Reset line lock
     rep_clear, _ = ch.handle_chat_command(db_session, user_id, "라인락유저", "!옵션잠금 해제")
@@ -4622,10 +4622,10 @@ def test_credit_repayment_bonus_and_settle(db_session):
     assert "신용등급" in msg_rep
 
     # Settle match charges interest based on credit tier
-    # User's debt ratio is 300,000 / 350,000 = 85.7% (Tier 6, B 일반 -> 2.2% interest)
-    # Remaining debt 300,000 * 2.2% = 6,600P
+    # User's credit tier is Tier 5 (BB 보통 -> 2.0% standard interest, no unfair debt penalty!)
+    # Remaining debt 300,000 * 2.0% = 6,000P
     settle_res = te.settle_match(db_session, rank=3, point_delta=0)
-    assert settle_res["interest_collected"] == 6600
+    assert settle_res["interest_collected"] == 6000
 
 
 def test_credit_rating_chat_commands(db_session):
@@ -4941,6 +4941,265 @@ def test_newbie_guide_commands_and_cube_deficit(db_session):
     assert ok_cube is False
     assert "보유한 큐브가 없습니다" in rep_cube
     assert "!큐브구매" in rep_cube
+
+
+def test_scroll_probability_tooltips_and_chat_display(db_session):
+    """Test that destruction and downgrade scrolls clearly show 60% and 70% probabilities."""
+    uid = "scroll_tooltip_user"
+    uname = "주문서유저"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.shield_scroll_count = 3
+    u.downgrade_scroll_count = 2
+    u.shield_100_scroll_count = 1
+    u.downgrade_100_scroll_count = 1
+    db_session.commit()
+
+    # 1. Test !아이템 output
+    rep_items, _ = ch.handle_chat_command(db_session, uid, uname, "!아이템")
+    assert "60% 확률로 파괴 방어" in rep_items
+    assert "70% 확률로 등급 하락 방어" in rep_items
+    assert "절대 파괴방어권: 1장" in rep_items
+    assert "절대 하강방지권: 1장" in rep_items
+    assert "일반 파방(60%) 및 하강방지권(70%)은 '확률'로 적용됩니다" in rep_items
+
+    # 2. Test !도움말 강화
+    rep_help_sf, _ = ch.handle_chat_command(db_session, uid, uname, "!도움말 강화")
+    assert "스타포스 곡괭이 강화 & 주문서 가이드" in rep_help_sf
+    assert "60% 확률 방어" in rep_help_sf
+    assert "70% 확률로 등급 하락 방어" in rep_help_sf
+
+    # 3. Test MERCHANT_ITEMS descriptions
+    assert "60%" in te.MERCHANT_ITEMS["shield"]["desc"]
+    assert "70%" in te.MERCHANT_ITEMS["downgrade"]["desc"]
+
+
+def test_credit_score_borrow_repay_exploit_blocked_and_past_ignored(db_session):
+    """Test that borrow-immediate-repay loop does NOT raise credit score and past history is ignored."""
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 100000000.0
+    db_session.commit()
+
+    uid = "credit_exploit_tester"
+    uname = "꼼수방지러"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.points = 500000
+    db_session.commit()
+
+    initial_credit = te.get_user_credit_info(u, db=db_session)
+    initial_score = initial_credit["score"]
+
+    # 1. Borrow 1,000,000P and immediately repay
+    ok_b1, _, _ = te.execute_borrow(db_session, uid, uname, "1000000")
+    assert ok_b1 is True
+    ok_r1, _, _ = te.execute_repay(db_session, uid, uname, "1000000")
+    assert ok_r1 is True
+
+    # Check score: must NOT have increased!
+    after_repay1 = te.get_user_credit_info(u, db=db_session)
+    assert after_repay1["score"] == initial_score
+    assert after_repay1["factors"]["repayment_score"] == 0
+
+    # 2. Repeat borrow-repay 5 times
+    for _ in range(5):
+        te.execute_borrow(db_session, uid, uname, "1000000")
+        te.execute_repay(db_session, uid, uname, "1000000")
+
+    after_loop = te.get_user_credit_info(u, db=db_session)
+    assert after_loop["score"] == initial_score
+    assert after_loop["factors"]["repayment_score"] == 0
+
+    # 3. Test that existing / past high repay records are completely ignored
+    u.repay_count = 100
+    u.total_repaid = 500000000
+    db_session.commit()
+
+    past_ignored_credit = te.get_user_credit_info(u, db=db_session)
+    assert past_ignored_credit["factors"]["repayment_score"] == 0
+    assert past_ignored_credit["score"] == initial_score
+
+
+def test_auto_mining_continues_on_pickaxe_swap(db_session):
+    """Test that swapping pickaxes keeps auto-mining active and dynamically uses the newly equipped pickaxe."""
+    uid = "auto_swap_miner"
+    uname = "스왑광부"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.auto_mining_enabled = True
+    u.auto_mining_end_time = datetime.now(timezone.utc).timestamp() + 3600
+    u.points = 100000
+
+    # Create two pickaxes: eq1 (★5) and eq2 (★15)
+    eq1 = te.UserEquipment(
+        user_id=uid,
+        name="철 곡괭이",
+        equipment_type="PICKAXE",
+        starforce=5,
+        is_equipped=True
+    )
+    eq2 = te.UserEquipment(
+        user_id=uid,
+        name="황금 곡괭이",
+        equipment_type="PICKAXE",
+        starforce=15,
+        is_equipped=False
+    )
+    db_session.add_all([eq1, eq2])
+    u.pickaxe_level = 5
+    db_session.commit()
+
+    # Verify auto mining is enabled
+    assert u.auto_mining_enabled is True
+    equipped_before = te.get_user_equipped_item(db_session, u)
+    assert equipped_before.id == eq1.id
+    assert equipped_before.starforce == 5
+
+    # Swap pickaxe to eq2
+    ok_swap, msg_swap, det_swap = te.execute_equip_item(db_session, uid, uname, str(eq2.id))
+    assert ok_swap is True
+    assert det_swap["equipment_id"] == eq2.id
+
+    # Auto mining must STILL be enabled!
+    db_session.refresh(u)
+    assert u.auto_mining_enabled is True
+    assert u.auto_mining_end_time > datetime.now(timezone.utc).timestamp()
+
+    # Equipped pickaxe dynamically returns eq2
+    equipped_after = te.get_user_equipped_item(db_session, u)
+    assert equipped_after.id == eq2.id
+    assert equipped_after.starforce == 15
+
+
+def test_dividend_rates_1st_5pct_2nd_1pct_3rd_none(db_session):
+    """Test that 1st place pays 5%, 2nd place pays 1%, and 3rd/4th place pays 0% dividend."""
+    uid = "div_tester_user"
+    uname = "배당검증자"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.points = 1000000
+    db_session.commit()
+
+    # Buy 100 shares of 1X
+    te.execute_buy(db_session, uid, uname, "1X", "100")
+    pos = db_session.query(Position).filter_by(user_id=uid, product_type="1X").first()
+    assert pos.quantity == 100
+
+    # 1. 3rd place settlement: MUST have 0 dividends
+    res_3rd = te.settle_match(db_session, rank=3, point_delta=-20)
+    assert len(res_3rd["dividends"]) == 0
+
+    # 2. 4th place settlement: MUST have 0 dividends
+    res_4th = te.settle_match(db_session, rank=4, point_delta=-50)
+    assert len(res_4th["dividends"]) == 0
+
+    # 3. 2nd place settlement: MUST have 1% dividend
+    res_2nd = te.settle_match(db_session, rank=2, point_delta=10)
+    div_2nd = next((d for d in res_2nd["dividends"] if d["user_id"] == uid), None)
+    assert div_2nd is not None
+    assert div_2nd["rate_pct"] == 1.0
+
+    # 4. 1st place settlement: MUST have 5% dividend
+    res_1st = te.settle_match(db_session, rank=1, point_delta=50)
+    div_1st = next((d for d in res_1st["dividends"] if d["user_id"] == uid), None)
+    assert div_1st is not None
+    assert div_1st["rate_pct"] == 5.0
+
+
+def test_treasury_borrow_repay_cycle_no_free_money(db_session):
+    """Verify that borrowing and immediately repaying does NOT duplicate treasury funds (no auto-refill below 50k)."""
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 100000.0
+    db_session.commit()
+
+    user_id = "test_borrow_repay_no_exploit"
+    user = te.get_or_create_user(db_session, user_id, "대출테스터")
+    user.points = 500000
+    user.debt = 0
+    db_session.commit()
+
+    # 1. Borrow 80,000P -> treasury drops to 20,000P (< 50,000P)
+    ok_b, rep_b, det_b = te.execute_borrow(db_session, user_id, "대출테스터", "80000")
+    assert ok_b is True
+    assert det_b["treasury_pool"] == 20000.0
+    db_session.refresh(state)
+    assert state.treasury_pool == 20000.0
+
+    # 2. Query market state -> MUST NOT auto-refill to 500,000P!
+    state_queried = te.get_market_state(db_session)
+    assert state_queried.treasury_pool == 20000.0
+
+    # 3. Repay 80,000P -> treasury returns to exactly 100,000P (NOT 580,000P!)
+    ok_r, rep_r, det_r = te.execute_repay(db_session, user_id, "대출테스터", "80000")
+    assert ok_r is True
+    db_session.refresh(state)
+    assert state.treasury_pool == 100000.0
+
+
+def test_treasury_donation_and_credit_boost(db_session):
+    """Verify that !기부 adds 100% to treasury pool, awards title, and boosts credit score via donation_score."""
+    state = te.get_market_state(db_session)
+    state.treasury_pool = 100000.0
+    db_session.commit()
+
+    uid = "donor_test_user"
+    uname = "기부왕띵재"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.points = 2000000
+    db_session.commit()
+
+    score_before = te.get_user_credit_info(u, db=db_session)["score"]
+
+    # 1. Execute donation via command: !기부 50만
+    rep, evt = ch.handle_chat_command(db_session, uid, uname, "!기부 50만")
+    assert "국고 기부 쾌척" in rep
+    assert "500,000P" in rep
+    assert "국고 후원자" in rep
+    assert evt is not None
+    assert evt["type"] == "treasury_donation"
+
+    db_session.refresh(u)
+    db_session.refresh(state)
+    assert u.points == 1500000
+    assert state.treasury_pool == 600000.0
+    assert u.treasury_donation_total == 500000
+
+    # 2. Check credit score increased due to donation
+    c_after = te.get_user_credit_info(u, db=db_session)
+    assert c_after["factors"]["donation_score"] == 50
+    assert c_after["score"] > score_before
+
+    # 3. Donate all remaining: !기부 전액
+    rep2, _ = ch.handle_chat_command(db_session, uid, uname, "!기부 전액")
+    assert "1,500,000P" in rep2
+    assert "국가재정위원장" in rep2
+    db_session.refresh(u)
+    db_session.refresh(state)
+    assert u.points == 0
+    assert state.treasury_pool == 2100000.0
+    assert u.treasury_donation_total == 2000000
+    assert te.get_user_credit_info(u, db=db_session)["factors"]["donation_score"] == 75
+
+
+def test_credit_score_no_debt_penalty_on_borrow(db_session):
+    """Verify that borrowing within allowed capacity does NOT apply double debt_penalty."""
+    uid = "borrower_clean_credit"
+    uname = "건전대출러"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.points = 1000000
+    u.debt = 0
+    db_session.commit()
+
+    info_before = te.get_user_credit_info(u, db=db_session)
+    assert info_before["factors"]["debt_penalty"] == 0
+
+    # User borrows 200,000P
+    te.execute_borrow(db_session, uid, uname, "200000")
+    db_session.refresh(u)
+
+    info_after = te.get_user_credit_info(u, db=db_session)
+    # Net worth is still 1,000,000P (cash 1.2M - debt 0.2M = 1.0M)
+    assert info_after["net_worth"] == 1000000
+    # No arbitrary negative debt penalty
+    assert info_after["factors"]["debt_penalty"] == 0
+    # Score should remain stable because net worth is conserved!
+    assert info_after["score"] == info_before["score"]
 
 
 
