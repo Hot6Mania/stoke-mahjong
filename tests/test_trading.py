@@ -1603,11 +1603,11 @@ def test_mining_tier_coal_immunity_and_jackpot_rate():
         assert t["code"] != "C", "15성 이상 곡괭이는 석탄(C) 광맥이 나오지 않아야 합니다."
         results.append(t["code"])
 
-    # 15성 여유로운 보정: 잭팟(EX+UR++UR) >= 12% 및 고등급(SR+) >= 45%
+    # 15성 역만 밸런스 너프: 잭팟(EX+UR++UR) 3~7% 및 고등급(SR+) >= 35%
     jackpot_count = sum(1 for c in results if c in ["EX", "UR+", "UR"])
     high_tier_count = sum(1 for c in results if c in ["EX", "UR+", "UR", "SSR", "SR"])
-    assert jackpot_count / len(results) >= 0.12, f"15성 잭팟 확률({jackpot_count/len(results):.2%})이 기대치보다 낮습니다."
-    assert high_tier_count / len(results) >= 0.45, f"15성 고등급 출현율({high_tier_count/len(results):.2%})이 기대치보다 낮습니다."
+    assert 0.02 <= jackpot_count / len(results) <= 0.08, f"15성 잭팟 확률({jackpot_count/len(results):.2%})이 기대 범위(2~8%)를 벗어납니다."
+    assert high_tier_count / len(results) >= 0.35, f"15성 고등급 출현율({high_tier_count/len(results):.2%})이 기대치보다 낮습니다."
 
     # 2. Test pickaxe info contains coal immunity description for 15+
     info_14 = te.get_pickaxe_info(14)
@@ -1620,6 +1620,16 @@ def test_mining_tier_coal_immunity_and_jackpot_rate():
     for _ in range(200):
         t = te.roll_mining_tier(crit_bonus=74.0, pickaxe_level=17)
         assert t["code"] != "C"
+
+    # 4. Test 26-star pickaxe has nerfed yakuman rate (~5%) preventing infinite cooldown resets
+    results_26 = []
+    random.seed(42)
+    for _ in range(500):
+        t26 = te.roll_mining_tier(crit_bonus=175.0, pickaxe_level=26)
+        assert t26["code"] != "C"
+        results_26.append(t26["code"])
+    j26 = sum(1 for c in results_26 if c in ["EX", "UR+", "UR"])
+    assert 0.03 <= j26 / len(results_26) <= 0.08, f"26성 잭팟 확률({j26/len(results_26):.2%})이 8%를 초과하면 무한 쿨초가 발생할 수 있습니다."
 
 def test_random_mining_and_critical_hits(db_session, monkeypatch):
     u = "lucky_miner"
@@ -4339,6 +4349,8 @@ def test_user_requested_updates_september_19_part2(db_session):
     m_state.merchant_downgrade_stock = 0
     m_state.merchant_snipe_stock = 0
     m_state.merchant_special_snipe_stock = 0
+    m_state.merchant_shield_100_stock = 0
+    m_state.merchant_downgrade_100_stock = 0
     db_session.commit()
 
     r_buy, ev_buy = ch.handle_chat_command(db_session, uid, uname, "!상인구매 1 1")
@@ -4883,6 +4895,52 @@ def test_absolute_100_scrolls_and_activities(db_session, monkeypatch):
     assert act["type"] == "starforce"
     assert len(main.recent_activities) == 1
     assert main.recent_activities[0]["title"] == "🛡️✨ 절대 파방 성공"
+
+def test_newbie_guide_commands_and_cube_deficit(db_session):
+    """Test !도움말, !설명, !초보 beginner guides and cube deficit error messaging."""
+    import command_handler as ch
+
+    uid = "newbie_tester"
+    uname = "뉴비테스터"
+    user = te.get_or_create_user(db_session, uid, uname)
+    user.points = 10000
+    user.cube_count = 0
+    db_session.commit()
+
+    # 1. Test !도움말 returns newcomer beginner guide
+    rep_help, _ = ch.handle_chat_command(db_session, uid, uname, "!도움말")
+    assert "🔰 [마작 주식 & 금융 시스템 처음 오신 분 입문 안내]" in rep_help
+    assert "!채굴" in rep_help
+    assert "!매수" in rep_help
+    assert "!강화" in rep_help
+    assert "!내정보" in rep_help
+    assert "!명령어" in rep_help
+
+    # 2. Test !설명 and !초보 return newcomer guide as well
+    rep_desc, _ = ch.handle_chat_command(db_session, uid, uname, "!설명")
+    assert "🔰 [마작 주식 & 금융 시스템 처음 오신 분 입문 안내]" in rep_desc
+
+    rep_novice, _ = ch.handle_chat_command(db_session, uid, uname, "!초보")
+    assert "🔰 [마작 주식 & 금융 시스템 처음 오신 분 입문 안내]" in rep_novice
+
+    # 3. Test subcommand help: !도움말 매수, !도움말 채굴
+    rep_buy, _ = ch.handle_chat_command(db_session, uid, uname, "!도움말 매수")
+    assert "💡 매수 사용법" in rep_buy
+
+    rep_mine, _ = ch.handle_chat_command(db_session, uid, uname, "!도움말 채굴")
+    assert "⛏️✨ [랜덤 채굴 & 크리티컬 확률 안내]" in rep_mine
+
+    # 4. Test !명령어 returns the comprehensive 50+ command list
+    rep_all, _ = ch.handle_chat_command(db_session, uid, uname, "!명령어")
+    assert "📈 [마작 주식 명령어 안내" in rep_all
+    assert "!약어" in rep_all
+
+    # 5. Test cube deficit returns clear error message
+    eq = te.get_user_equipped_item(db_session, user)
+    ok_cube, rep_cube, det_cube = te.execute_cube_use(db_session, uid, uname, str(eq.id) if eq else None)
+    assert ok_cube is False
+    assert "보유한 큐브가 없습니다" in rep_cube
+    assert "!큐브구매" in rep_cube
 
 
 

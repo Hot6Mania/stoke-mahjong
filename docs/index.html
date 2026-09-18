@@ -511,7 +511,7 @@
             border-radius: 8px;
             padding: 12px 16px;
             position: fixed;
-            z-index: 1000;
+            z-index: 999999;
             left: 50%;
             bottom: 30px;
             transform: translateX(-50%);
@@ -2128,7 +2128,7 @@
                 <div class="callout gold">
                     곡괭이를 강화하면 <strong>채굴 기본 배율(최대 80배)</strong>, <strong>매 채굴 확정 현금(최대 120만P)</strong>, <strong>크리티컬 확률(최대 +150% 보장)</strong> 및 <strong>쿨타임 3분</strong>까지 극대화됩니다.<br>
                     • 💥 <strong>크리티컬 곱연산 증폭 공식</strong>: 채굴 크리티컬(<code>crit_bonus</code>)은 단순 가산이 아니라, 고등급 광맥(EX 천화, UR+ 구련보등, UR 국사무쌍, SSR 다이아, SR 황금 등)의 기본 출현 확률에 대해 <strong>비례 곱연산 증폭 공식(기본확률 × (1.0 + 크리티컬% × 가중치))</strong>으로 정밀 적용됩니다!<br>
-                    • 🀄 <strong>초고강화 역만 특화</strong>: ★15성 이상에서 석탄 광맥(C: 꽝 0% 영구 면제), ★20성 이상에서는 <strong>합산 역만 잭팟 출현율이 약 28%</strong>(천화 4.7%, 구련보등 10.0%, 국사무쌍 13.3%)까지 폭증하여 강력한 일확천금의 손맛을 선사합니다!
+                    • 🀄 <strong>역만 밸런스 패치</strong>: ★15성 이상에서 석탄 광맥(C: 꽝 0% 영구 면제), ★20성 이상에서도 무한 쿨타임 초기화 루프 방지를 위해 합산 역만 잭팟 출현율을 적정 수준(약 5~6.5%)으로 안정화하여 건강한 파밍 밸런스를 유지합니다!
                 </div>
             </div>
 
@@ -3190,6 +3190,24 @@
                     <span style="font-size: 12px; color: var(--text-secondary);">카드를 클릭하면 복사됩니다</span>
                 </div>
 
+                <!-- Newbie Quick Guide Banner -->
+                <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(99, 102, 241, 0.12)); border: 1px solid rgba(14, 165, 233, 0.4); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+                        <strong style="color: #38bdf8; font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                            <span>🔰 처음 오신 분을 위한 5단계 빠른 입문 안내 (<code>!도움말</code> 또는 <code>!설명</code>)</span>
+                        </strong>
+                        <span style="font-size: 11px; background: rgba(14, 165, 233, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 12px; font-weight: 700;">뉴비 필독</span>
+                    </div>
+                    <div style="font-size: 12px; color: #cbd5e1; line-height: 1.6;">
+                        치즈나베 마작 주식은 스트리머의 마작 경기 결과에 따라 주가가 요동치는 실시간 시청자 참여형 모의 투자 게임입니다!<br>
+                        1️⃣ <strong>무료 채굴</strong>: <code>!채굴</code> (쿨타임마다 무료 포인트 및 1X 주식 수확)<br>
+                        2️⃣ <strong>주식 투자</strong>: 승리 예상 시 <code>!매수 1X 올인</code>, 패배 예상 시 <code>!매수 INV [수량]</code> (고수용: <code>!10롱</code>, <code>!10숏</code>)<br>
+                        3️⃣ <strong>곡괭이 강화 & 큐브</strong>: <code>!강화</code>로 채굴량 폭증/쿨 단축, <code>!큐브</code>로 잠재능력 3줄 뽑기<br>
+                        4️⃣ <strong>카지노 & 복권</strong>: <code>!슬롯 [금액]</code>, <code>!복권 [동/은/금] [수량]</code>, <code>!경마 [말이름] [금액]</code><br>
+                        5️⃣ <strong>내 상태 확인</strong>: <code>!내정보</code> (잔고, 보유주식, 빚, 곡괭이 스펙 한눈에 확인)
+                    </div>
+                </div>
+
                 <!-- Real-time Search & Category Filters -->
                 <div style="margin-bottom: 18px;">
                     <input type="text" id="cmdSearchInput" class="search-input" placeholder="🔍 명령어 또는 기능 검색 (예: 매수, 10배, 슬롯, 피버, 큐브, 저격, 송금, 대출, 정산, 경마)..." onkeyup="filterCommands()" style="margin-bottom: 10px;">
@@ -3208,6 +3226,14 @@
 
                 <div class="cmd-grid" id="cmdGridContainer">
                     <!-- ================= STOCK / TRADING ================= -->
+                    <div class="cmd-box" data-category="stock" onclick="copyCommand('!도움말')">
+                        <div class="cmd-code">!도움말 / !설명 / !초보 / !가이드 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">처음 온 시청자를 위한 5단계 빠른 시작 입문 요약 출력 (!도움말 매수/채굴 등으로 부분 조회 가능)</div>
+                    </div>
+                    <div class="cmd-box" data-category="stock" onclick="copyCommand('!명령어')">
+                        <div class="cmd-code">!명령어 / !주식명령어 / !전체명령어 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">마작 주식, 채굴, 강화, 큐브, 금융, 카지노 등 50+ 전체 명령어 종합 사전 확인</div>
+                    </div>
                     <div class="cmd-box" data-category="stock" onclick="copyCommand('!주식')">
                         <div class="cmd-code">!주식 / !시세 / !호가 / !가격 / !주가 <span class="copy-icon">📋 복사</span></div>
                         <div class="cmd-desc">현재 기준 주가, 일일 등락폭, 작혼 점수 및 시장 락 상태 실시간 조회</div>
@@ -5412,6 +5438,21 @@
                     </div>
                 </div>
 
+                <!-- Inline Cube Alert Banner -->
+                <div id="cube-alert-banner" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; animation: pulse 1.5s infinite;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 16px;">⚠️</span>
+                            <span id="cube-alert-banner-text" style="font-size: 12px; font-weight: 700; color: #f87171;">보유한 큐브가 없습니다!</span>
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <button onclick="executeWebCubeBuy(1)" style="background: #ef4444; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer;">+1개 구매</button>
+                            <button onclick="executeWebCubeBuy(10)" style="background: #b91c1c; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer;">+10개 구매</button>
+                            <button onclick="document.getElementById('cube-alert-banner').style.display='none'" style="background: transparent; color: #94a3b8; border: 1px solid #475569; padding: 4px 6px; border-radius: 4px; font-size: 10px; cursor: pointer;">✕</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Action Buttons -->
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                     <button id="cube-roll-action-btn" onclick="executeWebCubeRoll()" style="width: 100%; background: linear-gradient(135deg, #6d28d9, #8b5cf6); color: #fff; font-size: 16px; font-weight: 900; padding: 14px 20px; border-radius: 10px; border: none; cursor: pointer; box-shadow: 0 6px 18px rgba(139, 92, 246, 0.4); display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -5428,6 +5469,40 @@
                             🧩 조각 10개 환급 (+1.5만P)
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dedicated Cube Deficit / No Cubes Alert Modal -->
+        <div id="cube-no-cubes-modal" class="web-modal-overlay" style="z-index: 100020; display: none;" onclick="if(event.target===this) closeCubeNoCubesModal()">
+            <div class="web-modal-card" style="max-width: 440px; border: 2px solid #ef4444; text-align: center; padding: 26px 22px; box-shadow: 0 0 45px rgba(239, 68, 68, 0.45); animation: modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1);">
+                <div style="font-size: 46px; margin-bottom: 8px; filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.6));">🔮❌</div>
+                <h3 style="margin: 0 0 8px 0; color: #f87171; font-size: 20px; font-weight: 900; letter-spacing: -0.5px;">보유한 큐브가 없습니다!</h3>
+                <p id="cube-no-cubes-desc" style="color: #cbd5e1; font-size: 13px; line-height: 1.6; margin: 0 0 16px 0;">
+                    잠재능력 재설정(미라클 큐브)을 돌리려면 큐브가 필요합니다.<br>
+                    <span style="color: #94a3b8; font-size: 12px;">(1개당 15,000P · 구매비는 100% 국고 상금풀 적립)</span>
+                </p>
+                <div style="background: #090e17; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 10px; padding: 12px; margin-bottom: 18px; display: flex; justify-content: space-around; align-items: center; font-size: 13px;">
+                    <div>
+                        <div style="color: #94a3b8; font-size: 11px;">현재 보유 큐브</div>
+                        <strong id="cube-no-cubes-hold-count" style="color: #f87171; font-size: 16px;">0개</strong>
+                    </div>
+                    <div style="width: 1px; height: 28px; background: rgba(255,255,255,0.1);"></div>
+                    <div>
+                        <div style="color: #94a3b8; font-size: 11px;">내 보유 포인트</div>
+                        <strong id="cube-no-cubes-user-pts" style="color: #fbbf24; font-size: 16px;">0P</strong>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <button onclick="executeWebCubeBuy(1); closeCubeNoCubesModal();" style="width: 100%; background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff; font-weight: 800; font-size: 14px; padding: 12px; border-radius: 8px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3); transition: transform 0.15s;">
+                        🛒 큐브 1개 즉시 구매 (15,000P)
+                    </button>
+                    <button onclick="executeWebCubeBuy(10); closeCubeNoCubesModal();" style="width: 100%; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; font-weight: 800; font-size: 14px; padding: 12px; border-radius: 8px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); transition: transform 0.15s;">
+                        🛒 큐브 10개 묶음 구매 (150,000P)
+                    </button>
+                    <button onclick="closeCubeNoCubesModal()" style="background: #1e293b; color: #94a3b8; border: 1px solid #475569; padding: 9px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        닫기
+                    </button>
                 </div>
             </div>
         </div>
@@ -11147,6 +11222,44 @@
                 costLabel.textContent = lockedCount > 0 ? "큐브 20개 (또는 30만P)" : "큐브 1개 (또는 1.5만P)";
                 costLabel.style.color = lockedCount > 0 ? "#f472b6" : "#fbbf24";
             }
+
+            const alertBanner = document.getElementById("cube-alert-banner");
+            if (alertBanner && (items.cube_count || 0) > 0) {
+                alertBanner.style.display = "none";
+            }
+        }
+
+        function openCubeNoCubesModal(customMsg, holdCount, reqCount) {
+            const modal = document.getElementById("cube-no-cubes-modal");
+            const items = (activeWebUser && activeWebUser.items) || {};
+            const currentCubes = (holdCount !== undefined) ? holdCount : (items.cube_count || 0);
+            const userPts = (activeWebUser && (activeWebUser.points ?? activeWebUser.cash)) ?? 0;
+
+            if (modal) {
+                const desc = document.getElementById("cube-no-cubes-desc");
+                const holdEl = document.getElementById("cube-no-cubes-hold-count");
+                const ptsEl = document.getElementById("cube-no-cubes-user-pts");
+
+                if (holdEl) holdEl.textContent = `${currentCubes}개` + (reqCount ? ` (필요: ${reqCount}개)` : "");
+                if (ptsEl) ptsEl.textContent = `${Number(userPts).toLocaleString()}P`;
+                if (desc && customMsg) desc.innerHTML = customMsg.replace(/\n/g, "<br>");
+                modal.style.display = "flex";
+            }
+
+            const banner = document.getElementById("cube-alert-banner");
+            const bannerText = document.getElementById("cube-alert-banner-text");
+            if (banner && bannerText) {
+                bannerText.textContent = customMsg ? customMsg.split('\n')[0] : "보유 큐브가 부족합니다! 큐브를 충전해주세요.";
+                banner.style.display = "block";
+            }
+
+            showToast("⚠️ " + (customMsg ? customMsg.split('\n')[0] : "보유한 큐브가 없습니다!"));
+            playWebSound("fail");
+        }
+
+        function closeCubeNoCubesModal() {
+            const modal = document.getElementById("cube-no-cubes-modal");
+            if (modal) modal.style.display = "none";
         }
 
         function onCubeSnipeCheckboxChanged() {
@@ -11158,26 +11271,31 @@
         }
 
         function onCubeSpecialSnipeCheckboxChanged() {
-            const chk = document.getElementById("cube-chk-snipe");
-            const specialChk = document.getElementById("cube-chk-special-snipe");
-            if (specialChk && specialChk.checked && chk) {
-                chk.checked = false;
+            const chk = document.getElementById("cube-chk-special-snipe");
+            const normalChk = document.getElementById("cube-chk-snipe");
+            if (chk && chk.checked && normalChk) {
+                normalChk.checked = false;
             }
         }
 
         function onSpecialSnipeSelectChanged() {
-            const sel = document.getElementById("cube-select-special-snipe");
+            const select = document.getElementById("cube-select-special-snipe");
             const chk = document.getElementById("cube-chk-special-snipe");
-            if (sel && sel.value && chk) {
+            if (select && select.value && chk) {
                 chk.checked = true;
-                onCubeSpecialSnipeCheckboxChanged();
+                const normalChk = document.getElementById("cube-chk-snipe");
+                if (normalChk) normalChk.checked = false;
             }
         }
 
-        async function toggleLineLockWeb(lineNum) {
+        let isLineLockPending = false;
+        async function toggleWebCubeLineLock(lineIdx) {
             if (!activeWebToken || isLineLockPending) return;
             const eq = getActiveUserEquipment(activeWebUser);
             if (!eq) return;
+
+            const isCurrentlyLocked = Boolean(eq[`is_line${lineIdx}_locked`]);
+            const targetLine = isCurrentlyLocked ? 0 : lineIdx;
 
             isLineLockPending = true;
             [1, 2, 3].forEach(i => {
@@ -11187,18 +11305,17 @@
 
             try {
                 const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/cube/line-lock`, {
+                const res = await fetch(`${apiBase}/api/web/cube/option-lock`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         token: activeWebToken,
-                        equipment_id: eq.id,
-                        line_arg: String(lineNum)
+                        line: targetLine
                     })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    showToast(data.reply || "잠재 라인 잠금 상태가 변경되었습니다.");
+                    showToast(data.reply || "잠금 설정이 변경되었습니다.");
                     if (data.user) {
                         activeWebUser = data.user;
                         updateWebUserBar(activeWebUser);
@@ -11253,6 +11370,20 @@
             if (!activeWebToken) return;
             const eq = getActiveUserEquipment(activeWebUser);
             if (!eq) return;
+
+            // Pre-check user's cube inventory
+            const items = (activeWebUser && activeWebUser.items) || {};
+            const currentCubes = items.cube_count || 0;
+            const lockedCount = [eq.is_line1_locked, eq.is_line2_locked, eq.is_line3_locked].filter(Boolean).length;
+            const requiredCubes = lockedCount > 0 ? 20 : 1;
+
+            if (currentCubes < requiredCubes) {
+                const msg = lockedCount > 0
+                    ? `⚠️ 잠재 라인 잠금 상태는 큐브 20개(또는 30만P)가 필요합니다!\n현재 보유 큐브: ${currentCubes}개 (부족: ${requiredCubes - currentCubes}개)`
+                    : `⚠️ 보유한 미라클 큐브가 없습니다! (현재 보유: 0개)\n상점에서 큐브를 먼저 구매해주세요. (1개당 1.5만P)`;
+                openCubeNoCubesModal(msg, currentCubes, requiredCubes);
+                return;
+            }
 
             const btn = document.getElementById("cube-roll-action-btn");
             const cubeBox = document.getElementById("cube-3d-box");
@@ -11365,7 +11496,13 @@
                         cubeBox.classList.remove("cube-charging-pulse");
                     }
                     if (btn) btn.disabled = false;
-                    showToast("⚠️ " + (data.detail || data.reply || "큐브 사용 실패"));
+                    const errDetail = data.detail || data.reply || "큐브 사용 실패";
+                    if (errDetail.includes("큐브") && (errDetail.includes("없습니다") || errDetail.includes("부족") || errDetail.includes("보유"))) {
+                        openCubeNoCubesModal(errDetail);
+                    } else {
+                        showToast("⚠️ " + errDetail);
+                        alert("⚠️ " + errDetail);
+                    }
                     renderCubeUI(activeWebUser);
                 }
 
@@ -11376,6 +11513,7 @@
                 }
                 if (btn) btn.disabled = false;
                 showToast("⚠️ 큐브 요청 오류: " + err.message);
+                alert("⚠️ 큐브 요청 오류: " + err.message);
             }
         }
 
@@ -11392,6 +11530,7 @@
                 const data = await res.json();
                 if (res.ok && data.success) {
                     showToast(`📦 큐브 ${count}개 구매 완료!`);
+                    closeCubeNoCubesModal();
                     if (data.user) {
                         activeWebUser = data.user;
                         updateWebUserBar(activeWebUser);
@@ -11399,6 +11538,7 @@
                     }
                 } else {
                     showToast("⚠️ " + (data.detail || data.reply || "구매 실패"));
+                    alert("⚠️ " + (data.detail || data.reply || "구매 실패"));
                 }
             } catch (err) {
                 showToast("⚠️ 오류: " + err.message);

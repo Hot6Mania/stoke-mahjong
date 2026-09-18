@@ -4542,7 +4542,7 @@ def get_pickaxe_info(level: int, event_state: Optional[Dict[str, Any]] = None) -
 # Backwards compatibility dictionary mapping
 PICKAXE_TIERS: Dict[int, Dict[str, Any]] = {i: get_pickaxe_info(i) for i in range(31)}
 
-# 채굴 등급 및 크리티컬 확률/보상 테이블 (일확천금 신화급 잭팟 추가)
+# 채굴 등급 및 크리티컬 확률/보상 테이블 (일확천금 신화급 잭팟 추가 & 역만 밸런스 조정)
 MINING_TIERS = [
     {
         "code": "EX",
@@ -4553,7 +4553,7 @@ MINING_TIERS = [
         "min_cash": 50000,
         "max_cash": 300000,
         "bonus_10x": 5.0,        # 10X 레버리지 5주!
-        "cooldown_reduction": 15, # 쿨타임 즉시 초기화
+        "cooldown_reduction": 15, # 쿨타임 즉시 초기화 (0.2% 극희귀 신화 잭팟)
     },
     {
         "code": "UR+",
@@ -4564,7 +4564,7 @@ MINING_TIERS = [
         "min_cash": 20000,
         "max_cash": 100000,
         "bonus_10x": 2.0,        # 10X 레버리지 2주!
-        "cooldown_reduction": 10, # 쿨타임 10분 단축
+        "cooldown_reduction": 3,  # 쿨타임 3분 단축 (밸런스 너프: 기존 10분 -> 3분)
     },
     {
         "code": "UR",
@@ -4573,7 +4573,7 @@ MINING_TIERS = [
         "multiplier": 5.0,
         "bonus_cash": 15000,
         "bonus_10x": 1.0,
-        "cooldown_reduction": 7,  # 쿨타임 7분 단축
+        "cooldown_reduction": 1,  # 쿨타임 1분 단축 (밸런스 너프: 기존 7분 -> 1분, 연속 쿨초 루프 방지)
     },
     {
         "code": "SSR",
@@ -4582,7 +4582,7 @@ MINING_TIERS = [
         "multiplier": 3.0,
         "bonus_cash": 7000,
         "bonus_10x": 0.0,
-        "cooldown_reduction": 5,   # 쿨타임 5분 단축
+        "cooldown_reduction": 1,   # 쿨타임 1분 단축 (기존 5분 -> 1분)
     },
     {
         "code": "SR",
@@ -4627,6 +4627,8 @@ def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[st
     Roll random mining tier based on weighted probabilities.
     Higher-level pickaxes grant a crit_bonus which boosts EX/UR+/UR/SSR/SR/R rates.
     ★15성(황금 곡괭이) 이상 장착 시 석탄(C) 광맥 출현율 0% 영구 면제.
+    역만 확률 너프: 고강 곡괭이에서 역만으로 인한 무한 쿨타임 초기화/점수 복사 루프를 방지하도록
+    비례 곱연산 증폭 가중치를 적정 수준(합산 역만 4~6%)으로 조정.
     """
     cb = max(0.0, float(crit_bonus or 0.0))
     lvl = max(0, int(pickaxe_level or 0))
@@ -4638,21 +4640,21 @@ def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[st
         code = tier["code"]
         base_prob = tier["prob"]
         if lvl >= 20 or cb >= 85.0:
-            # ★ 20성 이상 초고강화 마스터 역만 특화 비례 곱연산 증폭 (합산 역만 28%)
+            # ★ 20성 이상 초고강화 마스터 역만 비례 증폭 (밸런스 너프: 합산 역만 약 5~6.5%로 조정)
             if code == "EX":
-                w = base_prob * (1.0 + cb * 0.350)      # 천화 신화 잭팟 대폭 증폭 (약 4.7%)
+                w = base_prob * (1.0 + cb * 0.050)      # 천화 신화 잭팟 (약 0.6% ~ 0.75%)
             elif code == "UR+":
-                w = base_prob * (1.0 + cb * 0.180)      # 구련보등 더블역만 대폭 증폭 (약 10.0%)
+                w = base_prob * (1.0 + cb * 0.030)      # 구련보등 더블역만 (약 1.5% ~ 1.95%)
             elif code == "UR":
-                w = base_prob * (1.0 + cb * 0.090)      # 국사무쌍 역만 대폭 증폭 (약 13.3%)
+                w = base_prob * (1.0 + cb * 0.022)      # 국사무쌍 역만 (약 3.0% ~ 3.75%)
             elif code == "SSR":
-                w = base_prob * (1.0 + cb * 0.038)      # 다이아몬드 광맥
+                w = base_prob * (1.0 + cb * 0.045)      # 다이아몬드 광맥
             elif code == "SR":
-                w = base_prob * (1.0 + cb * 0.018)      # 황금 광맥
+                w = base_prob * (1.0 + cb * 0.035)      # 황금 광맥
             elif code == "R":
-                w = base_prob * (1.0 + cb * 0.002)      # 은 광맥
+                w = base_prob * (1.0 + cb * 0.015)      # 은 광맥
             elif code == "N":
-                w = max(0.0, base_prob / (1.0 + cb * 0.030))  # 일반 구리 광맥 감소
+                w = max(5.0, base_prob / (1.0 + cb * 0.008))  # 일반 구리 광맥
             elif code == "C":
                 w = 0.0  # 석탄 광맥 0% 완전 면제
             else:
@@ -4660,19 +4662,19 @@ def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[st
         elif is_golden_or_above:
             # ★ 15성(황금 곡괭이) 이상 여유롭고 풍성한 고등급 채굴 곱연산 비례 보정
             if code == "EX":
-                w = base_prob * (1.0 + cb * 0.240)      # 천화 신화 잭팟 곱연산 증폭
+                w = base_prob * (1.0 + cb * 0.035)      # 천화 신화 잭팟
             elif code == "UR+":
-                w = base_prob * (1.0 + cb * 0.115)      # 구련보등 더블역만 곱연산 증폭
+                w = base_prob * (1.0 + cb * 0.022)      # 구련보등 더블역만
             elif code == "UR":
-                w = base_prob * (1.0 + cb * 0.055)      # 국사무쌍 역만 곱연산 증폭
+                w = base_prob * (1.0 + cb * 0.016)      # 국사무쌍 역만
             elif code == "SSR":
-                w = base_prob * (1.0 + cb * 0.038)      # 다이아몬드 광맥 곱연산 증폭
+                w = base_prob * (1.0 + cb * 0.030)      # 다이아몬드 광맥
             elif code == "SR":
-                w = base_prob * (1.0 + cb * 0.018)      # 황금 광맥 곱연산 증폭
+                w = base_prob * (1.0 + cb * 0.022)      # 황금 광맥
             elif code == "R":
-                w = base_prob * (1.0 + cb * 0.002)      # 은 광맥 곱연산 증폭
+                w = base_prob * (1.0 + cb * 0.010)      # 은 광맥
             elif code == "N":
-                w = max(0.0, base_prob / (1.0 + cb * 0.030))  # 일반 구리 광맥 감소
+                w = max(10.0, base_prob / (1.0 + cb * 0.008))  # 일반 구리 광맥
             elif code == "C":
                 w = 0.0  # ★15성(황금 곡괭이) 이상 석탄 광맥 0% 완전 면제
             else:
@@ -4680,13 +4682,13 @@ def roll_mining_tier(crit_bonus: float = 0.0, pickaxe_level: int = 0) -> Dict[st
         else:
             # 15성 미만 일반 성장 곱연산 비례 보정
             if code == "EX":
-                w = base_prob * (1.0 + cb * 0.140)      # 천화 신화 잭팟
+                w = base_prob * (1.0 + cb * 0.020)      # 천화 신화 잭팟
             elif code == "UR+":
-                w = base_prob * (1.0 + cb * 0.070)      # 구련보등 더블역만
+                w = base_prob * (1.0 + cb * 0.015)      # 구련보등 더블역만
             elif code == "UR":
-                w = base_prob * (1.0 + cb * 0.035)      # 국사무쌍 역만
+                w = base_prob * (1.0 + cb * 0.010)      # 국사무쌍 역만
             elif code == "SSR":
-                w = base_prob * (1.0 + cb * 0.026)      # 다이아몬드 광맥
+                w = base_prob * (1.0 + cb * 0.020)      # 다이아몬드 광맥
             elif code == "SR":
                 w = base_prob * (1.0 + cb * 0.012)      # 황금 광맥
             elif code == "R":
