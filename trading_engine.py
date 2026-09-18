@@ -2360,6 +2360,208 @@ def execute_delisting_and_relist(
         "refunded_buy_points": refunded_buy_points,
     }
 
+# Central Bank Financial Products & Fund Definitions
+INSURANCE_PLANS: Dict[str, Dict[str, Any]] = {
+    "basic": {
+        "id": "basic",
+        "name": "실속형 플랜",
+        "cost": 30000,
+        "coverage": 500000,
+        "matches": 5,
+        "claims": 1,
+        "aliases": ["1", "실속", "실속형", "basic", "소형", "3만", "30000", "50만"],
+        "desc": "보험료 30,000P | 15성+ 파괴 시 500,000P 위로금 (5경기)"
+    },
+    "standard": {
+        "id": "standard",
+        "name": "표준형 플랜",
+        "cost": 50000,
+        "coverage": 1000000,
+        "matches": 5,
+        "claims": 1,
+        "aliases": ["2", "표준", "표준형", "standard", "기본", "5만", "50000", "100만"],
+        "desc": "보험료 50,000P | 15성+ 파괴 시 1,000,000P 위로금 (5경기)"
+    },
+    "premium": {
+        "id": "premium",
+        "name": "프리미엄 플랜",
+        "cost": 120000,
+        "coverage": 3000000,
+        "matches": 5,
+        "claims": 1,
+        "aliases": ["3", "프리미엄", "고급", "premium", "12만", "120000", "300만"],
+        "desc": "보험료 120,000P | 15성+ 파괴 시 3,000,000P 위로금 (5경기)"
+    },
+    "vvip": {
+        "id": "vvip",
+        "name": "VVIP 종결 플랜",
+        "cost": 350000,
+        "coverage": 10000000,
+        "matches": 5,
+        "claims": 1,
+        "aliases": ["4", "vvip", "vip", "종결", "최고급", "35만", "350000", "1000만", "천만"],
+        "desc": "보험료 350,000P | 15성+ 파괴 시 10,000,000P 위로금 (5경기)"
+    }
+}
+
+SAVINGS_PLANS: Dict[int, Dict[str, Any]] = {
+    3: {
+        "rounds": 3,
+        "name": "스피드 단기 적금",
+        "bonus_pct": 0.10,
+        "min_per_round": 5000,
+        "max_per_round": 1000000,
+        "aliases": ["3", "3판", "3회", "3경기", "단기", "스피드", "초단기", "speed"],
+        "desc": "3경기 완납 시 +10% 만기 보너스 이자 지급 (단기 회수형)"
+    },
+    5: {
+        "rounds": 5,
+        "name": "나베 정기 적금",
+        "bonus_pct": 0.20,
+        "min_per_round": 5000,
+        "max_per_round": 2000000,
+        "aliases": ["5", "5판", "5회", "5경기", "표준", "정기", "일반", "standard"],
+        "desc": "5경기 완납 시 +20% 만기 보너스 이자 지급 (표준 밸런스형)"
+    },
+    10: {
+        "rounds": 10,
+        "name": "고래 장기 적금",
+        "bonus_pct": 0.35,
+        "min_per_round": 10000,
+        "max_per_round": 5000000,
+        "aliases": ["10", "10판", "10회", "10경기", "장기", "고래", "대박", "whale"],
+        "desc": "10경기 완납 시 +35% 만기 보너스 이자 지급 (고수익 잭팟형)"
+    },
+    20: {
+        "rounds": 20,
+        "name": "슈퍼 연금 적금",
+        "bonus_pct": 0.60,
+        "min_per_round": 20000,
+        "max_per_round": 10000000,
+        "aliases": ["20", "20판", "20회", "20경기", "연금", "슈퍼연금", "초장기", "mega", "pension"],
+        "desc": "20경기 완납 시 +60% 초대박 만기 보너스 이자 지급 (장기 연금형)"
+    }
+}
+
+DIVERSIFIED_FUNDS: Dict[str, Dict[str, Any]] = {
+    "index": {
+        "id": "index",
+        "name": "마작 종합 지수 펀드 (ETF)",
+        "risk_tier": "중위험·시장추종",
+        "risk_stars": "⭐️⭐️⭐️",
+        "aliases": ["지수", "인덱스", "index", "종합", "마작지수", "etf", "1", "기본"],
+        "min_invest": 10000,
+        "initial_nav": 1000.0,
+        "desc": "KOSPI200/S&P500 유사. 나베 1X 주가 지수 변동과 경기 종합 점수에 정비례하는 대표 지수 연동 펀드",
+        "beginner_guide": "💡 [주가지수 ETF] 치즈나베 마작 시장 전체를 따라가는 정석 펀드! 주가가 오를 것 같을 때 투자하세요."
+    },
+    "dividend": {
+        "id": "dividend",
+        "name": "나베 우량 배당국채 펀드",
+        "risk_tier": "초저위험·원금안정",
+        "risk_stars": "⭐️",
+        "aliases": ["배당", "국채", "안정", "dividend", "채권", "2"],
+        "min_invest": 10000,
+        "initial_nav": 1000.0,
+        "desc": "원금 보전 최우선! 주가 하락에도 손실을 극소화하며, 경기 승리 배당금과 국고 이자가 매 경기 꾸준히 가산",
+        "beginner_guide": "💡 [배당형 예금 유사] 주가가 떨어져도 안심! 스트리머 배당금과 국고 이자를 꾸준히 모아 안정적으로 이자를 받는 펀드입니다."
+    },
+    "beast": {
+        "id": "beast",
+        "name": "야수 10X 레버리지 펀드",
+        "risk_tier": "초고위험·초고수익",
+        "risk_stars": "⭐️⭐️⭐️⭐️⭐️",
+        "aliases": ["야수", "레버리지", "beast", "10x", "10배", "헤지", "3"],
+        "min_invest": 10000,
+        "initial_nav": 1000.0,
+        "desc": "TQQQ 3배 레버리지 유사. 10X 롱/숏 공격적 모멘텀에 베팅하여 대승 시 폭등하지만 역풍 시 손실도 큰 야수 펀드",
+        "beginner_guide": "💡 [고수익 공격형] 인생역전 도파민 추구! 스트리머가 연승 가도를 달릴 때 하루아침에 큰 수익을 낼 수 있는 초고수익 펀드입니다."
+    },
+    "infra": {
+        "id": "infra",
+        "name": "탄광·스타포스 인프라 펀드 (REITs)",
+        "risk_tier": "중저위험·실물인프라",
+        "risk_stars": "⭐️⭐️",
+        "aliases": ["인프라", "탄광", "채굴", "스타포스", "infra", "reits", "리츠", "4"],
+        "min_invest": 10000,
+        "initial_nav": 1000.0,
+        "desc": "맥쿼리인프라 유사. 주가와 무관하게 전 서버 유저들의 채굴량, 곡괭이 강화 수수료, 큐브 소비액의 5%를 분배받아 우상향",
+        "beginner_guide": "💡 [인프라 실물 리츠] 다른 시청자들이 채굴하고 강화하고 큐브를 돌릴 때마다 통행세처럼 펀드로 돈이 차곡차곡 들어옵니다!"
+    }
+}
+
+def get_all_fund_navs(state: MarketState) -> Dict[str, float]:
+    """Retrieve current NAVs for all diversified funds."""
+    base_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    navs = {"index": base_nav}
+    navs_json = getattr(state, "fund_navs_json", None)
+    if navs_json:
+        try:
+            parsed = json.loads(navs_json)
+            if isinstance(parsed, dict):
+                for k, v in parsed.items():
+                    try:
+                        navs[k] = float(v)
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            pass
+    for fid, fdef in DIVERSIFIED_FUNDS.items():
+        if fid not in navs:
+            navs[fid] = float(fdef.get("initial_nav", 1000.0))
+    navs["index"] = base_nav
+    return navs
+
+def save_all_fund_navs(state: MarketState, navs: Dict[str, float]):
+    """Persist fund NAVs to market state."""
+    state.fund_nav = navs.get("index", 1000.0)
+    state.fund_navs_json = json.dumps(navs, ensure_ascii=False)
+
+def resolve_insurance_plan(plan_str: Optional[str]) -> Dict[str, Any]:
+    """Resolves insurance plan from user input alias."""
+    if not plan_str:
+        return INSURANCE_PLANS["standard"]
+    clean = str(plan_str).strip().lower()
+    for plan_key, plan in INSURANCE_PLANS.items():
+        if clean == plan_key or clean == plan["name"].lower() or clean in plan["aliases"]:
+            return plan
+    return INSURANCE_PLANS["standard"]
+
+def resolve_savings_plan(rounds_or_name: Any) -> Dict[str, Any]:
+    """Resolves savings plan from user input (number of rounds or plan alias)."""
+    if not rounds_or_name:
+        return SAVINGS_PLANS[5]
+    clean = str(rounds_or_name).strip().lower().replace("판", "").replace("회", "").replace("경기", "")
+    try:
+        r_num = int(clean)
+        if r_num in SAVINGS_PLANS:
+            return SAVINGS_PLANS[r_num]
+        if r_num <= 4:
+            return SAVINGS_PLANS[3]
+        elif r_num <= 7:
+            return SAVINGS_PLANS[5]
+        elif r_num <= 15:
+            return SAVINGS_PLANS[10]
+        else:
+            return SAVINGS_PLANS[20]
+    except (ValueError, TypeError):
+        pass
+    for r_num, plan in SAVINGS_PLANS.items():
+        if clean in plan["aliases"] or clean == plan["name"].lower():
+            return plan
+    return SAVINGS_PLANS[5]
+
+def resolve_fund_plan(fund_str: Optional[str]) -> Dict[str, Any]:
+    """Resolves fund definition from user input alias."""
+    if not fund_str:
+        return DIVERSIFIED_FUNDS["index"]
+    clean = str(fund_str).strip().lower()
+    for fid, fdef in DIVERSIFIED_FUNDS.items():
+        if clean == fid or clean in fdef["aliases"] or clean in fdef["name"].lower():
+            return fdef
+    return DIVERSIFIED_FUNDS["index"]
+
+
 def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
     """
     Admin match settlement:
@@ -2543,12 +2745,15 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
                     target_rounds = int(sav.get("target_rounds", 5))
                     if sav["current_rounds"] >= target_rounds:
                         # Maturity!
-                        bonus = int(round(sav["total_deposited"] * 0.20))  # +20% maturity bonus!
+                        bonus_pct = float(sav.get("bonus_pct", 0.20))
+                        bonus = int(round(sav["total_deposited"] * bonus_pct))
                         total_payout = sav["total_deposited"] + bonus
                         bdu.bank_balance = (getattr(bdu, "bank_balance", 0) or 0) + total_payout
+                        pct_label = f"+{int(bonus_pct * 100)}%"
+                        plan_title = sav.get("plan_name", "정기적금")
                         b_data["last_maturity_notice"] = (
-                            f"🎉 [정기적금 만기 축하!] {target_rounds}회차 완납 달성! "
-                            f"원금 {sav['total_deposited']:,}P + 보너스 이자(+20%) {bonus:,}P = 총 {total_payout:,}P 보통예금 입금 완료!"
+                            f"🎉 [{plan_title} 만기 축하!] {target_rounds}회차 완납 달성! "
+                            f"원금 {sav['total_deposited']:,}P + 보너스 이자({pct_label}) {bonus:,}P = 총 {total_payout:,}P 보통예금 입금 완료!"
                         )
                         del b_data["savings"]
                 else:
@@ -2578,11 +2783,18 @@ def settle_match(db: Session, rank: int, point_delta: int) -> Dict[str, Any]:
         if dirty_bank:
             save_user_bank_data(bdu, b_data)
 
-    # 3. Mahjong Index Fund NAV update based on stock movement
-    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    # 3. Diversified Funds NAV update based on stock movement and economic yields
     price_change_ratio = (new_price - old_price) / max(1, old_price)
-    new_nav = max(100.0, round(cur_nav * (1.0 + (price_change_ratio * 0.6) + 0.005), 2))
-    state.fund_nav = new_nav
+    navs = get_all_fund_navs(state)
+    # Index: 60% beta + 0.5% base yield
+    navs["index"] = max(100.0, round(navs.get("index", 1000.0) * (1.0 + (price_change_ratio * 0.6) + 0.005), 2))
+    # Dividend: 10% beta + 1.2% guaranteed dividend yield
+    navs["dividend"] = max(100.0, round(navs.get("dividend", 1000.0) * (1.0 + (price_change_ratio * 0.1) + 0.012), 2))
+    # Beast: 2.5x high beta momentum
+    navs["beast"] = max(50.0, round(navs.get("beast", 1000.0) * (1.0 + (price_change_ratio * 2.5)), 2))
+    # Infra REITs: 0.9% steady infrastructure dividend
+    navs["infra"] = max(100.0, round(navs.get("infra", 1000.0) * (1.0 + 0.009), 2))
+    save_all_fund_navs(state, navs)
 
     # Process pending limit orders
     pending_orders = db.query(LimitOrder).filter_by(status=OrderStatus.PENDING).all()
@@ -3562,8 +3774,27 @@ def save_user_bank_data(user: User, data: Dict[str, Any]) -> None:
     """Saves bank data dict to JSON."""
     user.bank_data = json.dumps(data, ensure_ascii=False)
 
-def roll_merchant_special_snipe() -> Tuple[Optional[str], Optional[str], Optional[str], int, int]:
-    """75% chance to stock a specific named potential sniper scroll with 1~3 stock."""
+def calculate_merchant_inflation_multiplier(db: Session, state: MarketState) -> float:
+    """Calculates inflation multiplier (1.0x ~ 6.0x) based on average user wealth and treasury pool."""
+    try:
+        from sqlalchemy import func
+        total_points = db.query(func.sum(User.points)).scalar() or 0
+        total_bank = db.query(func.sum(User.bank_balance)).scalar() or 0
+        total_wealth = total_points + total_bank
+        user_count = db.query(User).count() or 1
+        avg_wealth = total_wealth / max(1, user_count)
+
+        wealth_mult = max(1.0, min(6.0, (avg_wealth / 70000.0) ** 0.8)) if avg_wealth > 70000 else 1.0
+        treasury = getattr(state, "treasury_pool", 0.0) or getattr(state, "treasury_balance", 0.0) or 0.0
+        treasury_mult = max(1.0, min(3.0, (float(treasury) / 15000000.0) ** 0.45)) if treasury > 15000000 else 1.0
+
+        return round(wealth_mult * 0.75 + treasury_mult * 0.25, 2)
+    except Exception:
+        return 1.0
+
+
+def roll_merchant_special_snipe(inflation_mult: float = 1.0) -> Tuple[Optional[str], Optional[str], Optional[str], int, int]:
+    """75% chance to stock a specific named potential sniper scroll with 1~3 stock (scaled by inflation)."""
     if random.uniform(0, 100) > 75.0:
         return None, None, None, 0, 0
 
@@ -3580,7 +3811,8 @@ def roll_merchant_special_snipe() -> Tuple[Optional[str], Optional[str], Optiona
     ]
     code, name, desc, base_price = random.choice(candidates)
     stock = random.randint(1, 3)
-    price = int(round(base_price * random.uniform(0.85, 1.35) / 10000)) * 10000
+    scaled_base = int(round(base_price * max(1.0, inflation_mult)))
+    price = int(round(scaled_base * random.uniform(0.85, 1.35) / 10000)) * 10000
     return code, name, desc, price, stock
 
 
@@ -3630,18 +3862,21 @@ def get_merchant_state(
             end_time = now + dur_m * 60.0
             next_time = end_time + random.uniform(MERCHANT_MIN_INTERVAL_MINUTES, MERCHANT_MAX_INTERVAL_MINUTES) * 60.0
 
-            # Randomize standard items stock & price
-            state.merchant_shield_price = random.randint(8, 98) * 10000
+            # Dynamic Inflation Multiplier based on server assets
+            infl_mult = calculate_merchant_inflation_multiplier(db, state)
+
+            # Randomize standard items stock & price scaled by inflation
+            state.merchant_shield_price = int(round(random.randint(25, 98) * 10000 * infl_mult / 10000)) * 10000
             state.merchant_shield_stock = random.randint(1, 8)
-            state.merchant_boost_price = random.randint(4, 65) * 10000
+            state.merchant_boost_price = int(round(random.randint(15, 65) * 10000 * infl_mult / 10000)) * 10000
             state.merchant_boost_stock = random.randint(3, 16)
-            state.merchant_downgrade_price = random.randint(6, 80) * 10000
+            state.merchant_downgrade_price = int(round(random.randint(20, 80) * 10000 * infl_mult / 10000)) * 10000
             state.merchant_downgrade_stock = random.randint(2, 10)
-            state.merchant_snipe_price = random.randint(9, 120) * 10000
+            state.merchant_snipe_price = int(round(random.randint(30, 120) * 10000 * infl_mult / 10000)) * 10000
             state.merchant_snipe_stock = random.randint(1, 6)
 
             # Probabilistically bring special named option sniper scroll (1~3 stock)
-            sp_code, sp_name, sp_desc, sp_price, sp_stock = roll_merchant_special_snipe()
+            sp_code, sp_name, sp_desc, sp_price, sp_stock = roll_merchant_special_snipe(inflation_mult=infl_mult)
             state.merchant_special_snipe_code = sp_code
             state.merchant_special_snipe_name = sp_name
             state.merchant_special_snipe_desc = sp_desc
@@ -5436,14 +5671,14 @@ def execute_pickaxe_upgrade(
             user.downgrade_scroll_count -= 1
             used_downgrade_scroll = True
             downgrade_defend_roll = random.uniform(0, 100)
-            if downgrade_defend_roll < 80.0:
+            if downgrade_defend_roll < 70.0:
                 outcome = "downgrade_prevented"
                 new_level = curr_level
                 target_item.starforce = new_level
                 new_item = current_item
                 reply = (
-                    f"🛡️📉 [하강방지권 방어 성공! (80% 확률){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화에 실패했으나, "
-                    f"하강방지권을 소모하여 1성 하락을 성공적으로 막아냈습니다! (남은 하강방지권: {user.downgrade_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+                    f"🛡️📉 [하강방지권 방어 성공! (70% 확률){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화에 실패했으나, "
+                    f"하강방지권을 소모하여 1성 하락을 막아냈습니다! (남은 하강방지권: {user.downgrade_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
                 )
             else:
                 outcome = "drop"
@@ -5452,7 +5687,7 @@ def execute_pickaxe_upgrade(
                 new_item = get_pickaxe_info(new_level, event_state=sf_state)
                 target_item.name = new_item["name"]
                 reply = (
-                    f"🔨📉 [하강방지권 방어 실패! (20% 뚫림){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 하강방지권을 사용했으나, "
+                    f"🔨📉 [하강방지권 방어 실패! (30% 뚫림){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 하강방지권을 사용했으나, "
                     f"하락 압력을 이겨내지 못하고 1성 하락했습니다! ㅠㅠ ([{current_item['name']}] ➔ [{new_item['name']}] | 남은 하강방지권: {user.downgrade_scroll_count}장 | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
                 )
         else:
@@ -5472,15 +5707,15 @@ def execute_pickaxe_upgrade(
             user.shield_scroll_count -= 1
             used_shield_scroll = True
             dest_defend_roll = random.uniform(0, 100)
-            if dest_defend_roll < 75.0:
+            if dest_defend_roll < 60.0:
                 shield_defended = True
                 outcome = "destruction_prevented"
                 new_level = curr_level
                 target_item.starforce = new_level
                 new_item = current_item
                 reply = (
-                    f"🛡️✨ [파괴방어권 방어 성공! (75% 확률){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴될 위기였으나, "
-                    f"파괴방어권을 소모하여 폭발을 가까스로 막아내고 성수를 지켜냈습니다! (방어 성공! 남은 파괴방어권: {user.shield_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
+                    f"🛡️✨ [파괴방어권 아슬아슬 방어 성공! (60% 확률){fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 장비가 폭발 파괴될 위기였으나, "
+                    f"파괴방어권이 엉성한 방어막으로 가까스로 폭발을 막아내고 성수를 지켜냈습니다! (방어 성공! 남은 파괴방어권: {user.shield_scroll_count}장 | 현재: [{current_item['name']}] | 국고 환원: +{cost:,}P | 잔여 현금: {user.points:,}P)"
                 )
             else:
                 shield_defended = False
@@ -5521,7 +5756,7 @@ def execute_pickaxe_upgrade(
                         f"보험금 +{cov:,}P가 보통예금으로 즉시 지급되었습니다! (보통예금 잔액: {user.bank_balance:,}P)"
                     )
 
-                shield_fail_tag = " [파괴방어권 방어 실패! 장비 폭발 파괴! (25% 뚫림)" if used_shield_scroll else " [스타포스 강화 실패: 장비 파괴!"
+                shield_fail_tag = " [파괴방어권 뚫림! 장비 폭발 대참사! (40% 뚫림)" if used_shield_scroll else " [스타포스 강화 실패: 장비 파괴!"
                 reply = (
                     f"💥💀{shield_fail_tag}{fever_suffix}] {user.username}님 {cost:,}P를 소모하여 [장비 #{target_item.id}] 강화 중 "
                     f"{'파괴방어막이 뚫려 ' if used_shield_scroll else ''}장비가 폭발 파괴되었습니다! ㅠㅠ "
@@ -10068,9 +10303,13 @@ def get_user_bank_info(
         total_dep = int(sav.get("total_deposited", 0))
         target_r = int(sav.get("target_rounds", 5))
         curr_r = int(sav.get("current_rounds", 0))
-        est_bonus = int(round(total_dep * 0.20))
+        bonus_pct = float(sav.get("bonus_pct", 0.20))
+        est_bonus = int(round(total_dep * bonus_pct))
         progress_pct = round((curr_r / max(1, target_r)) * 100.0, 1)
         savings_info = {
+            "plan_name": sav.get("plan_name", "정기적금"),
+            "bonus_pct": bonus_pct,
+            "bonus_pct_display": f"+{int(bonus_pct * 100)}%",
             "per_round": int(sav.get("per_round", 0)),
             "target_rounds": target_r,
             "current_rounds": curr_r,
@@ -10081,21 +10320,61 @@ def get_user_bank_info(
             "progress_pct": min(100.0, progress_pct)
         }
 
-    # 2. Fund
-    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
-    fund_units = float(b_data.get("fund_units", 0.0) or 0.0)
-    fund_invested = int(b_data.get("fund_invested", 0) or 0)
-    fund_valuation = int(round(fund_units * cur_nav))
-    fund_pnl = fund_valuation - fund_invested
-    fund_pnl_pct = round((fund_pnl / fund_invested * 100.0), 2) if fund_invested > 0 else 0.0
+    # 2. Diversified Funds
+    navs = get_all_fund_navs(state)
+    funds_dict = b_data.get("funds", {})
+    if not isinstance(funds_dict, dict):
+        funds_dict = {}
 
+    # Migration for legacy single-fund data
+    legacy_units = float(b_data.get("fund_units", 0.0) or 0.0)
+    legacy_invested = int(b_data.get("fund_invested", 0) or 0)
+    if legacy_units > 0 and "index" not in funds_dict:
+        funds_dict["index"] = {"units": legacy_units, "invested": legacy_invested}
+        b_data["funds"] = funds_dict
+        save_user_bank_data(user, b_data)
+
+    funds_portfolio = {}
+    total_fund_val = 0
+    total_fund_invested = 0
+
+    for fid, fdef in DIVERSIFIED_FUNDS.items():
+        f_nav = float(navs.get(fid, fdef.get("initial_nav", 1000.0)))
+        u_hold = funds_dict.get(fid, {})
+        u_units = float(u_hold.get("units", 0.0) or 0.0)
+        u_inv = int(u_hold.get("invested", 0) or 0)
+        u_val = int(round(u_units * f_nav))
+        u_pnl = u_val - u_inv
+        u_pnl_pct = round((u_pnl / u_inv * 100.0), 2) if u_inv > 0 else 0.0
+
+        total_fund_val += u_val
+        total_fund_invested += u_inv
+
+        funds_portfolio[fid] = {
+            "id": fid,
+            "name": fdef["name"],
+            "risk_tier": fdef["risk_tier"],
+            "risk_stars": fdef["risk_stars"],
+            "desc": fdef["desc"],
+            "beginner_guide": fdef["beginner_guide"],
+            "min_invest": fdef["min_invest"],
+            "nav": f_nav,
+            "units": round(u_units, 4),
+            "invested": u_inv,
+            "valuation": u_val,
+            "pnl": u_pnl,
+            "pnl_pct": u_pnl_pct
+        }
+
+    # Primary fund (index) for backwards compatibility
+    idx_fund = funds_portfolio.get("index", {})
     fund_info = {
-        "nav": cur_nav,
-        "units": round(fund_units, 4),
-        "invested": fund_invested,
-        "valuation": fund_valuation,
-        "pnl": fund_pnl,
-        "pnl_pct": fund_pnl_pct
+        "nav": idx_fund.get("nav", 1000.0),
+        "units": idx_fund.get("units", 0.0),
+        "invested": idx_fund.get("invested", 0),
+        "valuation": idx_fund.get("valuation", 0),
+        "pnl": idx_fund.get("pnl", 0),
+        "pnl_pct": idx_fund.get("pnl_pct", 0.0)
     }
 
     # 3. Insurance
@@ -10104,10 +10383,21 @@ def get_user_bank_info(
     if ins and isinstance(ins, dict) and ins.get("active"):
         insurance_info = {
             "active": True,
+            "plan_id": ins.get("plan_id", "standard"),
+            "plan_name": ins.get("plan_name", "표준형 플랜"),
             "claims_left": int(ins.get("claims_left", 1)),
             "matches_left": int(ins.get("matches_left", 5)),
             "coverage_amount": int(ins.get("coverage_amount", 1000000))
         }
+
+    available_savings = [
+        {"rounds": p["rounds"], "name": p["name"], "bonus_pct": p["bonus_pct"], "bonus_label": f"+{int(p['bonus_pct']*100)}%", "min": p["min_per_round"], "max": p["max_per_round"], "desc": p["desc"]}
+        for p in SAVINGS_PLANS.values()
+    ]
+    available_insurance = [
+        {"id": p["id"], "name": p["name"], "cost": p["cost"], "coverage": p["coverage"], "desc": p["desc"]}
+        for p in INSURANCE_PLANS.values()
+    ]
 
     return {
         "bank_balance": bank_balance,
@@ -10115,10 +10405,16 @@ def get_user_bank_info(
         "interest_rate_pct": 0.5,
         "savings": savings_info,
         "fund": fund_info,
-        "fund_valuation": fund_valuation,
+        "funds": funds_portfolio,
+        "total_fund_valuation": total_fund_val,
+        "total_fund_invested": total_fund_invested,
+        "total_fund_pnl": total_fund_val - total_fund_invested,
         "insurance": insurance_info,
         "credit": credit_info,
         "debt": debt,
+        "available_savings_plans": available_savings,
+        "available_insurance_plans": available_insurance,
+        "available_funds": list(funds_portfolio.values()),
         "last_maturity_notice": b_data.get("last_maturity_notice"),
         "special_snipe_scrolls": get_user_special_snipe_scrolls(user)
     }
@@ -10219,33 +10515,31 @@ def execute_open_savings(
     per_round_str: str,
     rounds_str: str = "5"
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-    """Start installment savings (!적금 가입 [회당금액] [판수])."""
+    """Start installment savings (!적금 [회당금액] [3/5/10/20 또는 스피드/표준/고래/연금])."""
     user = get_or_create_user(db, user_id, username)
     b_data = get_user_bank_data(user)
 
     if b_data.get("savings"):
         sav = b_data["savings"]
         return False, (
-            f"⚠️ 이미 진행 중인 정기적금이 있습니다!\n"
-            f"• 회당 납입: {sav['per_round']:,}P | 진행: {sav['current_rounds']}/{sav['target_rounds']}회차 | "
-            f"누적: {sav['total_deposited']:,}P (해지: !적금 해지)"
+            f"⚠️ 이미 가입 중인 정기적금이 있습니다! ({sav.get('plan_name', '적금')} {sav.get('current_rounds', 0)}/{sav.get('target_rounds', 5)}회차 진행 중 | "
+            f"누적: {sav.get('total_deposited', 0):,}P | 해지: !적금 해지)"
         ), None
 
     try:
         per_round = int((per_round_str or "").strip().lower().replace(",", "").replace("p", "").replace("원", ""))
     except (ValueError, TypeError):
-        return False, "⚠️ 올바른 회당 납입 금액을 입력해주세요. (예: !적금 10000 5)", None
+        return False, "⚠️ 올바른 회당 납입 금액을 입력해주세요. (예: !적금 10000 5, !적금 50000 고래)", None
 
-    if per_round < 5000 or per_round > 1000000:
-        return False, "⚠️ 정기적금 회당 납입금은 5,000P ~ 1,000,000P 사이로 설정 가능합니다.", None
+    plan = resolve_savings_plan(rounds_str)
+    rounds = plan["rounds"]
+    min_amt = plan["min_per_round"]
+    max_amt = plan["max_per_round"]
+    bonus_pct = plan["bonus_pct"]
+    bonus_label = f"+{int(bonus_pct * 100)}%"
 
-    try:
-        rounds = int(str(rounds_str).strip().replace("판", "").replace("회", ""))
-    except (ValueError, TypeError):
-        rounds = 5
-
-    if rounds not in [5, 10]:
-        rounds = 5 if rounds < 8 else 10
+    if per_round < min_amt or per_round > max_amt:
+        return False, f"⚠️ [{plan['name']}] 회당 납입금은 {min_amt:,}P ~ {max_amt:,}P 사이로 설정 가능합니다.", None
 
     # 1st installment deduction
     paid_from = "points"
@@ -10258,6 +10552,8 @@ def execute_open_savings(
         return False, f"⚠️ 적금 1회차 납입금({per_round:,}P)이 부족합니다! (보유: {user.points:,}P, 예금: {getattr(user, 'bank_balance', 0):,}P)", None
 
     b_data["savings"] = {
+        "plan_name": plan["name"],
+        "bonus_pct": bonus_pct,
         "per_round": per_round,
         "target_rounds": rounds,
         "current_rounds": 1,
@@ -10269,15 +10565,17 @@ def execute_open_savings(
     db.commit()
     db.refresh(user)
 
-    est_bonus = int(round(per_round * rounds * 0.20))
+    est_bonus = int(round(per_round * rounds * bonus_pct))
     est_total = (per_round * rounds) + est_bonus
     reply = (
-        f"🏛️📅 [치즈나베 정기적금 가입 완료] {user.username}님 매 경기 {per_round:,}P 적립 ({rounds}회 만기) 플랜 시작!\n"
+        f"🏛️📅 [{plan['name']} 가입 완료] {user.username}님 매 경기 {per_round:,}P 적립 ({rounds}회 만기) 플랜 시작!\n"
         f"• 1회차 납입 완료 (1/{rounds}회 | 납입: {per_round:,}P)\n"
-        f"• 만기 예상 보너스: +20% ({est_bonus:,}P 보너스 이자!) ➔ 만기 수령액: {est_total:,}P\n"
+        f"• 만기 예상 보너스: {bonus_label} ({est_bonus:,}P 특별 보너스 이자!) ➔ 만기 수령액: {est_total:,}P\n"
         f"• 매 경기 마작 정산 시 보유 현금(부족 시 예금)에서 자동 차감 적립됩니다."
     )
     details = {
+        "plan_name": plan["name"],
+        "bonus_pct": bonus_pct,
         "per_round": per_round,
         "target_rounds": rounds,
         "current_rounds": 1,
@@ -10318,9 +10616,10 @@ def execute_buy_fund(
     db: Session,
     user_id: str,
     username: str,
-    amount_str: str
+    amount_str: str,
+    fund_str: str = "index"
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-    """Invest points in Mahjong Index Fund (!펀드매수 [금액/올인])."""
+    """Invest points in diversified fund (!펀드매수 [금액/올인] [지수/배당/야수/인프라])."""
     user = get_or_create_user(db, user_id, username)
     state = get_market_state(db)
     clean_amt = (amount_str or "").strip().lower().replace(",", "").replace("p", "").replace("원", "")
@@ -10331,38 +10630,56 @@ def execute_buy_fund(
         try:
             amt = int(clean_amt)
         except (ValueError, TypeError):
-            return False, "⚠️ 올바른 펀드 매수 금액을 입력해주세요. (예: !펀드매수 50000, !펀드매수 올인)", None
+            return False, "⚠️ 올바른 펀드 매수 금액을 입력해주세요. (예: !펀드매수 50000, !펀드매수 올인 배당)", None
 
-    if amt < 10000:
-        return False, "⚠️ 마작 지수 펀드 최소 매수 금액은 10,000P입니다.", None
+    plan = resolve_fund_plan(fund_str)
+    min_inv = plan["min_invest"]
+
+    if amt < min_inv:
+        return False, f"⚠️ [{plan['name']}] 최소 투자 금액은 {min_inv:,}P입니다.", None
 
     if user.points < amt:
         return False, f"⚠️ 보유 포인트가 부족합니다! (보유: {user.points:,}P | 요청: {amt:,}P)", None
 
-    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    navs = get_all_fund_navs(state)
+    cur_nav = float(navs.get(plan["id"], plan["initial_nav"]))
     units_bought = round(amt / cur_nav, 4)
 
     user.points -= amt
     b_data = get_user_bank_data(user)
-    b_data["fund_units"] = round(float(b_data.get("fund_units", 0.0) or 0.0) + units_bought, 4)
-    b_data["fund_invested"] = int(b_data.get("fund_invested", 0) or 0) + amt
-    save_user_bank_data(user, b_data)
+    funds = b_data.get("funds", {})
+    if not isinstance(funds, dict):
+        funds = {}
 
+    fid = plan["id"]
+    u_hold = funds.get(fid, {"units": 0.0, "invested": 0})
+    new_units = round(float(u_hold.get("units", 0.0) or 0.0) + units_bought, 4)
+    new_invested = int(u_hold.get("invested", 0) or 0) + amt
+    funds[fid] = {"units": new_units, "invested": new_invested}
+    b_data["funds"] = funds
+
+    # Legacy field sync for primary index fund
+    if fid == "index":
+        b_data["fund_units"] = new_units
+        b_data["fund_invested"] = new_invested
+
+    save_user_bank_data(user, b_data)
     db.commit()
     db.refresh(user)
 
-    total_units = b_data["fund_units"]
-    valuation = int(round(total_units * cur_nav))
+    valuation = int(round(new_units * cur_nav))
     reply = (
-        f"🏛️📊 [마작 지수 펀드 매수 완료] {user.username}님이 {amt:,}P를 투자하여 펀드 {units_bought:,.4f}좌를 매수하셨습니다!\n"
-        f"• 기준가(NAV): {cur_nav:,.2f}P | 총 보유: {total_units:,.4f}좌 (평가금: {valuation:,}P)\n"
-        f"• 펀드는 주가 지수 상승 및 경기 배당 수익률에 연동되어 가치가 변동합니다."
+        f"🏛️📊 [{plan['name']} 매수 완료] {user.username}님이 {amt:,}P를 투자하여 {units_bought:,.4f}좌를 매수하셨습니다!\n"
+        f"• 기준가(NAV): {cur_nav:,.2f}P | 총 보유: {new_units:,.4f}좌 (평가금: {valuation:,}P)\n"
+        f"• 위험도: {plan['risk_stars']} ({plan['risk_tier']}) | {plan['desc']}"
     )
     details = {
+        "fund_id": fid,
+        "fund_name": plan["name"],
         "invested": amt,
         "units_bought": units_bought,
         "nav": cur_nav,
-        "total_units": total_units,
+        "total_units": new_units,
         "valuation": valuation
     }
     return True, reply, details
@@ -10372,16 +10689,26 @@ def execute_sell_fund(
     db: Session,
     user_id: str,
     username: str,
-    units_str: str = "전부"
+    units_str: str = "전부",
+    fund_str: str = "index"
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-    """Sell/Redeem units of Mahjong Index Fund (!펀드환매 [좌수/전액])."""
+    """Sell/Redeem units of a diversified fund (!펀드환매 [좌수/전부] [지수/배당/야수/인프라])."""
     user = get_or_create_user(db, user_id, username)
     state = get_market_state(db)
     b_data = get_user_bank_data(user)
+    plan = resolve_fund_plan(fund_str)
+    fid = plan["id"]
 
-    cur_units = float(b_data.get("fund_units", 0.0) or 0.0)
+    funds = b_data.get("funds", {})
+    u_hold = funds.get(fid, {}) if isinstance(funds, dict) else {}
+    cur_units = float(u_hold.get("units", 0.0) or 0.0)
+
+    # Legacy check for index fund
+    if cur_units <= 0.0001 and fid == "index":
+        cur_units = float(b_data.get("fund_units", 0.0) or 0.0)
+
     if cur_units <= 0.0001:
-        return False, "⚠️ 보유 중인 마작 지수 펀드 좌수가 없습니다.", None
+        return False, f"⚠️ 보유 중인 [{plan['name']}] 좌수가 없습니다. (보유: 0.0000좌)", None
 
     clean_u = (units_str or "").strip().lower().replace("좌", "").replace("개", "")
     if clean_u in ["올인", "all", "전액", "전부", "다", "최대", "max", ""]:
@@ -10390,36 +10717,47 @@ def execute_sell_fund(
         try:
             units_to_sell = float(clean_u)
         except (ValueError, TypeError):
-            return False, "⚠️ 올바른 환매 좌수를 입력해주세요. (예: !펀드환매 10.5, !펀드환매 전액)", None
+            return False, "⚠️ 올바른 환매 좌수를 입력해주세요. (예: !펀드환매 10.5, !펀드환매 전부)", None
 
     if units_to_sell <= 0:
         return False, "⚠️ 환매 좌수는 0보다 커야 합니다.", None
 
     units_to_sell = min(cur_units, units_to_sell)
-    cur_nav = float(getattr(state, "fund_nav", 1000.0) or 1000.0)
+    navs = get_all_fund_navs(state)
+    cur_nav = float(navs.get(fid, plan["initial_nav"]))
     payout = int(round(units_to_sell * cur_nav))
 
-    # Proportionate invested deduction
-    orig_invested = int(b_data.get("fund_invested", 0) or 0)
+    # Cost basis deduction
+    orig_invested = int(u_hold.get("invested", 0) or b_data.get("fund_invested", 0) or 0)
     cost_basis = int(round(orig_invested * (units_to_sell / cur_units))) if cur_units > 0 else orig_invested
     pnl = payout - cost_basis
 
     rem_units = round(max(0.0, cur_units - units_to_sell), 4)
-    b_data["fund_units"] = rem_units
-    b_data["fund_invested"] = max(0, orig_invested - cost_basis)
-    save_user_bank_data(user, b_data)
+    rem_inv = max(0, orig_invested - cost_basis)
 
+    if not isinstance(funds, dict):
+        funds = {}
+    funds[fid] = {"units": rem_units, "invested": rem_inv}
+    b_data["funds"] = funds
+
+    if fid == "index":
+        b_data["fund_units"] = rem_units
+        b_data["fund_invested"] = rem_inv
+
+    save_user_bank_data(user, b_data)
     user.points += payout
     db.commit()
     db.refresh(user)
 
     pnl_sign = f"+{pnl:,}" if pnl >= 0 else f"{pnl:,}"
     reply = (
-        f"🏛️📊 [마작 지수 펀드 환매 완료] {user.username}님이 {units_to_sell:,.4f}좌를 환매하여 {payout:,}P를 수령하셨습니다!\n"
+        f"🏛️📊 [{plan['name']} 환매 완료] {user.username}님이 {units_to_sell:,.4f}좌를 환매하여 {payout:,}P를 수령하셨습니다!\n"
         f"• 기준가(NAV): {cur_nav:,.2f}P | 실현 손익: {pnl_sign}P | 남은 펀드: {rem_units:,.4f}좌\n"
         f"• 보유 현금: {user.points:,}P"
     )
     details = {
+        "fund_id": fid,
+        "fund_name": plan["name"],
         "units_sold": units_to_sell,
         "payout": payout,
         "pnl": pnl,
@@ -10432,22 +10770,26 @@ def execute_sell_fund(
 def execute_buy_insurance(
     db: Session,
     user_id: str,
-    username: str
+    username: str,
+    plan_str: str = "standard"
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-    """Purchase Starforce Destruction Insurance (!보험 가입)."""
+    """Purchase Starforce Destruction Insurance (!보험 가입 [실속/표준/프리미엄/VVIP])."""
     user = get_or_create_user(db, user_id, username)
     b_data = get_user_bank_data(user)
     ins = b_data.get("insurance")
 
     if ins and isinstance(ins, dict) and ins.get("active") and ins.get("claims_left", 0) > 0:
         return False, (
-            f"⚠️ 이미 유효한 스타포스 안심 파괴 보험에 가입되어 있습니다!\n"
+            f"⚠️ 이미 유효한 [{ins.get('plan_name', '파괴안심보험')}]에 가입되어 있습니다!\n"
             f"• 잔여 경기: {ins.get('matches_left', 0)}경기 | 보장 횟수: {ins.get('claims_left', 0)}회 | 보장금: {ins.get('coverage_amount', 1000000):,}P"
         ), None
 
-    cost = 50000
+    plan = resolve_insurance_plan(plan_str)
+    cost = plan["cost"]
+    coverage = plan["coverage"]
+
     if user.points < cost:
-        return False, f"⚠️ 보험 가입 보험료({cost:,}P)가 부족합니다! (보유: {user.points:,}P)", None
+        return False, f"⚠️ [{plan['name']}] 보험료({cost:,}P)가 부족합니다! (보유: {user.points:,}P)", None
 
     user.points -= cost
     state = get_market_state(db)
@@ -10455,9 +10797,11 @@ def execute_buy_insurance(
 
     b_data["insurance"] = {
         "active": True,
-        "claims_left": 1,
-        "matches_left": 5,
-        "coverage_amount": 1000000,
+        "plan_id": plan["id"],
+        "plan_name": plan["name"],
+        "claims_left": plan["claims"],
+        "matches_left": plan["matches"],
+        "coverage_amount": coverage,
         "bought_at": time.time()
     }
     save_user_bank_data(user, b_data)
@@ -10465,9 +10809,9 @@ def execute_buy_insurance(
     db.refresh(user)
 
     reply = (
-        f"🏥🛡️ [스타포스 안심 파괴 보험 가입 완료] {user.username}님 보험 가입 완료!\n"
-        f"• 보험료: {cost:,}P | 보장 기간: 앞으로 5경기 동안 유효\n"
-        f"• 보장 혜택: 15성 이상 스타포스 강화 실패로 곡괭이가 폭발 파괴될 경우, 즉시 보통예금으로 위로 보상금 1,000,000P 지급!\n"
+        f"🏥🛡️ [{plan['name']} 가입 완료] {user.username}님 보험 가입 완료!\n"
+        f"• 보험료: {cost:,}P | 보장 기간: 앞으로 {plan['matches']}경기 동안 유효\n"
+        f"• 보장 혜택: 15성 이상 스타포스 강화 실패로 곡괭이가 폭발 파괴될 경우, 즉시 보통예금으로 위로 보상금 {coverage:,}P 지급!\n"
         f"• 고성수 강화 도전을 안심하고 즐기세요!"
     )
     return True, reply, b_data["insurance"]

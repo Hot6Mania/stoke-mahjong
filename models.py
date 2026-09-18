@@ -134,6 +134,7 @@ class MarketState(Base):
     merchant_special_snipe_price = Column(Integer, default=750000, nullable=False)
     merchant_special_snipe_stock = Column(Integer, default=0, nullable=False)
     fund_nav = Column(Float, default=1000.0, nullable=False)
+    fund_navs_json = Column(String, default="{}", nullable=True)
 
 class LimitOrder(Base):
     __tablename__ = "orders_limit"

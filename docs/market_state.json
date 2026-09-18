@@ -6,46 +6,46 @@
   "day_open_price": 2137,
   "is_trading_locked": false,
   "last_settlement_delta": 282,
-  "treasury_pool": 83867243.0,
-  "free_trading_remaining": 283,
-  "free_trading_end_time": 1789768399.3541253,
+  "treasury_pool": 50053297.0,
+  "free_trading_remaining": 174,
+  "free_trading_end_time": 1789769403.5345988,
   "casino_is_open": false,
   "casino_remaining": 0,
   "casino_max_bet": 10000000,
-  "sf_event_type": "DISCOUNT_30",
-  "sf_event_title": "💸 [피버] 스타포스 강화 비용 30% 파격 할인!",
-  "sf_is_active": true,
-  "sf_remaining": 306,
+  "sf_event_type": null,
+  "sf_event_title": null,
+  "sf_is_active": false,
+  "sf_remaining": 0,
   "lottery_is_open": false,
   "lottery_remaining": 0,
   "lottery_title": "국가 복지 복권",
-  "merchant_is_open": false,
-  "merchant_remaining": 0,
+  "merchant_is_open": true,
+  "merchant_remaining": 236,
   "merchant_name": "신비상인",
   "merchant_items": {
     "shield": {
       "name": "🛡️ 파괴방어권",
-      "price": 590000,
+      "price": 4070000,
       "stock": 0
     },
     "boost": {
       "name": "⚡ 강화확률상승권",
-      "price": 420000,
+      "price": 1570000,
       "stock": 0
     },
     "downgrade": {
       "name": "📉 하강방지권",
-      "price": 360000,
-      "stock": 3
+      "price": 3380000,
+      "stock": 0
     },
     "snipe": {
       "name": "🎯 잠재저격주문서",
-      "price": 1160000,
+      "price": 4770000,
       "stock": 0
     }
   },
   "day_diff": 755,
   "day_diff_pct": 35.33,
   "total_users": 37,
-  "updated_at": "2026-09-19 06:48:36"
+  "updated_at": "2026-09-19 07:07:09"
 }

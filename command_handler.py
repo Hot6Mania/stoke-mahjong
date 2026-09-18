@@ -1257,7 +1257,10 @@ def handle_chat_command(
         fund = info.get("fund", {})
         fund_str = f"{fund.get('units', 0):,.4f}좌 (평가: {fund.get('valuation', 0):,}P | 수익률: {fund.get('pnl_pct', 0.0):+.2f}%)" if fund.get("units", 0) > 0 else "미보유 (!펀드매수 [금액])"
         ins = info.get("insurance")
-        ins_str = f"가입 중 ({ins.get('matches_left', 0)}경기 남음 | 보장: {ins.get('coverage_amount', 1000000):,}P)" if ins else "미가입 (!보험 가입 [50,000P])"
+        sav_str = f"{sav.get('plan_name', '정기적금')} ({sav.get('current_rounds', 0)}/{sav.get('target_rounds', 5)}회 | {sav.get('total_deposited', 0):,}P 적립)" if sav else "미가입 (!적금 [금액] [판수])"
+        ins_str = f"{ins.get('plan_name', '파괴보험')} ({ins.get('matches_left', 0)}경기 남음 | 보장: {ins.get('coverage_amount', 1000000):,}P)" if ins and ins.get("active") else "미가입 (!보험 가입 [플랜])"
+        fund_tot = info.get("total_fund_valuation", 0)
+        fund_str = f"{fund_tot:,}P 보유 (4대 펀드 포트폴리오 | !펀드)" if fund_tot > 0 else "미보유 (!펀드, !펀드매수)"
 
         report = (
             f"🏛️ [치즈나베 중앙은행] {user.username}님의 종합 금융 계좌\n"
@@ -1291,9 +1294,12 @@ def handle_chat_command(
             return reply, event
         if len(tokens) < 2:
             return (
-                "💡 [정기적금 사용법] !적금 [회당금액] [판수(5 or 10)] 또는 !적금 해지\n"
-                "• 매 경기 마작 정산 시 지정 금액을 자동 적립하며, 만기 완납 시 +20% 보너스 이자 지급!\n"
-                "• 예시: !적금 10000 5, !적금 50000 10, !적금 해지"
+                "💡 [치즈나베 정기적금 4종 상품 안내]\n"
+                "1️⃣ ⚡ 스피드 단기 적금 (3경기 | 만기 +10% 보너스 | 회당 5,000P~100만P)\n"
+                "2️⃣ 🪙 나베 정기 적금 (5경기 | 만기 +20% 보너스 | 회당 5,000P~200만P)\n"
+                "3️⃣ 🐋 고래 장기 적금 (10경기 | 만기 +35% 보너스 | 회당 1만P~500만P)\n"
+                "4️⃣ 👑 슈퍼 연금 적금 (20경기 | 만기 +60% 보너스 | 회당 2만P~1,000만P)\n"
+                "• 가입 문법: !적금 [회당금액] [판수/상품명] (예: !적금 10000 3, !적금 50000 5, !적금 100000 고래, !적금 해지)"
             ), None
         per_amt = tokens[1]
         rounds_val = tokens[2] if len(tokens) > 2 else "5"
@@ -1303,29 +1309,49 @@ def handle_chat_command(
 
     if cmd in ["!펀드", "!마작펀드", "!펀드매수", "!펀드환매"]:
         if cmd == "!펀드매수" or (len(tokens) > 1 and tokens[1] in ["매수", "구매", "투자"]):
-            amt_str = tokens[2] if len(tokens) > 2 else (tokens[1] if cmd == "!펀드매수" and len(tokens) > 1 else "올인")
-            success, reply, details = te.execute_buy_fund(db, user_id, username, amt_str)
+            amt_str = "올인"
+            f_key = "index"
+            if cmd == "!펀드매수":
+                amt_str = tokens[1] if len(tokens) > 1 else "올인"
+                f_key = tokens[2] if len(tokens) > 2 else "index"
+            else:
+                amt_str = tokens[2] if len(tokens) > 2 else "올인"
+                f_key = tokens[3] if len(tokens) > 3 else "index"
+            success, reply, details = te.execute_buy_fund(db, user_id, username, amt_str, f_key)
             event = {"type": "bank_fund_buy", "data": details} if success and details else None
             return reply, event
         if cmd == "!펀드환매" or (len(tokens) > 1 and tokens[1] in ["환매", "매도", "판매"]):
-            u_str = tokens[2] if len(tokens) > 2 else (tokens[1] if cmd == "!펀드환매" and len(tokens) > 1 else "전부")
-            success, reply, details = te.execute_sell_fund(db, user_id, username, u_str)
+            u_str = "전부"
+            f_key = "index"
+            if cmd == "!펀드환매":
+                u_str = tokens[1] if len(tokens) > 1 else "전부"
+                f_key = tokens[2] if len(tokens) > 2 else "index"
+            else:
+                u_str = tokens[2] if len(tokens) > 2 else "전부"
+                f_key = tokens[3] if len(tokens) > 3 else "index"
+            success, reply, details = te.execute_sell_fund(db, user_id, username, u_str, f_key)
             event = {"type": "bank_fund_sell", "data": details} if success and details else None
             return reply, event
         user = get_or_create_user(db, user_id, username)
         info = te.get_user_bank_info(db, user)
-        f_info = info.get("fund", {})
-        state = get_market_state(db)
-        return (
-            f"🏛️📊 [치즈나베 마작 지수 펀드]\n"
-            f"• 현재 1좌 기준가(NAV): {getattr(state, 'fund_nav', 1000.0):,.2f}P\n"
-            f"• 내 보유 좌수: {f_info.get('units', 0):,.4f}좌 (투자원금: {f_info.get('invested', 0):,}P | 평가금: {f_info.get('valuation', 0):,}P | 손익: {f_info.get('pnl', 0):+,}P ({f_info.get('pnl_pct', 0.0):+.2f}%))\n"
-            f"• 사용법: !펀드매수 [금액/올인], !펀드환매 [좌수/전부]"
-        ), None
+        funds_p = info.get("funds", {})
+
+        lines = ["🏛️📊 [치즈나베 중앙은행 4대 다각화 펀드 현황]"]
+        lines.append("💡 초보 가이드: 주식 직접 매매가 두렵다면 금융 바구니에 맡기세요!")
+        for fid, fdef in te.DIVERSIFIED_FUNDS.items():
+            f_data = funds_p.get(fid, {})
+            u_units = f_data.get("units", 0.0)
+            u_val = f_data.get("valuation", 0)
+            u_pnl_pct = f_data.get("pnl_pct", 0.0)
+            hold_str = f"보유: {u_units:,.4f}좌 ({u_val:,}P | {u_pnl_pct:+.2f}%)" if u_units > 0 else "미보유"
+            lines.append(f"• [{fdef['name']}] NAV: {f_data.get('nav', 1000.0):,.2f}P ({fdef['risk_stars']}) | {hold_str}")
+        lines.append("💬 투자 문법: !펀드매수 [금액] [지수/배당/야수/인프라], !펀드환매 [좌수/전부] [펀드명]")
+        return "\n".join(lines), None
 
     if cmd in ["!보험", "!파괴보험", "!보험가입", "!안심보험"]:
         if len(tokens) > 1 and tokens[1] in ["가입", "신청", "구매"]:
-            success, reply, details = te.execute_buy_insurance(db, user_id, username)
+            plan_arg = tokens[2] if len(tokens) > 2 else "standard"
+            success, reply, details = te.execute_buy_insurance(db, user_id, username, plan_arg)
             event = {"type": "bank_insurance_buy", "data": details} if success and details else None
             return reply, event
         user = get_or_create_user(db, user_id, username)
@@ -1333,17 +1359,20 @@ def handle_chat_command(
         ins = b_data.get("insurance")
         if ins and ins.get("active"):
             return (
-                f"🏥🛡️ [스타포스 안심 파괴 보험 가입 중]\n"
+                f"🏥🛡️ [{ins.get('plan_name', '스타포스 안심 파괴 보험')} 가입 중]\n"
                 f"• 보장 상태: 유효 (잔여 {ins.get('matches_left', 0)}경기 동안 보장)\n"
-                f"• 보장 혜택: 15성 이상 스타포스 실패로 파괴 시 보통예금으로 1,000,000P 즉시 지급!\n"
+                f"• 보장 혜택: 15성 이상 스타포스 실패로 파괴 시 보통예금으로 {ins.get('coverage_amount', 1000000):,}P 즉시 지급!\n"
                 f"• 남은 보상 청구 가능 횟수: {ins.get('claims_left', 1)}회"
             ), None
-        return (
-            "🏥🛡️ [스타포스 안심 파괴 보험]\n"
-            "• 보험료: 50,000P (5경기 동안 유효)\n"
-            "• 보장 혜택: 15성 이상 강화 중 폭발 파괴 발생 시 즉시 1,000,000P 위로 보상금 보통예금 입금!\n"
-            "• 가입 명령어: !보험 가입"
-        ), None
+        lines = [
+            "🏥🛡️ [스타포스 안심 파괴 보험 등급별 상품 안내] (5경기 유효)",
+            "1️⃣ 🛡️ 실속형: 보험료 30,000P ➔ 파괴 시 위로금 500,000P 지급",
+            "2️⃣ 🛡️ 표준형: 보험료 50,000P ➔ 파괴 시 위로금 1,000,000P 지급",
+            "3️⃣ 🛡️ 프리미엄: 보험료 120,000P ➔ 파괴 시 위로금 3,000,000P 지급",
+            "4️⃣ 🛡️ VVIP 종결형: 보험료 350,000P ➔ 파괴 시 위로금 10,000,000P 지급",
+            "💬 가입 문법: !보험 가입 [실속/표준/프리미엄/VVIP] (예: !보험 가입 표준, !보험 가입 vvip)"
+        ]
+        return "\n".join(lines), None
 
     # 13. Bankruptcy / Rehabilitation (Na-bae Judge's Court)
     if cmd in ["!파산신청", "!개인회생", "!파산", "!회생", "!회생신청", "!개인파산", "!회생신청서", "!파산신청서", "!워크아웃", "!구제", "!구제신청"]:

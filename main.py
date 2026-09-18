@@ -364,8 +364,8 @@ def serialize_user_inspector_data(u: User, state: MarketState, now: float, db: O
         last_mined_epoch = last_t.timestamp()
         elapsed = (datetime.now(timezone.utc) - last_t).total_seconds()
         if elapsed < cooldown_sec:
-            remaining_cd_sec = int(cooldown_sec - elapsed)
-            next_mine_time_epoch = last_mined_epoch + cooldown_sec
+            remaining_cd_sec = max(0, int(cooldown_sec - elapsed))
+            next_mine_time_epoch = now + remaining_cd_sec
 
     mining_status = {
         "can_mine": remaining_cd_sec <= 0,
@@ -925,6 +925,14 @@ class ChzzkBot:
                                             leaderboard = te.get_leaderboard(db, top_n=3)
                                             state = te.get_market_state(db)
                                             sync_docs_market_state(state)
+                                            if event.get("type") in [
+                                                "mining", "mining_result", "trade", "trade_buy", "trade_sell",
+                                                "cube_used", "starforce", "bank_deposit", "bank_withdraw",
+                                                "bank_savings_open", "bank_savings_cancel", "bank_fund_buy",
+                                                "bank_fund_sell", "bank_insurance_buy", "bank_loan_borrow",
+                                                "bank_loan_repay", "transfer"
+                                            ]:
+                                                sync_docs_users_state(db)
                                             await manager.broadcast({
                                                 **event,
                                                 "leaderboard": leaderboard,
@@ -1712,6 +1720,7 @@ class WebBankSavingsOpenRequest(BaseModel):
     token: str
     per_round: Union[int, str]
     rounds: Optional[Union[int, str]] = "5"
+    plan: Optional[str] = "standard"
 
 class WebBankSavingsCancelRequest(BaseModel):
     token: str
@@ -1719,13 +1728,16 @@ class WebBankSavingsCancelRequest(BaseModel):
 class WebBankFundBuyRequest(BaseModel):
     token: str
     amount: Union[int, str]
+    fund_id: Optional[str] = "index"
 
 class WebBankFundSellRequest(BaseModel):
     token: str
     units: Optional[Union[int, float, str]] = "전부"
+    fund_id: Optional[str] = "index"
 
 class WebBankInsuranceBuyRequest(BaseModel):
     token: str
+    plan: Optional[str] = "standard"
 
 class WebBankLoanBorrowRequest(BaseModel):
     token: str
@@ -2995,9 +3007,10 @@ async def api_web_bank_withdraw(req: WebBankWithdrawRequest, db=Depends(get_db))
 
 @app.post("/api/web/bank/savings/open")
 async def api_web_bank_savings_open(req: WebBankSavingsOpenRequest, db=Depends(get_db)):
-    """Opens periodic installment savings account (+20% bonus interest at maturity)."""
+    """Opens periodic installment savings account (+10%~+60% bonus interest at maturity)."""
     user = authenticate_web_user(db, req.token)
-    ok, reply, details = te.execute_open_savings(db, user.id, user.username, str(req.per_round), str(req.rounds or 5))
+    rounds_arg = req.plan or req.rounds or "5"
+    ok, reply, details = te.execute_open_savings(db, user.id, user.username, str(req.per_round), str(rounds_arg))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     sync_all_docs(db)
@@ -3021,9 +3034,9 @@ async def api_web_bank_savings_cancel(req: WebBankSavingsCancelRequest, db=Depen
 
 @app.post("/api/web/bank/fund/buy")
 async def api_web_bank_fund_buy(req: WebBankFundBuyRequest, db=Depends(get_db)):
-    """Invests points in Mahjong Index Fund."""
+    """Invests points in diversified fund."""
     user = authenticate_web_user(db, req.token)
-    ok, reply, details = te.execute_buy_fund(db, user.id, user.username, str(req.amount))
+    ok, reply, details = te.execute_buy_fund(db, user.id, user.username, str(req.amount), str(req.fund_id or "index"))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     sync_all_docs(db)
@@ -3034,9 +3047,9 @@ async def api_web_bank_fund_buy(req: WebBankFundBuyRequest, db=Depends(get_db)):
 
 @app.post("/api/web/bank/fund/sell")
 async def api_web_bank_fund_sell(req: WebBankFundSellRequest, db=Depends(get_db)):
-    """Redeems Mahjong Index Fund units for cash."""
+    """Redeems diversified fund units for cash."""
     user = authenticate_web_user(db, req.token)
-    ok, reply, details = te.execute_sell_fund(db, user.id, user.username, str(req.units or "전부"))
+    ok, reply, details = te.execute_sell_fund(db, user.id, user.username, str(req.units or "전부"), str(req.fund_id or "index"))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     sync_all_docs(db)
@@ -3047,9 +3060,9 @@ async def api_web_bank_fund_sell(req: WebBankFundSellRequest, db=Depends(get_db)
 
 @app.post("/api/web/bank/insurance/buy")
 async def api_web_bank_insurance_buy(req: WebBankInsuranceBuyRequest, db=Depends(get_db)):
-    """Purchases Starforce Destruction Insurance (5 rounds coverage, 1,000,000P payout)."""
+    """Purchases Starforce Destruction Insurance (5 rounds coverage, multi-tier compensation)."""
     user = authenticate_web_user(db, req.token)
-    ok, reply, details = te.execute_buy_insurance(db, user.id, user.username)
+    ok, reply, details = te.execute_buy_insurance(db, user.id, user.username, str(req.plan or "standard"))
     if not ok:
         raise HTTPException(status_code=400, detail=reply)
     sync_all_docs(db)

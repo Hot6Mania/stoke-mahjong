@@ -919,7 +919,7 @@ def test_merchant_api_endpoints_and_admin_users(client):
     client.post("/api/admin/grant-points", json={
         "user_id": "api_merchant_viewer",
         "username": "치즈러버",
-        "points": 1000000
+        "points": 2000000
     })
 
     res_buy = client.post("/api/chat/command", json={

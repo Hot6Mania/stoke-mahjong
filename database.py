@@ -119,6 +119,7 @@ def init_db():
                 "ALTER TABLE market_state ADD COLUMN merchant_special_snipe_price INTEGER DEFAULT 750000",
                 "ALTER TABLE market_state ADD COLUMN merchant_special_snipe_stock INTEGER DEFAULT 0",
                 "ALTER TABLE market_state ADD COLUMN fund_nav FLOAT DEFAULT 1000.0",
+                "ALTER TABLE market_state ADD COLUMN fund_navs_json VARCHAR DEFAULT '{}'",
                 "UPDATE market_state SET casino_max_bet = 10000000 WHERE casino_max_bet < 10000000",
                 "UPDATE market_state SET merchant_shield_price = 500000 WHERE merchant_shield_price < 350000",
                 "UPDATE market_state SET merchant_boost_price = 350000 WHERE merchant_boost_price < 250000",

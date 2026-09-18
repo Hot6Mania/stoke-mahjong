@@ -3992,7 +3992,7 @@ def test_designated_scroll_chat_commands(db_session, monkeypatch):
     roll_seq_chat = [99.0, 50.0]
     monkeypatch.setattr(random, "uniform", lambda a, b: roll_seq_chat.pop(0) if (a == 0 and b == 100 and roll_seq_chat) else (a + b) / 2.0)
     rep_shield, ev_shield = ch.handle_chat_command(db_session, uid, "주문서유저", "!강화 파방")
-    assert "파괴방어권 방어 성공" in rep_shield
+    assert "파괴방어권" in rep_shield and "방어 성공" in rep_shield
     db_session.refresh(u)
     db_session.refresh(eq)
     assert u.shield_scroll_count == 1

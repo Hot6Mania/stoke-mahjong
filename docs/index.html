@@ -1542,10 +1542,15 @@
                             <input type="text" id="sh-search-input" oninput="handleStockholdersFilterChange()" placeholder="🔍 닉네임 또는 종목 검색..." style="background: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 6px 12px; color: #fff; font-size: 12px; width: 170px;">
                             <select id="sh-sort-select" onchange="handleStockholdersFilterChange()" style="background: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 12px; cursor: pointer;">
                                 <option value="val_desc">💰 평가금액 높은순</option>
+                                <option value="entry_price_desc">🎯 매수 평단가 높은순</option>
+                                <option value="entry_price_asc">🎯 매수 평단가 낮은순</option>
                                 <option value="pnl_desc">📈 수익률 높은순</option>
                                 <option value="pnl_asc">📉 손실률 높은순</option>
+                                <option value="pnl_val_desc">💎 평가손익 높은순</option>
+                                <option value="pnl_val_asc">💧 평가손실 높은순</option>
                                 <option value="inv_desc">💵 투자원금 많은순</option>
                                 <option value="qty_desc">📦 보유수량 많은순</option>
+                                <option value="cash_desc">🏦 보유현금 많은순</option>
                             </select>
                         </div>
                     </div>
@@ -1568,12 +1573,12 @@
                                     <th>시청자 (주주)</th>
                                     <th>보유 종목</th>
                                     <th style="text-align: center;">포지션</th>
-                                    <th style="text-align: right;">보유 수량</th>
-                                    <th style="text-align: right;">매수 평단가</th>
-                                    <th style="text-align: right;">투자 원금</th>
-                                    <th style="text-align: right;">현재 평가액</th>
-                                    <th style="text-align: right;">평가 손익 (수익률)</th>
-                                    <th style="text-align: right;">보유 현금</th>
+                                    <th style="text-align: right; cursor: pointer; user-select: none;" onclick="toggleStockSort('qty')" title="수량 순 정렬">보유 수량 ⇅</th>
+                                    <th style="text-align: right; cursor: pointer; user-select: none; color: #38bdf8;" onclick="toggleStockSort('entry_price')" title="매수 평단가 순 정렬">매수 평단가 ⇅</th>
+                                    <th style="text-align: right; cursor: pointer; user-select: none;" onclick="toggleStockSort('inv')" title="투자원금 순 정렬">투자 원금 ⇅</th>
+                                    <th style="text-align: right; cursor: pointer; user-select: none; color: #fbbf24;" onclick="toggleStockSort('val')" title="평가금액 순 정렬">현재 평가액 ⇅</th>
+                                    <th style="text-align: right; cursor: pointer; user-select: none;" onclick="toggleStockSort('pnl')" title="수익률/손익 순 정렬">평가 손익 (수익률) ⇅</th>
+                                    <th style="text-align: right; cursor: pointer; user-select: none;" onclick="toggleStockSort('cash')" title="보유현금 순 정렬">보유 현금 ⇅</th>
                                 </tr>
                             </thead>
                             <tbody id="sh-table-body">
@@ -2730,25 +2735,25 @@
                             <tr>
                                 <td><strong>1</strong></td>
                                 <td><strong style="color: #60a5fa;">🛡️ 파괴방어권</strong></td>
-                                <td>35만 ~ 70만P<br>(회당 2~6개)</td>
-                                <td>★15 이상 스타포스 도전 시 강화 실패로 인한 <strong>곡괭이 폭발 파괴를 100% 완벽 방어</strong>하여 성수를 안전하게 보존합니다.<br>• 보유 시 기본 확정 자동 보호 (해제: <code>!주문서 파방 off</code>, <code>!강화 노파방</code>)</td>
+                                <td>기본 35만 ~ 70만P<br><em>(유저 자산·국고 인플레 연동)</em><br>(회당 2~6개)</td>
+                                <td>★15 이상 스타포스 도전 시 강화 실패로 인한 <strong>곡괭이 폭발 파괴를 60% 확률로 아슬아슬하게 방어</strong>합니다!<br>• <strong>도파민 폭발 주의</strong>: 40% 확률로 방어막이 뚫려 장비가 터질 수 있는 긴장감 만점 엉성한 방패!<br>• 보유 시 기본 자동 보호 (해제: <code>!주문서 파방 off</code>, <code>!강화 노파방</code>)</td>
                             </tr>
                             <tr>
                                 <td><strong>2</strong></td>
                                 <td><strong style="color: #4ade80;">⚡ 강화확률상승권</strong></td>
-                                <td>25만 ~ 45만P<br>(회당 5~12개)</td>
+                                <td>기본 25만 ~ 45만P<br><em>(유저 자산·국고 인플레 연동)</em><br>(회당 5~12개)</td>
                                 <td>스타포스 강화 성공률을 <strong>기존 기본 성공률 대비 +25% 비례 곱연산 증폭</strong>합니다! (예: 기본 30% 성수 ➔ 37.5%로 대폭 상향, 실패/하락 확률 차감. 피버 및 잠재와 완전 중첩!)<br>• 사용 설정: <code>!주문서 상승 on/off</code> 또는 강화 시 <code>!강화 상승</code>, <code>!강화 풀</code></td>
                             </tr>
                             <tr>
                                 <td><strong>3</strong></td>
                                 <td><strong style="color: #38bdf8;">📉 하강방지권</strong></td>
-                                <td>30만 ~ 55만P<br>(회당 3~8개)</td>
-                                <td>스타포스 강화 실패 시 <strong>등급(성수) 하락을 100% 완벽 방어</strong>하여 성수를 안전하게 보존합니다.<br>• 보유 시 기본 확정 자동 보호 (해제: <code>!주문서 하강 off</code>, <code>!강화 노하강</code>)</td>
+                                <td>기본 30만 ~ 55만P<br><em>(유저 자산·국고 인플레 연동)</em><br>(회당 3~8개)</td>
+                                <td>스타포스 강화 실패 시 <strong>등급(성수) 하락을 70% 확률로 방어</strong>하여 성수를 안전하게 보존합니다! (30% 확률로 하락 발생)<br>• 보유 시 기본 자동 보호 (해제: <code>!주문서 하강 off</code>, <code>!강화 노하강</code>)</td>
                             </tr>
                             <tr>
                                 <td><strong>4</strong></td>
                                 <td><strong style="color: #f43f5e;">🎯 잠재저격주문서</strong></td>
-                                <td>35만 ~ 65만P<br>(회당 2~5개)</td>
+                                <td>기본 35만 ~ 65만P<br><em>(유저 자산·국고 인플레 연동)</em><br>(회당 2~5개)</td>
                                 <td>미라클 큐브 재설정 시 원하는 옵션을 저격할 수 있도록 강력하게 유도합니다.<br>
                                 • <strong>1줄 35% 저격 유도</strong> : 첫 번째 라인에서 35% 확률로 지정 옵션 다이렉트 출현!<br>
                                 • <strong>전 라인 3.5배 가중치 부스팅</strong> : 35% 저격이 빗나가더라도 모든 라인에서 해당 옵션의 출현 가중치가 3.5배로 대폭 상승!<br>
@@ -2757,6 +2762,10 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div class="callout" style="background: rgba(245, 158, 11, 0.08); border-left-color: #f59e0b; margin-top: 10px;">
+                    💰 <strong>신비상인 실시간 유동 인플레이션 시스템</strong> : 전체 시청자 평균 보유 자산과 커뮤니티 국고 상금풀 규모에 연동되어 아이템 판매 가격이 <strong>1.0배에서 최대 6.0배까지 유동적으로 자동 조정</strong>됩니다. 고래 자산가들의 포인트 소각과 건전한 경제 순환을 지원합니다!
                 </div>
 
                 <h4 style="margin: 24px 0 10px; font-size: 16px; color: #38bdf8;">🎒 소비 아이템 보따리 & 주문서 설정 (<code>!아이템</code>, <code>!주문서</code>)</h4>
@@ -2784,7 +2793,86 @@
         <section id="tab-finance" class="tab-content">
             <div class="content-card">
                 <div class="card-header">
-                    <div class="card-title">💳 국고 마진론 대출 & 금융 시스템 (무담보 대출 / 송금 / 회생 법정 / 국고)</div>
+                    <div class="card-title">🏛️ 치즈나베 중앙은행 & 금융 시스템 (보통예금 / 적금 / 펀드 / 보험 / 신용대출)</div>
+                </div>
+
+                <!-- Central Bank 5 Products Banner / Grid -->
+                <div style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.35), rgba(15, 23, 42, 0.85)); border: 1px solid #3b82f6; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <h3 style="margin: 0; color: #93c5fd; font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                                <span>🏛️ 치즈나베 중앙은행 (Central Bank) 5대 금융 상품 종합 안내</span>
+                            </h3>
+                            <p style="margin: 4px 0 0; font-size: 12px; color: #cbd5e1;">
+                                시청자 자산 증식, 고래 자산가 락업, 스타포스 리스크 헤지를 위한 중앙은행 금융 창구가 전면 가동됩니다!
+                            </p>
+                        </div>
+                        <button onclick="openWebBankModal()" class="deck-btn bank" style="background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #fff; border: 1px solid #60a5fa; padding: 8px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <span>🏛️ 웹 은행 창구 열기</span>
+                        </button>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
+                        <!-- 1. 보통예금 -->
+                        <div style="background: #0f172a; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 10px; padding: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <strong style="color: #60a5fa; font-size: 14px;">💰 수시입출금 보통예금</strong>
+                                <span style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 800;">+0.5% 복리</span>
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 8px;">
+                                보유 현금을 예금에 보관하면 <strong>매 경기 마작 정산 시 잔액의 +0.5% 복리 이자</strong>가 자동 지급됩니다! 24시간 언제든 수수료 없이 즉시 입출금 가능합니다.
+                            </div>
+                            <div style="font-size: 11px; color: #38bdf8; font-family: monospace; background: #1e293b; padding: 6px 8px; border-radius: 6px;">
+                                💬 <code>!입금 [금액/올인]</code><br>
+                                💬 <code>!출금 [금액/전액]</code>
+                            </div>
+                        </div>
+
+                        <!-- 2. 정기적금 -->
+                        <div style="background: #0f172a; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 10px; padding: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <strong style="color: #c084fc; font-size: 14px;">📈 고수익 정기적금</strong>
+                                <span style="background: rgba(168, 85, 247, 0.2); color: #e9d5ff; font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 800;">만기 +20% 보너스</span>
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 8px;">
+                                <strong>5경기 또는 10경기</strong> 플랜으로 매 경기 일정액을 저축하여 만기 달성 시 <strong>납입 총 원금 + 20% 특별 보너스 이자</strong>를 일시불 수령합니다! (중도 해지 시 원금 100% 환급)
+                            </div>
+                            <div style="font-size: 11px; color: #c084fc; font-family: monospace; background: #1e293b; padding: 6px 8px; border-radius: 6px;">
+                                💬 <code>!적금 [회당금액] [5/10]</code> (예: <code>!적금 50000 5</code>)<br>
+                                💬 <code>!적금 해지</code> (중도 해지 및 원금 보통예금 입금)
+                            </div>
+                        </div>
+
+                        <!-- 3. 마작지수펀드 -->
+                        <div style="background: #0f172a; border: 1px solid rgba(34, 197, 94, 0.4); border-radius: 10px; padding: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <strong style="color: #4ade80; font-size: 14px;">📊 마작 종합 지수 펀드</strong>
+                                <span style="background: rgba(34, 197, 94, 0.2); color: #86efac; font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 800;">지수 NAV 연동</span>
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 8px;">
+                                마작 경기 성적과 주가지수에 연동되어 기준가(NAV)가 실시간 변동하는 간접 투자 상품! 최소 10,000P부터 투자 가능하며 소수점 단위 실시간 환매를 지원합니다.
+                            </div>
+                            <div style="font-size: 11px; color: #4ade80; font-family: monospace; background: #1e293b; padding: 6px 8px; border-radius: 6px;">
+                                💬 <code>!펀드</code> (현재 NAV 및 내 손익 조회)<br>
+                                💬 <code>!펀드매수 [금액/올인]</code> / <code>!펀드환매 [좌수/전부]</code>
+                            </div>
+                        </div>
+
+                        <!-- 4. 스타포스 파괴보험 -->
+                        <div style="background: #0f172a; border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 10px; padding: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <strong style="color: #fbbf24; font-size: 14px;">🛡️ 스타포스 안심 파괴 보험</strong>
+                                <span style="background: rgba(245, 158, 11, 0.2); color: #fde68a; font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 800;">100만P 위로금</span>
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 8px;">
+                                50,000P로 가입하여 <strong>5경기 동안 유효</strong>! ★15성 이상 스타포스 강화 실패로 곡괭이가 폭발 파괴될 경우 <strong>1,000,000P 위로 보상금</strong>을 보통예금으로 즉시 지급합니다!
+                            </div>
+                            <div style="font-size: 11px; color: #fbbf24; font-family: monospace; background: #1e293b; padding: 6px 8px; border-radius: 6px;">
+                                💬 <code>!보험</code> (보험 가입 상태 및 잔여 경기 조회)<br>
+                                💬 <code>!보험 가입</code> (보험료 50,000P 결제 및 5경기 보장)
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <h4 style="margin: 8px 0 6px; font-size: 15px; color: var(--accent-purple);">1. 💳 나베신용평가원 개인별 신용등급제 & 국고 대출 (<code>!신용등급</code>, <code>!대출 [금액/최대]</code>)</h4>
@@ -3213,6 +3301,38 @@
                     </div>
 
                     <!-- ================= FINANCE / LOANS / BANKING ================= -->
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!은행')">
+                        <div class="cmd-code">!은행 / !중앙은행 / !bank <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">치즈나베 중앙은행 계좌 종합 명세서 (보통예금, 적금, 펀드, 보험, 신용등급)</div>
+                    </div>
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!입금 50000')">
+                        <div class="cmd-code">!입금 [금액/올인] / !예금 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">보통예금 계좌에 현금 예치 (매 경기 마작 정산 시 잔액의 +0.5% 복리 이자 지급)</div>
+                    </div>
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!출금 전액')">
+                        <div class="cmd-code">!출금 [금액/전액] / !인출 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">보통예금 잔액을 현금 지갑으로 수수료 없이 24시간 언제든 즉시 인출</div>
+                    </div>
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!적금 10000 5')">
+                        <div class="cmd-code">!적금 [회당금액] [5/10] / !적금가입 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">고수익 정기적금 가입 (매 경기 자동 적립, 만기 완납 시 +20% 특별 만기 보너스 이자!)</div>
+                    </div>
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!적금 해지')">
+                        <div class="cmd-code">!적금 해지 / !적금해지 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">진행 중인 정기적금 중도 해지 (납입 원금 100% 보통예금으로 즉시 환급)</div>
+                    </div>
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!펀드')">
+                        <div class="cmd-code">!펀드 / !마작펀드 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">마작 지수 펀드 기준가(NAV), 내 보유 좌수 및 실시간 평가 손익 조회</div>
+                    </div>
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!펀드매수 50000')">
+                        <div class="cmd-code">!펀드매수 [금액/올인] / !펀드환매 [좌수/전부] <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">마작 지수 펀드 매수(최소 10,000P) 및 소수점 실시간 환매(현금 수령)</div>
+                    </div>
+                    <div class="cmd-box" data-category="finance" onclick="copyCommand('!보험 가입')">
+                        <div class="cmd-code">!보험 / !보험 가입 / !파괴보험 <span class="copy-icon">📋 복사</span></div>
+                        <div class="cmd-desc">스타포스 안심 파괴 보험 가입(50,000P / 5경기 보장, 15성+ 파괴 시 100만P 위로금 지급)</div>
+                    </div>
                     <div class="cmd-box" data-category="finance" onclick="copyCommand('!내정보')">
                         <div class="cmd-code">!내정보 / !지갑 / !계좌 / !잔고 <span class="copy-icon">📋 복사</span></div>
                         <div class="cmd-desc">보유 현금, 순자산, 보유 포지션, 빚(대출), 장착 장비, 큐브 현황 확인</div>
@@ -3674,70 +3794,153 @@
                 <!-- 2. Installment Savings Tab -->
                 <div id="bank-subtab-savings" style="display: none;">
                     <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
-                        <div style="font-size: 13px; color: #c084fc; font-weight: 800; margin-bottom: 4px;">📈 정기적금 (+20% 만기 보너스 이자)</div>
+                        <div style="font-size: 13px; color: #c084fc; font-weight: 800; margin-bottom: 4px;">📈 정기적금 상품 라인업 (+10% ~ +60% 만기 보너스)</div>
                         <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
-                            • <strong>5경기 또는 10경기</strong> 만기 적금: 매 경기 정산 시 설정한 금액이 자동 저축됩니다.<br>
-                            • 목표 경기 수 만기 도달 시 <strong>납입 총 원금 + 20% 특별 만기 보너스</strong>가 보통예금으로 즉시 지급됩니다!<br>
-                            • 중도 해지 시 납입 원금은 100% 환급되나 보너스 이자는 지급되지 않습니다.
+                            • 단기 스피드 적금부터 초대형 고래·연금 플랜까지 목표 경기 수와 보너스율을 자유롭게 선택하세요.<br>
+                            • 매 경기 정산 시 설정한 금액이 자동 적립되며, <strong>만기 시 납입 원금 + 최대 +60% 특별 보너스 이자</strong>가 지급됩니다!<br>
+                            • 중도 해지 시 납입 원금은 100% 환급되며 보통예금으로 입금됩니다.
                         </div>
                     </div>
 
+                    <!-- Active Savings Card -->
                     <div id="bank-savings-active-card" style="display: none; background: #1e293b; border: 1px solid #c084fc; border-radius: 10px; padding: 16px; margin-bottom: 14px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <strong style="color: #c084fc; font-size: 15px;">🔥 진행 중인 정기적금</strong>
+                            <strong id="bank-sav-title" style="color: #c084fc; font-size: 15px;">🔥 진행 중인 정기적금</strong>
                             <span id="bank-sav-badge" style="background: rgba(168, 85, 247, 0.2); color: #e9d5ff; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px;">0 / 5 경기</span>
                         </div>
                         <div style="height: 10px; background: #0f172a; border-radius: 5px; overflow: hidden; margin-bottom: 10px;">
                             <div id="bank-sav-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s;"></div>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 14px;">
+                            <div>플랜: <strong id="bank-sav-plan-name" style="color: #c084fc;">나베 정기 적금</strong></div>
                             <div>납입 회차: <strong id="bank-sav-rounds" style="color: #fff;">0회</strong></div>
                             <div>경기당 납입금: <strong id="bank-sav-per-round" style="color: #38bdf8;">0P</strong></div>
                             <div>현재 적립 원금: <strong id="bank-sav-deposited" style="color: #4ade80;">0P</strong></div>
-                            <div>만기 예상 수령액: <strong id="bank-sav-est-payout" style="color: #fbbf24;">0P (+20%)</strong></div>
+                            <div style="grid-column: span 2;">만기 예상 수령액: <strong id="bank-sav-est-payout" style="color: #fbbf24; font-size: 13px;">0P</strong></div>
                         </div>
                         <button onclick="executeWebBankSavingsCancel()" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #f87171; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">
                             ⚠️ 적금 중도해지 (원금 전액 환급)
                         </button>
                     </div>
 
+                    <!-- New Savings Card with 4 Plan Selectors -->
                     <div id="bank-savings-open-card" style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 16px;">
-                        <div style="font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 12px;">🌱 신규 정기적금 가입</div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                            <div>
-                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">경기당 납입 금액 (최소 5,000P)</label>
-                                <input type="number" id="bank-sav-input-amt" min="5000" step="5000" value="10000" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700;">
+                        <div style="font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 10px;">🌱 신규 정기적금 상품 선택</div>
+                        
+                        <!-- 4 Plan Cards Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 14px;">
+                            <div class="bank-sav-plan-card active" onclick="selectSavingsPlan('speed')" id="sav-card-speed" style="background: #0f172a; border: 2px solid #a855f7; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                                <div style="font-size: 12px; font-weight: 800; color: #c084fc; display: flex; justify-content: space-between;">
+                                    <span>⚡ 스피드 단기</span>
+                                    <span style="color: #4ade80;">+10%</span>
+                                </div>
+                                <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">3경기 만기</div>
+                                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">5천 ~ 100만P</div>
                             </div>
-                            <div>
-                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">만기 목표 경기 수</label>
-                                <select id="bank-sav-input-rounds" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700;">
-                                    <option value="5">5경기 만기 (+20% 보너스)</option>
-                                    <option value="10">10경기 만기 (+20% 보너스)</option>
-                                </select>
+                            <div class="bank-sav-plan-card" onclick="selectSavingsPlan('standard')" id="sav-card-standard" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                                <div style="font-size: 12px; font-weight: 800; color: #38bdf8; display: flex; justify-content: space-between;">
+                                    <span>🏛️ 나베 정기</span>
+                                    <span style="color: #4ade80;">+20%</span>
+                                </div>
+                                <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">5경기 만기 (인기)</div>
+                                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">5천 ~ 200만P</div>
+                            </div>
+                            <div class="bank-sav-plan-card" onclick="selectSavingsPlan('whale')" id="sav-card-whale" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                                <div style="font-size: 12px; font-weight: 800; color: #fbbf24; display: flex; justify-content: space-between;">
+                                    <span>🐋 고래 장기</span>
+                                    <span style="color: #4ade80;">+35%</span>
+                                </div>
+                                <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">10경기 만기</div>
+                                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">1만 ~ 500만P</div>
+                            </div>
+                            <div class="bank-sav-plan-card" onclick="selectSavingsPlan('pension')" id="sav-card-pension" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                                <div style="font-size: 12px; font-weight: 800; color: #f43f5e; display: flex; justify-content: space-between;">
+                                    <span>👑 슈퍼 연금</span>
+                                    <span style="color: #4ade80;">+60%</span>
+                                </div>
+                                <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">20경기 만기</div>
+                                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">2만 ~ 1,000만P</div>
                             </div>
                         </div>
-                        <button onclick="executeWebBankSavingsOpen()" style="width: 100%; background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 14px; cursor: pointer;">
-                            ✨ 정기적금 계좌 개설하기
+
+                        <div style="margin-bottom: 12px;">
+                            <label style="font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span id="bank-sav-amt-label">경기당 납입 금액 (스피드 단기: 5,000P ~ 1,000,000P)</span>
+                                <span id="bank-sav-est-summary" style="color: #fbbf24; font-weight: 700;">만기 수령: 33,000P (+10%)</span>
+                            </label>
+                            <input type="number" id="bank-sav-input-amt" min="5000" max="1000000" step="5000" value="10000" oninput="updateSavingsEstSummary()" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700;">
+                            <div style="display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;">
+                                <button type="button" class="quick-amt-btn" onclick="setSavingsInputAmt(10000)">1만</button>
+                                <button type="button" class="quick-amt-btn" onclick="setSavingsInputAmt(50000)">5만</button>
+                                <button type="button" class="quick-amt-btn" onclick="setSavingsInputAmt(100000)">10만</button>
+                                <button type="button" class="quick-amt-btn" onclick="setSavingsInputAmt(500000)">50만</button>
+                                <button type="button" class="quick-amt-btn" onclick="setSavingsInputAmt(1000000)">100만</button>
+                            </div>
+                        </div>
+                        <button onclick="executeWebBankSavingsOpen()" id="bank-sav-submit-btn" style="width: 100%; background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; border: none; padding: 11px; border-radius: 6px; font-weight: 800; font-size: 14px; cursor: pointer;">
+                            ✨ 스피드 단기 적금 계좌 개설하기 (+10% 보너스)
                         </button>
                     </div>
                 </div>
 
-                <!-- 3. Mahjong Index Fund Tab -->
+                <!-- 3. Diversified Funds Tab -->
                 <div id="bank-subtab-fund" style="display: none;">
-                    <div style="background: rgba(14, 165, 233, 0.12); border: 1px solid rgba(14, 165, 233, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="font-size: 13px; color: #38bdf8; font-weight: 800;">📊 나베 마작 종합 지수 펀드 (Index Fund)</span>
-                            <span id="bank-fund-nav-badge" style="background: #0284c7; color: #fff; font-size: 12px; font-weight: 900; padding: 2px 10px; border-radius: 6px; font-family: monospace;">NAV: 1,000.00P</span>
-                        </div>
+                    <!-- Beginner Guide Box -->
+                    <div style="background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <div style="font-size: 13px; color: #38bdf8; font-weight: 800; margin-bottom: 4px;">💡 펀드(Fund) 초보 가이드: 주식이 어려울 때 금융 바구니에 맡기세요!</div>
                         <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
-                            • 주가 상승 및 경기 배당 수익률에 연동되는 실시간 공모 펀드입니다.<br>
-                            • 기준가(NAV)는 매 경기 결과에 따라 실시간으로 변동하며, 원할 때 언제든 좌수를 환매하여 현금화할 수 있습니다.
+                            • <strong>펀드란?</strong> 개별 주식을 하나하나 직접 사고팔 필요 없이, 시스템/알고리즘이 여러 자산에 분산 투자해 굴려주는 간접 투자 바구니입니다.<br>
+                            • <strong>기준가(NAV):</strong> 펀드 1좌당 가치입니다. 매 경기 결과(수익률, 배당금, 인프라 매출 등)에 따라 실시간 변동합니다.<br>
+                            • 초저위험 배당형부터 초고위험 10배 레버리지까지 본인의 성향에 맞는 펀드를 골라 자유롭게 매수/환매하세요.
                         </div>
                     </div>
 
+                    <!-- 4 Fund Cards Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 14px;">
+                        <div class="bank-fund-card active" onclick="selectFundTab('index')" id="fund-card-index" style="background: #0f172a; border: 2px solid #38bdf8; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #38bdf8; display: flex; justify-content: space-between;">
+                                <span>📈 종합 지수</span>
+                                <span style="font-size: 10px; color: #fbbf24;">⭐⭐⭐</span>
+                            </div>
+                            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">ETF · 시장 추종</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;" id="fund-nav-text-index">NAV: 1,000P</div>
+                        </div>
+                        <div class="bank-fund-card" onclick="selectFundTab('dividend')" id="fund-card-dividend" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #4ade80; display: flex; justify-content: space-between;">
+                                <span>🛡️ 우량 배당국채</span>
+                                <span style="font-size: 10px; color: #4ade80;">⭐</span>
+                            </div>
+                            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">Bond · 초저위험 확정배당</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;" id="fund-nav-text-dividend">NAV: 1,000P</div>
+                        </div>
+                        <div class="bank-fund-card" onclick="selectFundTab('beast')" id="fund-card-beast" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #f43f5e; display: flex; justify-content: space-between;">
+                                <span>🔥 야수 10X 레버리지</span>
+                                <span style="font-size: 10px; color: #f43f5e;">⭐⭐⭐⭐⭐</span>
+                            </div>
+                            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">Hedge · 초고수익/초고위험</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;" id="fund-nav-text-beast">NAV: 1,000P</div>
+                        </div>
+                        <div class="bank-fund-card" onclick="selectFundTab('infra')" id="fund-card-infra" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #a855f7; display: flex; justify-content: space-between;">
+                                <span>⛏️ 인프라 리츠</span>
+                                <span style="font-size: 10px; color: #c084fc;">⭐⭐</span>
+                            </div>
+                            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">REITs · 채굴/강화 수수료 배당</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;" id="fund-nav-text-infra">NAV: 1,000P</div>
+                        </div>
+                    </div>
+
+                    <!-- Selected Fund Detail & Holdings -->
                     <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
-                        <div style="font-size: 13px; font-weight: 800; color: #fff; margin-bottom: 8px;">📋 내 펀드 보유 현황</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                            <div style="font-size: 14px; font-weight: 800; color: #fff;" id="fund-active-name">📈 나베 마작 종합 지수 펀드 (ETF)</div>
+                            <span id="bank-fund-nav-badge" style="background: #0284c7; color: #fff; font-size: 12px; font-weight: 900; padding: 2px 10px; border-radius: 6px; font-family: monospace;">NAV: 1,000.00P</span>
+                        </div>
+                        <div id="fund-active-desc" style="font-size: 11px; color: #94a3b8; margin-bottom: 10px; line-height: 1.4;">
+                            전 종목 시가총액 가중 종합 지수 추종 + 매 경기 0.5% 기본 배당. 안정적인 시장 성장 수혜형 ETF.
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 12px; background: #0f172a; padding: 10px; border-radius: 8px;">
                             <div>보유 좌수: <strong id="bank-fund-my-units" style="color: #38bdf8; font-family: monospace;">0.0000좌</strong></div>
                             <div>투자 원금: <strong id="bank-fund-my-invested" style="color: #cbd5e1; font-family: monospace;">0P</strong></div>
                             <div>현재 평가액: <strong id="bank-fund-my-valuation" style="color: #4ade80; font-family: monospace;">0P</strong></div>
@@ -3745,29 +3948,32 @@
                         </div>
                     </div>
 
+                    <!-- Fund Buy & Sell Grid -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
                         <!-- Buy Fund -->
                         <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-                            <div style="font-size: 13px; font-weight: 800; color: #38bdf8; margin-bottom: 8px;">📈 펀드 매수 (투자)</div>
+                            <div style="font-size: 13px; font-weight: 800; color: #38bdf8; margin-bottom: 8px;" id="fund-buy-box-title">📈 펀드 매수 (투자)</div>
                             <input type="number" id="bank-fund-buy-amt" min="10000" step="10000" placeholder="투자 금액 (최소 1만P)" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
-                            <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;">
                                 <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=10000">+1만</button>
                                 <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=50000">+5만</button>
                                 <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=100000">+10만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=500000">+50만</button>
+                                <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-buy-amt').value=activeBankData ? activeBankData.points : 0">전액</button>
                             </div>
-                            <button onclick="executeWebBankFundBuy()" style="width: 100%; background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                            <button onclick="executeWebBankFundBuy()" id="bank-fund-buy-btn" style="width: 100%; background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
                                 📈 펀드 매수하기
                             </button>
                         </div>
 
                         <!-- Sell Fund -->
                         <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-                            <div style="font-size: 13px; font-weight: 800; color: #f472b6; margin-bottom: 8px;">📉 펀드 환매 (매도)</div>
+                            <div style="font-size: 13px; font-weight: 800; color: #f472b6; margin-bottom: 8px;" id="fund-sell-box-title">📉 펀드 환매 (매도)</div>
                             <input type="text" id="bank-fund-sell-units" placeholder="환매 좌수 (또는 '전액')" style="width: 100%; background: #0f172a; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
                             <div style="display: flex; gap: 4px; margin-bottom: 10px;">
                                 <button type="button" class="quick-amt-btn" onclick="document.getElementById('bank-fund-sell-units').value='전액'">전액 환매</button>
                             </div>
-                            <button onclick="executeWebBankFundSell()" style="width: 100%; background: linear-gradient(135deg, #db2777, #f472b6); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
+                            <button onclick="executeWebBankFundSell()" id="bank-fund-sell-btn" style="width: 100%; background: linear-gradient(135deg, #db2777, #f472b6); color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer;">
                                 📉 펀드 환매하기
                             </button>
                         </div>
@@ -3777,27 +3983,63 @@
                 <!-- 4. Insurance Tab -->
                 <div id="bank-subtab-insurance" style="display: none;">
                     <div style="background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
-                        <div style="font-size: 13px; color: #4ade80; font-weight: 800; margin-bottom: 4px;">🏥🛡️ 스타포스 안심 파괴 보험</div>
+                        <div style="font-size: 13px; color: #4ade80; font-weight: 800; margin-bottom: 4px;">🏥🛡️ 스타포스 안심 파괴 보험 라인업</div>
                         <div style="font-size: 11px; color: #cbd5e1; line-height: 1.5;">
-                            • <strong>보험료 50,000P</strong>로 가입 후 <strong>앞으로 5경기 동안</strong> 보장됩니다.<br>
-                            • 15성 이상 스타포스 강화 실패로 곡괭이가 폭발 파괴될 경우, 즉시 보통예금으로 <strong>위로 보험금 1,000,000P</strong>가 자동 입금됩니다!<br>
-                            • 파괴 방어 실패의 두려움 없이 안전하게 고성수 강화에 도전하세요!
+                            • 15성 이상 스타포스 강화 실패로 곡괭이가 폭발 파괴될 경우, 즉시 보통예금으로 <strong>위로 보험금(최대 10,000,000P)</strong>이 자동 입금됩니다!<br>
+                            • 가입 시점부터 <strong>5경기 동안</strong> 안전하게 보호됩니다. 원하는 보장 플랜을 선택하여 안심하고 고성수 강화에 도전하세요!
                         </div>
                     </div>
 
+                    <!-- 4 Insurance Plans Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 14px;">
+                        <div class="bank-ins-plan-card active" onclick="selectInsurancePlan('basic')" id="ins-card-basic" style="background: #0f172a; border: 2px solid #22c55e; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #86efac; display: flex; justify-content: space-between;">
+                                <span>🌱 실속형</span>
+                                <span style="font-size: 11px; color: #cbd5e1;">3만P</span>
+                            </div>
+                            <div style="font-size: 12px; font-weight: 900; color: #4ade80; margin-top: 4px;">폭발 시 50만P</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">5경기 보장</div>
+                        </div>
+                        <div class="bank-ins-plan-card" onclick="selectInsurancePlan('standard')" id="ins-card-standard" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #38bdf8; display: flex; justify-content: space-between;">
+                                <span>🛡️ 표준형</span>
+                                <span style="font-size: 11px; color: #cbd5e1;">5만P</span>
+                            </div>
+                            <div style="font-size: 12px; font-weight: 900; color: #38bdf8; margin-top: 4px;">폭발 시 100만P</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">5경기 보장 (인기)</div>
+                        </div>
+                        <div class="bank-ins-plan-card" onclick="selectInsurancePlan('premium')" id="ins-card-premium" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #c084fc; display: flex; justify-content: space-between;">
+                                <span>💎 프리미엄</span>
+                                <span style="font-size: 11px; color: #cbd5e1;">12만P</span>
+                            </div>
+                            <div style="font-size: 12px; font-weight: 900; color: #c084fc; margin-top: 4px;">폭발 시 300만P</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">5경기 보장</div>
+                        </div>
+                        <div class="bank-ins-plan-card" onclick="selectInsurancePlan('vvip')" id="ins-card-vvip" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 12px; font-weight: 800; color: #fbbf24; display: flex; justify-content: space-between;">
+                                <span>👑 VVIP 종결</span>
+                                <span style="font-size: 11px; color: #cbd5e1;">35만P</span>
+                            </div>
+                            <div style="font-size: 12px; font-weight: 900; color: #fbbf24; margin-top: 4px;">폭발 시 1,000만P</div>
+                            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">5경기 보장</div>
+                        </div>
+                    </div>
+
+                    <!-- Current Insurance Status & Action -->
                     <div style="background: #1e293b; border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; margin-bottom: 14px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                             <div style="font-size: 14px; font-weight: 800; color: #fff;">내 보험 가입 상태</div>
                             <span id="bank-ins-status-badge" style="background: #334155; color: #94a3b8; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 4px;">미가입</span>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 14px;">
+                            <div>가입 플랜: <strong id="bank-ins-plan-name" style="color: #4ade80;">실속형 (50만P 보장)</strong></div>
                             <div>잔여 보장 경기: <strong id="bank-ins-matches" style="color: #38bdf8;">0경기</strong></div>
                             <div>보장 횟수: <strong id="bank-ins-claims" style="color: #fbbf24;">1회</strong></div>
-                            <div>폭발 시 보장금: <strong style="color: #4ade80; font-size: 14px;">1,000,000P</strong></div>
-                            <div>보험료: <strong style="color: #cbd5e1;">50,000P (5경기)</strong></div>
+                            <div>파괴 시 보장금: <strong id="bank-ins-payout-text" style="color: #4ade80; font-size: 14px;">500,000P</strong></div>
                         </div>
                         <button id="bank-ins-buy-btn" onclick="executeWebBankInsuranceBuy()" style="width: 100%; background: linear-gradient(135deg, #15803d, #22c55e); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 900; font-size: 14px; cursor: pointer; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);">
-                            🏥 50,000P로 파괴 안심 보험 가입하기
+                            🏥 30,000P로 실속형 파괴 안심 보험 가입하기
                         </button>
                     </div>
                 </div>
@@ -6513,17 +6755,19 @@
                         updateWebUserBar(activeWebUser);
                         return;
                     }
+                } else if (res.status === 401 || res.status === 403) {
+                    localStorage.removeItem("chzzk_web_token");
+                    activeWebToken = null;
+                    activeWebUser = null;
+                    if (barUnauth) barUnauth.style.display = "flex";
+                    if (barAuth) barAuth.style.display = "none";
+                    updateLoanLimitStat(null);
+                    return;
                 }
             } catch (err) {
                 console.warn("Web auth session check error:", err);
+                return;
             }
-
-            localStorage.removeItem("chzzk_web_token");
-            activeWebToken = null;
-            activeWebUser = null;
-            if (barUnauth) barUnauth.style.display = "flex";
-            if (barAuth) barAuth.style.display = "none";
-            updateLoanLimitStat(null);
         }
 
         function updateLoanLimitStat(user) {
@@ -10176,16 +10420,15 @@
 
             if (mineCountdownInterval) clearInterval(mineCountdownInterval);
 
+            const remSecInit = Math.max(0, parseInt(m.remaining_cd_sec, 10) || 0);
+            const clientEndEpoch = Date.now() + (remSecInit * 1000);
+            const totalSec = Math.max(60, (m.effective_cd_min || 15) * 60);
+
             const getRemainingSec = () => {
-                if (m.next_mine_time_epoch && m.next_mine_time_epoch > 0) {
-                    const nowSec = Date.now() / 1000;
-                    return Math.max(0, Math.ceil(m.next_mine_time_epoch - nowSec));
-                }
-                return m.remaining_cd_sec || 0;
+                return Math.max(0, Math.ceil((clientEndEpoch - Date.now()) / 1000));
             };
 
             let remSec = getRemainingSec();
-            const totalSec = (m.effective_cd_min || 15) * 60;
 
             if (remSec <= 0) {
                 if (progBox) progBox.style.display = "none";
@@ -10267,13 +10510,13 @@
                         resBox.style.display = "block";
                     }
                 } else {
-                    alert(data.detail || data.reply || "채굴 실패");
+                    showToast("⚠️ " + (data.detail || data.reply || "채굴 실패"));
                     if (btn) btn.disabled = false;
                 }
             } catch (err) {
                 if (rock) rock.classList.remove("pickaxe-striking");
                 if (btn) btn.disabled = false;
-                alert("채굴 요청 오류: " + err.message);
+                showToast("⚠️ 채굴 요청 오류: " + err.message);
             }
         }
 
@@ -10472,10 +10715,24 @@
                         } else if (outcome === "downgrade_prevented") {
                             playWebSound("starforce_maintain");
                             if (outcomeBanner) {
-                                outcomeBanner.textContent = "🛡️ [하강방지권 발동!] 등급 보존";
+                                outcomeBanner.textContent = "🛡️ [하강방지권 방어 성공!] 등급 보존";
                                 outcomeBanner.style.color = "#38bdf8";
                             }
-                            if (outcomeDesc) outcomeDesc.textContent = "하강방지권 1장을 소모하여 1성 하락을 막았습니다!";
+                            if (outcomeDesc) outcomeDesc.textContent = "하강방지권이 70% 확률로 1성 하강을 성공적으로 막아냈습니다!";
+                        } else if (outcome === "destruction_prevented") {
+                            playWebSound("starforce_maintain");
+                            if (outcomeBanner) {
+                                outcomeBanner.textContent = "🛡️✨ [파괴방어권 아슬아슬 방어!] 60% 성공";
+                                outcomeBanner.style.color = "#38bdf8";
+                            }
+                            if (outcomeDesc) outcomeDesc.textContent = "파괴방어권이 60% 확률로 장비 폭발을 가까스로 막아냈습니다!";
+                        } else if (outcome === "safeguarded_drop") {
+                            playWebSound("starforce_maintain");
+                            if (outcomeBanner) {
+                                outcomeBanner.textContent = "🛡️ [세이프가드 발동!] 폭발 방지 (1성 하강)";
+                                outcomeBanner.style.color = "#f59e0b";
+                            }
+                            if (outcomeDesc) outcomeDesc.textContent = "잠재 세이프가드가 장비 폭발을 막아내고 1성 하강으로 보호했습니다!";
                         } else if (outcome === "drop") {
                             if (outcomeBanner) {
                                 outcomeBanner.textContent = `📉 [강화 실패] ★${d.new_level}성으로 하락`;
@@ -10485,10 +10742,12 @@
                         } else if (outcome === "destroyed") {
                             playWebSound("starforce_destroy");
                             if (outcomeBanner) {
-                                outcomeBanner.textContent = "💥💀 [장비 파괴] 12성 흔적 복원";
+                                outcomeBanner.textContent = "💥💀 [장비 폭발 대참사!] 12성 흔적 복원";
                                 outcomeBanner.style.color = "#ef4444";
                             }
-                            if (outcomeDesc) outcomeDesc.textContent = "장비가 파괴되어 12성 장비의 흔적으로 복원되었습니다.";
+                            const shieldPierced = d.used_shield ? "⚠️ 파괴방어권이 40% 확률로 뚫려 장비가 폭발했습니다! " : "";
+                            const insMsg = d.insurance_payout ? " 🏥 중앙은행 파괴보험금 +1,000,000P 지급!" : "";
+                            if (outcomeDesc) outcomeDesc.textContent = `${shieldPierced}장비가 파괴되어 12성 장비의 흔적으로 복원되었습니다.${insMsg}`;
                         }
 
                         if (data.user) {
@@ -10497,14 +10756,14 @@
                             renderStarforceUI(activeWebUser);
                         }
                     } else {
-                        alert(data.detail || data.reply || "강화 실패");
+                        showToast("⚠️ " + (data.detail || data.reply || "강화 실패"));
                     }
                 }, 1100);
 
             } catch (err) {
                 if (hammer) hammer.classList.remove("hammer-active");
                 if (btn) btn.disabled = false;
-                alert("강화 요청 오류: " + err.message);
+                showToast("⚠️ 강화 요청 오류: " + err.message);
             }
         }
 
@@ -11708,10 +11967,18 @@
             // Sorting
             filtered.sort((a, b) => {
                 if (sortBy === "val_desc") return (b.current_value || 0) - (a.current_value || 0);
+                if (sortBy === "entry_price_desc") return (b.entry_price || 0) - (a.entry_price || 0);
+                if (sortBy === "entry_price_asc") return (a.entry_price || 0) - (b.entry_price || 0);
                 if (sortBy === "pnl_desc") return (b.pnl_pct || 0) - (a.pnl_pct || 0);
                 if (sortBy === "pnl_asc") return (a.pnl_pct || 0) - (b.pnl_pct || 0);
+                if (sortBy === "pnl_val_desc") return (b.unrealized_pnl || 0) - (a.unrealized_pnl || 0);
+                if (sortBy === "pnl_val_asc") return (a.unrealized_pnl || 0) - (b.unrealized_pnl || 0);
                 if (sortBy === "inv_desc") return (b.invested_cash || 0) - (a.invested_cash || 0);
+                if (sortBy === "inv_asc") return (a.invested_cash || 0) - (b.invested_cash || 0);
                 if (sortBy === "qty_desc") return (b.quantity || 0) - (a.quantity || 0);
+                if (sortBy === "qty_asc") return (a.quantity || 0) - (b.quantity || 0);
+                if (sortBy === "cash_desc") return (b.user_cash || 0) - (a.user_cash || 0);
+                if (sortBy === "cash_asc") return (a.user_cash || 0) - (b.user_cash || 0);
                 return 0;
             });
 
@@ -11808,6 +12075,26 @@
             renderStockholdersTable();
         }
 
+        function toggleStockSort(type) {
+            const sel = document.getElementById("sh-sort-select");
+            if (!sel) return;
+            const cur = sel.value;
+            if (type === 'entry_price') {
+                sel.value = cur === 'entry_price_desc' ? 'entry_price_asc' : 'entry_price_desc';
+            } else if (type === 'val') {
+                sel.value = cur === 'val_desc' ? 'inv_desc' : 'val_desc';
+            } else if (type === 'pnl') {
+                sel.value = cur === 'pnl_desc' ? 'pnl_asc' : (cur === 'pnl_asc' ? 'pnl_val_desc' : 'pnl_desc');
+            } else if (type === 'qty') {
+                sel.value = cur === 'qty_desc' ? 'qty_asc' : 'qty_desc';
+            } else if (type === 'inv') {
+                sel.value = cur === 'inv_desc' ? 'inv_asc' : 'inv_desc';
+            } else if (type === 'cash') {
+                sel.value = cur === 'cash_desc' ? 'cash_asc' : 'cash_desc';
+            }
+            renderStockholdersTable();
+        }
+
         function renderRecentTradesFeed(trades) {
             const container = document.getElementById("sh-recent-trades-container");
             if (!container) return;
@@ -11896,17 +12183,60 @@
         // =========================================================
         let activeBankData = null;
 
+        const SAVINGS_PLANS_FRONT = {
+            speed: { id: "speed", name: "⚡ 스피드 단기 적금", rounds: 3, bonus_pct: 0.10, min_amt: 5000, max_amt: 1000000, desc: "3경기 만기 · 초단기 목돈 굴리기 (+10% 보너스)" },
+            standard: { id: "standard", name: "🏛️ 나베 정기 적금", rounds: 5, bonus_pct: 0.20, min_amt: 5000, max_amt: 2000000, desc: "5경기 만기 · 정석 베스트셀러 (+20% 보너스)" },
+            whale: { id: "whale", name: "🐋 고래 장기 적금", rounds: 10, bonus_pct: 0.35, min_amt: 10000, max_amt: 5000000, desc: "10경기 만기 · 고액 자산가 우대 (+35% 보너스)" },
+            pension: { id: "pension", name: "👑 슈퍼 연금 적금", rounds: 20, bonus_pct: 0.60, min_amt: 20000, max_amt: 10000000, desc: "20경기 만기 · 최고 +60% 대박 이자" }
+        };
+
+        const DIVERSIFIED_FUNDS_FRONT = {
+            index: { id: "index", name: "📈 나베 마작 종합 지수 펀드 (ETF)", icon: "📈", risk_stars: "⭐⭐⭐", risk_tier: "중위험·시장추종", initial_nav: 1000.0, min_invest: 10000, desc: "전 종목 시가총액 가중 종합 지수 추종 + 매 경기 0.5% 기본 배당. 안정적인 시장 성장 수혜형 ETF." },
+            dividend: { id: "dividend", name: "🛡️ 나베 우량 배당국채 펀드 (Bond)", icon: "🛡️", risk_stars: "⭐", risk_tier: "초저위험·원금안정", initial_nav: 1000.0, min_invest: 10000, desc: "마작 경기 등락과 무관하게 매 경기 +1.2% 확정 배당 지급. 하락장 방어용 안전자산 국채형." },
+            beast: { id: "beast", name: "🔥 야수 10X 레버리지 펀드 (Hedge)", icon: "🔥", risk_stars: "⭐⭐⭐⭐⭐", risk_tier: "초고위험·초고수익", initial_nav: 1000.0, min_invest: 30000, desc: "1등 적중 및 급등장 2.5배 레버리지 모멘텀 운용. 하이리스크 하이리턴 헤지펀드." },
+            infra: { id: "infra", name: "⛏️ 탄광·스타포스 인프라 펀드 (REITs)", icon: "⛏️", risk_stars: "⭐⭐", risk_tier: "중저위험·실물배당", initial_nav: 1000.0, min_invest: 20000, desc: "전 서버 채굴 수수료 + 스타포스 강화/큐브 수수료 매출의 5%를 매 경기 현금 배당하는 실물 인프라 펀드." }
+        };
+
+        const INSURANCE_PLANS_FRONT = {
+            basic: { id: "basic", name: "🌱 실속형 파괴 안심 보험", price: 30000, payout: 500000, matches: 5, desc: "보험료 30,000P ➔ 15성 이상 폭발 파괴 시 500,000P 보상" },
+            standard: { id: "standard", name: "🛡️ 표준형 파괴 안심 보험", price: 50000, payout: 1000000, matches: 5, desc: "보험료 50,000P ➔ 15성 이상 폭발 파괴 시 1,000,000P 보상" },
+            premium: { id: "premium", name: "💎 프리미엄 파괴 안심 보험", price: 120000, payout: 3000000, matches: 5, desc: "보험료 120,000P ➔ 15성 이상 폭발 파괴 시 3,000,000P 보상" },
+            vvip: { id: "vvip", name: "👑 VVIP 종결 파괴 안심 보험", price: 350000, payout: 10000000, matches: 5, desc: "보험료 350,000P ➔ 15성 이상 폭발 파괴 시 10,000,000P 보상" }
+        };
+
+        let selectedSavingsPlanId = "speed";
+        let selectedFundId = "index";
+        let selectedInsurancePlanId = "basic";
+
         function openWebBankModal() {
-            if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
-                showToast("ℹ️ 안내 전용 모드에서는 은행 창구를 지원하지 않습니다.");
-                return;
-            }
-            if (!activeWebToken) {
-                openWebLoginModal();
-                return;
-            }
             document.getElementById("web-bank-modal").style.display = "flex";
-            loadBankStatus();
+            if (!activeBankData) {
+                const fallbackCash = activeWebUser ? (activeWebUser.points || 0) : 120000;
+                const fallbackBal = activeWebUser ? (activeWebUser.bank_balance || 0) : 500000;
+                const fallbackDebt = activeWebUser ? (activeWebUser.debt || 0) : 0;
+                activeBankData = {
+                    bank_balance: fallbackBal,
+                    points: fallbackCash,
+                    debt: fallbackDebt,
+                    credit: { tier: 3, tier_name: 'A (우량)', score: 750, limit: 15000000, rate_pct: 1.5, available: 15000000 },
+                    savings: null,
+                    fund_navs: { index: 1000.0, dividend: 1000.0, beast: 1000.0, infra: 1000.0 },
+                    funds: {
+                        index: { units: 10.0, invested: 10000, valuation: 10000, pnl: 0, pnl_pct: 0.0, nav: 1000.0 },
+                        dividend: { units: 0.0, invested: 0, valuation: 0, pnl: 0, pnl_pct: 0.0, nav: 1000.0 },
+                        beast: { units: 0.0, invested: 0, valuation: 0, pnl: 0, pnl_pct: 0.0, nav: 1000.0 },
+                        infra: { units: 0.0, invested: 0, valuation: 0, pnl: 0, pnl_pct: 0.0, nav: 1000.0 }
+                    },
+                    fund: { units: 10.0, invested: 10000, valuation: 10000, pnl: 0, pnl_pct: 0.0, nav: 1000.0 },
+                    insurance: { active: false, matches_left: 0, claims_left: 1, payout: 500000, plan_name: "실속형" }
+                };
+            }
+            renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                loadBankStatus();
+            } else {
+                showToast("🏛️ 치즈나베 중앙은행에 오신 것을 환영합니다! (체험 시뮬레이션 및 실시간 연동 지원)");
+            }
         }
 
         function closeWebBankModal() {
@@ -11929,6 +12259,152 @@
                     panel.style.display = isActive ? 'block' : 'none';
                 }
             });
+            if (tabName === 'savings') selectSavingsPlan(selectedSavingsPlanId);
+            if (tabName === 'fund') selectFundTab(selectedFundId);
+            if (tabName === 'insurance') selectInsurancePlan(selectedInsurancePlanId);
+        }
+
+        // --- Savings Helpers ---
+        function selectSavingsPlan(planId) {
+            const plan = SAVINGS_PLANS_FRONT[planId];
+            if (!plan) return;
+            selectedSavingsPlanId = planId;
+
+            document.querySelectorAll('.bank-sav-plan-card').forEach(card => {
+                const isSelected = card.id === `sav-card-${planId}`;
+                card.classList.toggle('active', isSelected);
+                card.style.borderColor = isSelected ? '#a855f7' : '#334155';
+                card.style.borderWidth = isSelected ? '2px' : '1px';
+                card.style.background = isSelected ? 'rgba(168, 85, 247, 0.15)' : '#0f172a';
+            });
+
+            const inputAmt = document.getElementById("bank-sav-input-amt");
+            const labelEl = document.getElementById("bank-sav-amt-label");
+            const btnEl = document.getElementById("bank-sav-submit-btn");
+
+            if (inputAmt) {
+                inputAmt.min = plan.min_amt;
+                inputAmt.max = plan.max_amt;
+                if (parseInt(inputAmt.value, 10) < plan.min_amt) inputAmt.value = plan.min_amt;
+                if (parseInt(inputAmt.value, 10) > plan.max_amt) inputAmt.value = plan.max_amt;
+            }
+            if (labelEl) {
+                labelEl.textContent = `경기당 납입 금액 (${plan.name.replace(/^[^\s]+ /, '')}: ${plan.min_amt.toLocaleString()}P ~ ${plan.max_amt.toLocaleString()}P)`;
+            }
+            if (btnEl) {
+                btnEl.textContent = `✨ ${plan.name} 계좌 개설하기 (+${Math.round(plan.bonus_pct * 100)}% 보너스)`;
+            }
+            updateSavingsEstSummary();
+        }
+
+        function setSavingsInputAmt(amt) {
+            const inputAmt = document.getElementById("bank-sav-input-amt");
+            if (inputAmt) {
+                inputAmt.value = amt;
+                updateSavingsEstSummary();
+            }
+        }
+
+        function updateSavingsEstSummary() {
+            const plan = SAVINGS_PLANS_FRONT[selectedSavingsPlanId] || SAVINGS_PLANS_FRONT.speed;
+            const inputAmt = document.getElementById("bank-sav-input-amt");
+            const summaryEl = document.getElementById("bank-sav-est-summary");
+            if (!summaryEl || !inputAmt) return;
+
+            const perRound = parseInt(inputAmt.value, 10) || plan.min_amt;
+            const rounds = plan.rounds;
+            const totalDeposit = perRound * rounds;
+            const bonus = Math.round(totalDeposit * plan.bonus_pct);
+            const payout = totalDeposit + bonus;
+            summaryEl.textContent = `만기 수령: ${payout.toLocaleString()}P (보너스 +${bonus.toLocaleString()}P / +${Math.round(plan.bonus_pct * 100)}%)`;
+        }
+
+        // --- Fund Helpers ---
+        function selectFundTab(fundId) {
+            const plan = DIVERSIFIED_FUNDS_FRONT[fundId];
+            if (!plan) return;
+            selectedFundId = fundId;
+
+            document.querySelectorAll('.bank-fund-card').forEach(card => {
+                const isSelected = card.id === `fund-card-${fundId}`;
+                card.classList.toggle('active', isSelected);
+                card.style.borderColor = isSelected ? '#38bdf8' : '#334155';
+                card.style.borderWidth = isSelected ? '2px' : '1px';
+                card.style.background = isSelected ? 'rgba(14, 165, 233, 0.15)' : '#0f172a';
+            });
+
+            const nameEl = document.getElementById("fund-active-name");
+            const descEl = document.getElementById("fund-active-desc");
+            const navBadge = document.getElementById("bank-fund-nav-badge");
+            const buyTitle = document.getElementById("fund-buy-box-title");
+            const sellTitle = document.getElementById("fund-sell-box-title");
+            const buyBtn = document.getElementById("bank-fund-buy-btn");
+            const sellBtn = document.getElementById("bank-fund-sell-btn");
+            const buyInput = document.getElementById("bank-fund-buy-amt");
+
+            if (nameEl) nameEl.textContent = `${plan.name} (${plan.risk_stars} ${plan.risk_tier})`;
+            if (descEl) descEl.textContent = plan.desc;
+            if (buyTitle) buyTitle.textContent = `📈 [${plan.name.split(' ')[1] || '펀드'}] 매수 (투자)`;
+            if (sellTitle) sellTitle.textContent = `📉 [${plan.name.split(' ')[1] || '펀드'}] 환매 (매도)`;
+            if (buyBtn) buyBtn.textContent = `📈 ${plan.name.split(' ')[1] || '펀드'} 매수하기`;
+            if (sellBtn) sellBtn.textContent = `📉 ${plan.name.split(' ')[1] || '펀드'} 환매하기`;
+            if (buyInput) {
+                buyInput.min = plan.min_invest;
+                buyInput.placeholder = `투자 금액 (최소 ${plan.min_invest.toLocaleString()}P)`;
+                if (parseInt(buyInput.value, 10) < plan.min_invest) buyInput.value = plan.min_invest;
+            }
+
+            // Update holdings view for this fund
+            const funds = (activeBankData && activeBankData.funds) ? activeBankData.funds : {};
+            const curNav = (activeBankData && activeBankData.fund_navs && activeBankData.fund_navs[fundId]) || plan.initial_nav;
+            const fHold = funds[fundId] || { units: 0.0, invested: 0 };
+            const uVal = Math.round((fHold.units || 0) * curNav);
+            const uPnl = uVal - (fHold.invested || 0);
+            const uPnlPct = (fHold.invested || 0) > 0 ? ((uPnl / fHold.invested) * 100) : 0;
+
+            if (navBadge) navBadge.textContent = `NAV: ${Number(curNav).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}P`;
+            const myUnits = document.getElementById("bank-fund-my-units");
+            const myInvested = document.getElementById("bank-fund-my-invested");
+            const myVal = document.getElementById("bank-fund-my-valuation");
+            const myPnl = document.getElementById("bank-fund-my-pnl");
+
+            if (myUnits) myUnits.textContent = `${Number(fHold.units || 0).toFixed(4)}좌`;
+            if (myInvested) myInvested.textContent = `${Number(fHold.invested || 0).toLocaleString()}P`;
+            if (myVal) myVal.textContent = `${Number(uVal).toLocaleString()}P`;
+            if (myPnl) {
+                const pnlSign = uPnl >= 0 ? '+' : '';
+                myPnl.textContent = `${pnlSign}${uPnl.toLocaleString()}P (${pnlSign}${uPnlPct.toFixed(2)}%)`;
+                myPnl.style.color = uPnl >= 0 ? '#4ade80' : '#f87171';
+            }
+        }
+
+        // --- Insurance Helpers ---
+        function selectInsurancePlan(planId) {
+            const plan = INSURANCE_PLANS_FRONT[planId];
+            if (!plan) return;
+            selectedInsurancePlanId = planId;
+
+            document.querySelectorAll('.bank-ins-plan-card').forEach(card => {
+                const isSelected = card.id === `ins-card-${planId}`;
+                card.classList.toggle('active', isSelected);
+                card.style.borderColor = isSelected ? '#22c55e' : '#334155';
+                card.style.borderWidth = isSelected ? '2px' : '1px';
+                card.style.background = isSelected ? 'rgba(34, 197, 94, 0.15)' : '#0f172a';
+            });
+
+            const btnEl = document.getElementById("bank-ins-buy-btn");
+            const planNameEl = document.getElementById("bank-ins-plan-name");
+            const payoutText = document.getElementById("bank-ins-payout-text");
+
+            if (btnEl && (!activeBankData || !activeBankData.insurance || !activeBankData.insurance.active)) {
+                btnEl.textContent = `🏥 ${plan.price.toLocaleString()}P로 ${plan.name} 가입하기`;
+            }
+            if (planNameEl && (!activeBankData || !activeBankData.insurance || !activeBankData.insurance.active)) {
+                planNameEl.textContent = `${plan.name} (${plan.payout.toLocaleString()}P 보장)`;
+            }
+            if (payoutText && (!activeBankData || !activeBankData.insurance || !activeBankData.insurance.active)) {
+                payoutText.textContent = `${plan.payout.toLocaleString()}P`;
+            }
         }
 
         async function loadBankStatus() {
@@ -11947,12 +12423,13 @@
                     showToast("⚠️ 은행 정보 조회 실패: " + (err.detail || res.statusText));
                 }
             } catch (err) {
-                showToast("⚠️ 은행 통신 오류: " + err.message);
+                console.warn("loadBankStatus error:", err);
             }
         }
 
         function renderBankUI(bank) {
             if (!bank) return;
+            activeBankData = bank;
 
             // Overview Deck
             const balEl = document.getElementById("bank-deck-balance");
@@ -11972,9 +12449,6 @@
                 credEl.textContent = `${bank.credit.tier || 4}등급 (${bank.credit.tier_name || 'BBB'})`;
             }
 
-            // Tab 1: Deposit / Withdraw
-            // (Quick amt buttons use activeBankData / activeWebUser directly)
-
             // Tab 2: Installment Savings
             const savActiveCard = document.getElementById("bank-savings-active-card");
             const savOpenCard = document.getElementById("bank-savings-open-card");
@@ -11982,52 +12456,46 @@
                 if (savActiveCard) savActiveCard.style.display = "block";
                 if (savOpenCard) savOpenCard.style.display = "none";
                 const s = bank.savings;
+                const titleEl = document.getElementById("bank-sav-title");
                 const badge = document.getElementById("bank-sav-badge");
                 const pFill = document.getElementById("bank-sav-progress-fill");
+                const planNameEl = document.getElementById("bank-sav-plan-name");
                 const roundsEl = document.getElementById("bank-sav-rounds");
                 const perRoundEl = document.getElementById("bank-sav-per-round");
                 const depEl = document.getElementById("bank-sav-deposited");
                 const estEl = document.getElementById("bank-sav-est-payout");
 
+                const bonusPct = s.bonus_pct ? Math.round(s.bonus_pct * 100) : 20;
+                if (titleEl) titleEl.textContent = `🔥 [${s.plan_name || '정기적금'}] 진행 중`;
                 if (badge) badge.textContent = `${s.current_rounds} / ${s.target_rounds} 경기`;
-                if (pFill) pFill.style.width = `${Math.min(100, s.progress_pct || 0)}%`;
+                const progressPct = s.target_rounds > 0 ? Math.round((s.current_rounds / s.target_rounds) * 100) : 0;
+                if (pFill) pFill.style.width = `${Math.min(100, progressPct)}%`;
+                if (planNameEl) planNameEl.textContent = `${s.plan_name || '나베 정기 적금'} (+${bonusPct}% 만기 보너스)`;
                 if (roundsEl) roundsEl.textContent = `${s.current_rounds}회 (목표 ${s.target_rounds}회)`;
                 if (perRoundEl) perRoundEl.textContent = `${(s.per_round || 0).toLocaleString()}P`;
                 if (depEl) depEl.textContent = `${(s.total_deposited || 0).toLocaleString()}P`;
-                if (estEl) estEl.textContent = `${(s.estimated_payout || 0).toLocaleString()}P (+20% 특별 만기 이자)`;
+                if (estEl) estEl.textContent = `${(s.estimated_payout || 0).toLocaleString()}P (+${bonusPct}% 특별 만기 이자 포함)`;
             } else {
                 if (savActiveCard) savActiveCard.style.display = "none";
                 if (savOpenCard) savOpenCard.style.display = "block";
             }
 
-            // Tab 3: Mahjong Index Fund
-            const f = bank.fund || {};
-            const navBadge = document.getElementById("bank-fund-nav-badge");
-            const myUnits = document.getElementById("bank-fund-my-units");
-            const myInvested = document.getElementById("bank-fund-my-invested");
-            const myVal = document.getElementById("bank-fund-my-valuation");
-            const myPnl = document.getElementById("bank-fund-my-pnl");
-
-            if (navBadge) {
-                const navVal = Number(f.nav || 1000.0);
-                navBadge.textContent = `NAV: ${navVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}P`;
-            }
-            if (myUnits) myUnits.textContent = `${Number(f.units || 0).toFixed(4)}좌`;
-            if (myInvested) myInvested.textContent = `${Number(f.invested || 0).toLocaleString()}P`;
-            if (myVal) myVal.textContent = `${Number(f.valuation || 0).toLocaleString()}P`;
-            if (myPnl) {
-                const pnl = Number(f.pnl || 0);
-                const pnlPct = Number(f.pnl_pct || 0);
-                const pnlSign = pnl >= 0 ? '+' : '';
-                myPnl.textContent = `${pnlSign}${pnl.toLocaleString()}P (${pnlSign}${pnlPct.toFixed(2)}%)`;
-                myPnl.style.color = pnl >= 0 ? '#4ade80' : '#f87171';
-            }
+            // Tab 3: Diversified Funds NAV update across 4 cards
+            const navs = bank.fund_navs || {};
+            Object.keys(DIVERSIFIED_FUNDS_FRONT).forEach(fid => {
+                const navEl = document.getElementById(`fund-nav-text-${fid}`);
+                const curNav = navs[fid] || (bank.funds && bank.funds[fid] && bank.funds[fid].nav) || DIVERSIFIED_FUNDS_FRONT[fid].initial_nav;
+                if (navEl) navEl.textContent = `NAV: ${Number(curNav).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}P`;
+            });
+            selectFundTab(selectedFundId);
 
             // Tab 4: Insurance
             const ins = bank.insurance;
             const insBadge = document.getElementById("bank-ins-status-badge");
             const insMatches = document.getElementById("bank-ins-matches");
             const insClaims = document.getElementById("bank-ins-claims");
+            const insPlanName = document.getElementById("bank-ins-plan-name");
+            const insPayout = document.getElementById("bank-ins-payout-text");
             const insBuyBtn = document.getElementById("bank-ins-buy-btn");
 
             if (ins && ins.active) {
@@ -12036,13 +12504,15 @@
                     insBadge.style.background = "rgba(34, 197, 94, 0.25)";
                     insBadge.style.color = "#4ade80";
                 }
+                if (insPlanName) insPlanName.textContent = ins.plan_name || "표준형 파괴 안심 보험";
                 if (insMatches) insMatches.textContent = `${ins.matches_left}경기 남음`;
-                if (insClaims) insClaims.textContent = `${ins.claims_left}회 보장 가능`;
+                if (insClaims) insClaims.textContent = `${ins.claims_left || 1}회 보장 가능`;
+                if (insPayout) insPayout.textContent = `${(ins.payout || 1000000).toLocaleString()}P`;
                 if (insBuyBtn) {
                     insBuyBtn.disabled = true;
                     insBuyBtn.style.opacity = "0.6";
                     insBuyBtn.style.cursor = "not-allowed";
-                    insBuyBtn.textContent = `🛡️ 현재 보험 보장 적용 중 (${ins.matches_left}경기 남음)`;
+                    insBuyBtn.textContent = `🛡️ 현재 [${ins.plan_name || '파괴안심보험'}] 보장 적용 중 (${ins.matches_left}경기 남음)`;
                 }
             } else {
                 if (insBadge) {
@@ -12056,7 +12526,8 @@
                     insBuyBtn.disabled = false;
                     insBuyBtn.style.opacity = "1";
                     insBuyBtn.style.cursor = "pointer";
-                    insBuyBtn.textContent = "🏥 50,000P로 파괴 안심 보험 가입하기";
+                    const p = INSURANCE_PLANS_FRONT[selectedInsurancePlanId] || INSURANCE_PLANS_FRONT.basic;
+                    insBuyBtn.textContent = `🏥 ${p.price.toLocaleString()}P로 ${p.name} 가입하기`;
                 }
             }
 
@@ -12079,336 +12550,504 @@
             }
         }
 
+        // =========================================================
+        // Central Bank Action Executors (Live API + Interactive Sandbox)
+        // =========================================================
         async function executeWebBankDeposit() {
-            if (!activeWebToken) return;
             const amtVal = document.getElementById("bank-deposit-amt")?.value;
-            if (!amtVal || parseInt(amtVal, 10) <= 0) {
+            const amt = parseInt(amtVal, 10);
+            if (!amtVal || isNaN(amt) || amt <= 0) {
                 showToast("⚠️ 올바른 입금 금액을 입력해주세요.");
                 return;
             }
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/deposit`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`📥 ${data.reply || '예금 입금이 완료되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/deposit`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: activeWebToken, amount: amt })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`📥 ${data.reply || '예금 입금이 완료되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        document.getElementById("bank-deposit-amt").value = "";
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "입금 처리에 실패했습니다."));
+                        return;
                     }
-                    const input = document.getElementById("bank-deposit-amt");
-                    if (input) input.value = "";
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "입금 처리에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Deposit API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 입금 요청 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            if ((activeBankData.points || 0) < amt) {
+                showToast(`⚠️ 보유 현금이 부족합니다! (보유: ${(activeBankData.points || 0).toLocaleString()}P)`);
+                return;
+            }
+            activeBankData.points -= amt;
+            activeBankData.bank_balance = (activeBankData.bank_balance || 0) + amt;
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+            renderBankUI(activeBankData);
+            document.getElementById("bank-deposit-amt").value = "";
+            showToast(`📥 예금 ${amt.toLocaleString()}P 입금 완료! 매 경기 +0.5% 복리 이자가 자동 적립됩니다.`);
         }
 
         async function executeWebBankWithdraw() {
-            if (!activeWebToken) return;
             const amtVal = document.getElementById("bank-withdraw-amt")?.value;
-            if (!amtVal || parseInt(amtVal, 10) <= 0) {
+            const amt = parseInt(amtVal, 10);
+            if (!amtVal || isNaN(amt) || amt <= 0) {
                 showToast("⚠️ 올바른 출금 금액을 입력해주세요.");
                 return;
             }
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/withdraw`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`📤 ${data.reply || '예금 출금이 완료되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/withdraw`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: activeWebToken, amount: amt })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`📤 ${data.reply || '예금 출금이 완료되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        document.getElementById("bank-withdraw-amt").value = "";
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "출금 처리에 실패했습니다."));
+                        return;
                     }
-                    const input = document.getElementById("bank-withdraw-amt");
-                    if (input) input.value = "";
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "출금 처리에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Withdraw API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 출금 요청 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            if ((activeBankData.bank_balance || 0) < amt) {
+                showToast(`⚠️ 보통예금 잔액이 부족합니다! (예금 잔액: ${(activeBankData.bank_balance || 0).toLocaleString()}P)`);
+                return;
+            }
+            activeBankData.bank_balance -= amt;
+            activeBankData.points = (activeBankData.points || 0) + amt;
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+            renderBankUI(activeBankData);
+            document.getElementById("bank-withdraw-amt").value = "";
+            showToast(`📤 예금 ${amt.toLocaleString()}P 출금 완료! (보유 현금 지갑으로 즉시 입금)`);
         }
 
         async function executeWebBankSavingsOpen() {
-            if (!activeWebToken) return;
+            const plan = SAVINGS_PLANS_FRONT[selectedSavingsPlanId] || SAVINGS_PLANS_FRONT.speed;
             const amtVal = document.getElementById("bank-sav-input-amt")?.value;
-            const roundsVal = document.getElementById("bank-sav-input-rounds")?.value || "5";
+            const perRound = parseInt(amtVal, 10);
 
-            if (!amtVal || parseInt(amtVal, 10) < 5000) {
-                showToast("⚠️ 경기당 납입 금액은 최소 5,000P 이상이어야 합니다.");
+            if (!perRound || perRound < plan.min_amt || perRound > plan.max_amt) {
+                showToast(`⚠️ [${plan.name}] 회당 납입금은 ${plan.min_amt.toLocaleString()}P ~ ${plan.max_amt.toLocaleString()}P 사이로 설정 가능합니다.`);
                 return;
             }
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/savings/open`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        token: activeWebToken,
-                        per_round: amtVal,
-                        rounds: roundsVal
-                    })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`📈 ${data.reply || '정기적금 가입이 완료되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/savings/open`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            token: activeWebToken,
+                            per_round: perRound,
+                            plan: plan.id,
+                            rounds: plan.rounds
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`📈 ${data.reply || '정기적금 가입이 완료되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "적금 가입에 실패했습니다."));
+                        return;
                     }
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "적금 가입에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Savings Open API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 적금 요청 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            const availableCash = (activeBankData.points || 0) + (activeBankData.bank_balance || 0);
+            if (availableCash < perRound) {
+                showToast(`⚠️ 1회차 납입금(${perRound.toLocaleString()}P)이 부족합니다!`);
+                return;
+            }
+
+            if ((activeBankData.points || 0) >= perRound) {
+                activeBankData.points -= perRound;
+            } else {
+                activeBankData.bank_balance -= perRound;
+            }
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+
+            const totalDep = perRound * plan.rounds;
+            const estBonus = Math.round(totalDep * plan.bonus_pct);
+            const estPayout = totalDep + estBonus;
+
+            activeBankData.savings = {
+                plan_name: plan.name,
+                bonus_pct: plan.bonus_pct,
+                per_round: perRound,
+                target_rounds: plan.rounds,
+                current_rounds: 1,
+                total_deposited: perRound,
+                estimated_payout: estPayout
+            };
+            renderBankUI(activeBankData);
+            showToast(`📈 [${plan.name} 가입 완료] 1회차 납입(${perRound.toLocaleString()}P) 완료! 만기 예상 수령: ${estPayout.toLocaleString()}P (+${Math.round(plan.bonus_pct * 100)}% 특별 보너스)`);
         }
 
         async function executeWebBankSavingsCancel() {
-            if (!activeWebToken) return;
-
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/savings/cancel`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`⚠️ ${data.reply || '적금이 중도해지되고 원금이 보통예금으로 환급되었습니다.'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/savings/cancel`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: activeWebToken })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`⚠️ ${data.reply || '적금이 중도해지되고 원금이 환급되었습니다.'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "적금 해지에 실패했습니다."));
+                        return;
                     }
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "적금 해지에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Savings Cancel API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData || !activeBankData.savings) {
+                showToast("⚠️ 현재 가입 중인 정기적금이 없습니다.");
+                return;
+            }
+            const refund = activeBankData.savings.total_deposited || 0;
+            activeBankData.bank_balance = (activeBankData.bank_balance || 0) + refund;
+            activeBankData.savings = null;
+            renderBankUI(activeBankData);
+            showToast(`⚠️ [정기적금 해지 완료] 납입 원금 ${refund.toLocaleString()}P가 보통예금으로 전액 환급되었습니다.`);
         }
 
         async function executeWebBankFundBuy() {
-            if (!activeWebToken) return;
+            const plan = DIVERSIFIED_FUNDS_FRONT[selectedFundId] || DIVERSIFIED_FUNDS_FRONT.index;
             const amtVal = document.getElementById("bank-fund-buy-amt")?.value;
-            if (!amtVal || parseInt(amtVal, 10) < 10000) {
-                showToast("⚠️ 펀드 투자 금액은 최소 10,000P 이상이어야 합니다.");
+            const amt = parseInt(amtVal, 10);
+
+            if (!amt || amt < plan.min_invest) {
+                showToast(`⚠️ [${plan.name}] 최소 투자 금액은 ${plan.min_invest.toLocaleString()}P 이상이어야 합니다.`);
                 return;
             }
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/fund/buy`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`📈 ${data.reply || '마작 지수 펀드 매수가 체결되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/fund/buy`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            token: activeWebToken,
+                            amount: amt,
+                            fund_id: plan.id
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`📈 ${data.reply || '펀드 매수가 체결되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        document.getElementById("bank-fund-buy-amt").value = "";
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "펀드 매수에 실패했습니다."));
+                        return;
                     }
-                    const input = document.getElementById("bank-fund-buy-amt");
-                    if (input) input.value = "";
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "펀드 매수에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Fund Buy API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 펀드 매수 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            if ((activeBankData.points || 0) < amt) {
+                showToast(`⚠️ 보유 포인트가 부족합니다! (보유: ${(activeBankData.points || 0).toLocaleString()}P)`);
+                return;
+            }
+
+            const curNav = (activeBankData.fund_navs && activeBankData.fund_navs[plan.id]) || plan.initial_nav;
+            const unitsBought = parseFloat((amt / curNav).toFixed(4));
+            activeBankData.points -= amt;
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+
+            if (!activeBankData.funds) activeBankData.funds = {};
+            const curHold = activeBankData.funds[plan.id] || { units: 0.0, invested: 0 };
+            const newUnits = parseFloat(((curHold.units || 0) + unitsBought).toFixed(4));
+            const newInvested = (curHold.invested || 0) + amt;
+            activeBankData.funds[plan.id] = { units: newUnits, invested: newInvested };
+
+            renderBankUI(activeBankData);
+            document.getElementById("bank-fund-buy-amt").value = "";
+            showToast(`📈 [${plan.name} 매수 완료] ${amt.toLocaleString()}P 투자로 ${unitsBought.toFixed(4)}좌 체결! (총 보유: ${newUnits.toFixed(4)}좌)`);
         }
 
         async function executeWebBankFundSell() {
-            if (!activeWebToken) return;
+            const plan = DIVERSIFIED_FUNDS_FRONT[selectedFundId] || DIVERSIFIED_FUNDS_FRONT.index;
             const unitsVal = (document.getElementById("bank-fund-sell-units")?.value || "").trim();
             if (!unitsVal) {
                 showToast("⚠️ 환매할 좌수 또는 '전액'을 입력해주세요.");
                 return;
             }
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/fund/sell`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken, units: unitsVal })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`📉 ${data.reply || '마작 지수 펀드 환매가 완료되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/fund/sell`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            token: activeWebToken,
+                            units: unitsVal,
+                            fund_id: plan.id
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`📉 ${data.reply || '펀드 환매가 완료되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        document.getElementById("bank-fund-sell-units").value = "";
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "펀드 환매에 실패했습니다."));
+                        return;
                     }
-                    const input = document.getElementById("bank-fund-sell-units");
-                    if (input) input.value = "";
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "펀드 환매에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Fund Sell API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 펀드 환매 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            const curHold = (activeBankData.funds && activeBankData.funds[plan.id]) || { units: 0.0, invested: 0 };
+            const curUnits = curHold.units || 0;
+            if (curUnits <= 0.0001) {
+                showToast(`⚠️ 보유 중인 [${plan.name}] 좌수가 없습니다.`);
+                return;
+            }
+
+            let unitsToSell = curUnits;
+            if (!["전액", "전부", "올인", "max", "all", ""].includes(unitsVal.toLowerCase())) {
+                const parsed = parseFloat(unitsVal);
+                if (isNaN(parsed) || parsed <= 0) {
+                    showToast("⚠️ 올바른 환매 좌수를 입력해주세요.");
+                    return;
+                }
+                unitsToSell = Math.min(curUnits, parsed);
+            }
+
+            const curNav = (activeBankData.fund_navs && activeBankData.fund_navs[plan.id]) || plan.initial_nav;
+            const payout = Math.round(unitsToSell * curNav);
+            const remUnits = parseFloat(Math.max(0, curUnits - unitsToSell).toFixed(4));
+            const remInvested = Math.round((curHold.invested || 0) * (remUnits / Math.max(0.0001, curUnits)));
+
+            activeBankData.funds[plan.id] = { units: remUnits, invested: remInvested };
+            activeBankData.points = (activeBankData.points || 0) + payout;
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+
+            renderBankUI(activeBankData);
+            document.getElementById("bank-fund-sell-units").value = "";
+            showToast(`📉 [${plan.name} 환매 완료] ${unitsToSell.toFixed(4)}좌 환매 ➔ ${payout.toLocaleString()}P 수령!`);
         }
 
         async function executeWebBankInsuranceBuy() {
-            if (!activeWebToken) return;
+            const plan = INSURANCE_PLANS_FRONT[selectedInsurancePlanId] || INSURANCE_PLANS_FRONT.basic;
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/insurance/buy`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`🛡️ ${data.reply || '스타포스 안심 파괴 보험 가입이 완료되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/insurance/buy`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            token: activeWebToken,
+                            plan: plan.id
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`🛡️ ${data.reply || '파괴 안심 보험 가입이 완료되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "보험 가입에 실패했습니다."));
+                        return;
                     }
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "보험 가입에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Insurance Buy API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 보험 가입 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            if ((activeBankData.points || 0) < plan.price) {
+                showToast(`⚠️ 보유 포인트가 부족합니다! (보험료: ${plan.price.toLocaleString()}P / 보유: ${(activeBankData.points || 0).toLocaleString()}P)`);
+                return;
+            }
+
+            activeBankData.points -= plan.price;
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+
+            activeBankData.insurance = {
+                active: true,
+                plan: plan.id,
+                plan_name: plan.name,
+                matches_left: plan.matches,
+                claims_left: 1,
+                payout: plan.payout
+            };
+            renderBankUI(activeBankData);
+            showToast(`🛡️ [${plan.name} 가입 완료] 앞으로 ${plan.matches}경기 동안 15성 이상 폭발 시 ${plan.payout.toLocaleString()}P 위로 보험금이 즉시 보장됩니다!`);
         }
 
         async function executeWebBankLoanBorrow() {
-            if (!activeWebToken) return;
             const amtVal = document.getElementById("bank-loan-borrow-amt")?.value;
-            if (!amtVal || parseInt(amtVal, 10) <= 0) {
+            const amt = parseInt(amtVal, 10);
+            if (!amtVal || isNaN(amt) || amt <= 0) {
                 showToast("⚠️ 대출 신청 금액을 입력해주세요.");
                 return;
             }
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/loan/borrow`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`💳 ${data.reply || '신용대출이 정상 실행되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/loan/borrow`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: activeWebToken, amount: amt })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`💳 ${data.reply || '신용대출이 정상 실행되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        document.getElementById("bank-loan-borrow-amt").value = "";
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "대출 실행에 실패했습니다."));
+                        return;
                     }
-                    const input = document.getElementById("bank-loan-borrow-amt");
-                    if (input) input.value = "";
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "대출 실행에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Loan Borrow API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 대출 요청 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            const limit = (activeBankData.credit && activeBankData.credit.limit) || 15000000;
+            const curDebt = activeBankData.debt || 0;
+            const avail = Math.max(0, limit - curDebt);
+
+            if (amt > avail) {
+                showToast(`⚠️ 대출 가능 한도(${avail.toLocaleString()}P)를 초과할 수 없습니다.`);
+                return;
+            }
+
+            activeBankData.debt = curDebt + amt;
+            activeBankData.points = (activeBankData.points || 0) + amt;
+            if (activeBankData.credit) activeBankData.credit.available = Math.max(0, limit - activeBankData.debt);
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+
+            renderBankUI(activeBankData);
+            document.getElementById("bank-loan-borrow-amt").value = "";
+            showToast(`💳 신용대출 ${amt.toLocaleString()}P 실행 완료! 보유 현금으로 즉시 입금되었습니다.`);
         }
 
         async function executeWebBankLoanRepay() {
-            if (!activeWebToken) return;
             const amtVal = (document.getElementById("bank-loan-repay-amt")?.value || "").trim();
             if (!amtVal) {
                 showToast("⚠️ 상환할 금액 또는 '전액'을 입력해주세요.");
                 return;
             }
 
-            try {
-                const apiBase = getApiBaseUrl();
-                const res = await fetch(`${apiBase}/api/web/bank/loan/repay`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: activeWebToken, amount: amtVal })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(`💰 ${data.reply || '대출 원금 상환이 완료되었습니다!'}`);
-                    if (data.user) {
-                        activeWebUser = data.user;
-                        updateWebUserBar(activeWebUser);
-                    }
-                    if (data.bank) {
-                        activeBankData = data.bank;
-                        renderBankUI(activeBankData);
+            if (activeWebToken && !isGitHubPages && !document.body.classList.contains('github-pages-mode')) {
+                try {
+                    const apiBase = getApiBaseUrl();
+                    const res = await fetch(`${apiBase}/api/web/bank/loan/repay`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: activeWebToken, amount: amtVal })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        showToast(`💰 ${data.reply || '대출 원금 상환이 완료되었습니다!'}`);
+                        if (data.user) { activeWebUser = data.user; updateWebUserBar(activeWebUser); }
+                        if (data.bank) { activeBankData = data.bank; renderBankUI(activeBankData); }
+                        document.getElementById("bank-loan-repay-amt").value = "";
+                        return;
                     } else {
-                        loadBankStatus();
+                        showToast("⚠️ " + (data.detail || data.reply || "상환 처리에 실패했습니다."));
+                        return;
                     }
-                    const input = document.getElementById("bank-loan-repay-amt");
-                    if (input) input.value = "";
-                } else {
-                    showToast("⚠️ " + (data.detail || data.reply || "상환 처리에 실패했습니다."));
+                } catch (err) {
+                    console.warn("Loan Repay API failed, falling back to simulation:", err);
                 }
-            } catch (err) {
-                showToast("⚠️ 상환 요청 오류: " + err.message);
             }
+
+            // Interactive Simulation Fallback
+            if (!activeBankData) return;
+            const curDebt = activeBankData.debt || 0;
+            if (curDebt <= 0) {
+                showToast("⚠️ 상환해야 할 대출 잔액이 없습니다.");
+                return;
+            }
+
+            let repayAmt = curDebt;
+            if (!["전액", "전부", "올인", "max", "all", ""].includes(amtVal.toLowerCase())) {
+                const parsed = parseInt(amtVal, 10);
+                if (isNaN(parsed) || parsed <= 0) {
+                    showToast("⚠️ 올바른 상환 금액을 입력해주세요.");
+                    return;
+                }
+                repayAmt = Math.min(curDebt, parsed);
+            }
+
+            if ((activeBankData.points || 0) < repayAmt) {
+                showToast(`⚠️ 상환에 필요한 현금이 부족합니다! (필요: ${repayAmt.toLocaleString()}P / 보유: ${(activeBankData.points || 0).toLocaleString()}P)`);
+                return;
+            }
+
+            activeBankData.points -= repayAmt;
+            activeBankData.debt -= repayAmt;
+            const limit = (activeBankData.credit && activeBankData.credit.limit) || 15000000;
+            if (activeBankData.credit) activeBankData.credit.available = Math.max(0, limit - activeBankData.debt);
+            if (activeWebUser) activeWebUser.points = activeBankData.points;
+
+            renderBankUI(activeBankData);
+            document.getElementById("bank-loan-repay-amt").value = "";
+            showToast(`💰 대출 원금 ${repayAmt.toLocaleString()}P 상환 완료! (남은 대출: ${activeBankData.debt.toLocaleString()}P)`);
         }
 
         // Initialize Live Sync
