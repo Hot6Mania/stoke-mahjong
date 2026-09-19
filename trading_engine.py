@@ -267,6 +267,73 @@ PRODUCT_SYNONYMS = {
     "60숏": ProductType.SIXTY_X_INV,
     "인버스60X": ProductType.SIXTY_X_INV,
     "인버스60배": ProductType.SIXTY_X_INV,
+
+    # Direction-first forms (e.g. 롱40, 롱10배, 숏40, 숏10배)
+    "롱1": ProductType.ONE_X,
+    "롱1배": ProductType.ONE_X,
+    "롱1X": ProductType.ONE_X,
+    "롱1x": ProductType.ONE_X,
+    "롱2": ProductType.TWO_X,
+    "롱2배": ProductType.TWO_X,
+    "롱2X": ProductType.TWO_X,
+    "롱2x": ProductType.TWO_X,
+    "롱3": ProductType.THREE_X,
+    "롱3배": ProductType.THREE_X,
+    "롱3X": ProductType.THREE_X,
+    "롱3x": ProductType.THREE_X,
+    "롱5": ProductType.FIVE_X,
+    "롱5배": ProductType.FIVE_X,
+    "롱5X": ProductType.FIVE_X,
+    "롱5x": ProductType.FIVE_X,
+    "롱10": ProductType.TEN_X,
+    "롱10배": ProductType.TEN_X,
+    "롱10X": ProductType.TEN_X,
+    "롱10x": ProductType.TEN_X,
+    "롱20": ProductType.TWENTY_X,
+    "롱20배": ProductType.TWENTY_X,
+    "롱20X": ProductType.TWENTY_X,
+    "롱20x": ProductType.TWENTY_X,
+    "롱40": ProductType.FORTY_X,
+    "롱40배": ProductType.FORTY_X,
+    "롱40X": ProductType.FORTY_X,
+    "롱40x": ProductType.FORTY_X,
+    "롱60": ProductType.SIXTY_X,
+    "롱60배": ProductType.SIXTY_X,
+    "롱60X": ProductType.SIXTY_X,
+    "롱60x": ProductType.SIXTY_X,
+
+    "숏1": ProductType.INV,
+    "숏1배": ProductType.INV,
+    "숏1X": ProductType.INV,
+    "숏1x": ProductType.INV,
+    "숏2": ProductType.TWO_X_INV,
+    "숏2배": ProductType.TWO_X_INV,
+    "숏2X": ProductType.TWO_X_INV,
+    "숏2x": ProductType.TWO_X_INV,
+    "숏3": ProductType.THREE_X_INV,
+    "숏3배": ProductType.THREE_X_INV,
+    "숏3X": ProductType.THREE_X_INV,
+    "숏3x": ProductType.THREE_X_INV,
+    "숏5": ProductType.FIVE_X_INV,
+    "숏5배": ProductType.FIVE_X_INV,
+    "숏5X": ProductType.FIVE_X_INV,
+    "숏5x": ProductType.FIVE_X_INV,
+    "숏10": ProductType.TEN_X_INV,
+    "숏10배": ProductType.TEN_X_INV,
+    "숏10X": ProductType.TEN_X_INV,
+    "숏10x": ProductType.TEN_X_INV,
+    "숏20": ProductType.TWENTY_X_INV,
+    "숏20배": ProductType.TWENTY_X_INV,
+    "숏20X": ProductType.TWENTY_X_INV,
+    "숏20x": ProductType.TWENTY_X_INV,
+    "숏40": ProductType.FORTY_X_INV,
+    "숏40배": ProductType.FORTY_X_INV,
+    "숏40X": ProductType.FORTY_X_INV,
+    "숏40x": ProductType.FORTY_X_INV,
+    "숏60": ProductType.SIXTY_X_INV,
+    "숏60배": ProductType.SIXTY_X_INV,
+    "숏60X": ProductType.SIXTY_X_INV,
+    "숏60x": ProductType.SIXTY_X_INV,
 }
 
 def parse_product_type(text: str) -> Optional[ProductType]:
@@ -297,6 +364,27 @@ def parse_product_type(text: str) -> Optional[ProductType]:
             prefix = upper_c[:-len(suffix)].strip()
             if prefix in ["1", "2", "3", "5", "10", "20", "40", "60"]:
                 inv_key = "INV" if prefix == "1" else f"{prefix}X_INV"
+                return PRODUCT_SYNONYMS.get(inv_key)
+
+    # Handle prefix direction forms like "롱40", "롱10배", "레버40", "롱40X", "롱40x"
+    for prefix in ["롱", "배롱", "레버", "레버리지", "배레버"]:
+        if upper_c.startswith(prefix) and len(upper_c) > len(prefix):
+            rem = upper_c[len(prefix):].strip()
+            for sfx in ["X", "배", "레", "버", "주", "배주", "배주식"]:
+                if rem.endswith(sfx):
+                    rem = rem[:-len(sfx)].strip()
+            if rem in ["1", "2", "3", "5", "10", "20", "40", "60"]:
+                return PRODUCT_SYNONYMS.get(f"{rem}X")
+
+    # Handle prefix inverse forms like "숏40", "인버스40", "곱버스40", "숏10배", "인40", "곱40"
+    for prefix in ["숏", "배숏", "인버스", "곱버스", "인", "곱"]:
+        if upper_c.startswith(prefix) and len(upper_c) > len(prefix):
+            rem = upper_c[len(prefix):].strip()
+            for sfx in ["X", "배", "인", "곱", "숏", "주", "배주", "배숏"]:
+                if rem.endswith(sfx):
+                    rem = rem[:-len(sfx)].strip()
+            if rem in ["1", "2", "3", "5", "10", "20", "40", "60"]:
+                inv_key = "INV" if rem == "1" else f"{rem}X_INV"
                 return PRODUCT_SYNONYMS.get(inv_key)
 
     return None

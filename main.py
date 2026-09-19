@@ -1271,10 +1271,43 @@ async def process_tracker_update(data: Dict[str, Any], source: str = "poll", for
             pts_changed = (state.current_rank_point != pts)
             rec_changed = bool(last_synced_record and rec_str and rec_str != last_synced_record)
 
+            # Safety Guard 1: If game record didn't change and not force_settle, it's NOT a new match.
+            # Avoid false match settlement & false dividends caused by point desync or manual DB edits.
+            if pts_changed and (not rec_changed and not force_settle):
+                state.current_rank_point = pts
+                state.current_price = te.calculate_stock_price(pts)
+                last_synced_pts = pts
+                db.commit()
+                sync_docs_market_state(state)
+                await manager.broadcast({
+                    "type": "tracker_update",
+                    "tracker_data": latest_tracker_data,
+                    "market_state": serialize_market_state(state)
+                })
+                print(f"[Tracker] 🔄 전적 변동 없는 점수 불일치 감지: 경기 정산 없이 기준점 동기화만 수행 ({pts:,}pt)")
+                return {"success": True, "settled": False, "aligned_only": True, "pts": pts}
+
             if pts_changed or rec_changed or force_settle:
                 delta = (pts - state.current_rank_point) if pts_changed else 0
                 if force_settle and delta == 0 and pts:
                     delta = (pts - state.current_rank_point)
+
+                # Safety Guard 2: Delta >= 400 is impossible in a single 3-player mahjong match.
+                # Do not trigger match settlement or 1st place dividend on abnormal jumps.
+                if abs(delta) >= 400 and not force_settle:
+                    print(f"[Tracker] ⚠️ 비정상적인 점수 변동폭 감지 ({delta:+d}pt): 경기 정산 건너뛰고 점수만 동기화")
+                    state.current_rank_point = pts
+                    state.current_price = te.calculate_stock_price(pts)
+                    last_synced_pts = pts
+                    last_synced_record = rec_str
+                    db.commit()
+                    sync_docs_market_state(state)
+                    await manager.broadcast({
+                        "type": "tracker_update",
+                        "tracker_data": latest_tracker_data,
+                        "market_state": serialize_market_state(state)
+                    })
+                    return {"success": True, "settled": False, "aligned_only": True, "pts": pts, "reason": "excessive_delta"}
 
                 # Determine rank of the finished match
                 new_digits = [int(c) for c in rec_str if c in "1234"]

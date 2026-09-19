@@ -5317,6 +5317,76 @@ def test_command_handler_myinfo_shows_bank_assets(db_session):
     assert "순자산: 350,000P" in reply
 
 
+def test_direction_first_buy_commands(db_session, monkeypatch):
+    """Verify that !매수 롱40 올인, !롱40 올인, !매수 롱 40 올인, !매수 숏40 올인 etc. work properly."""
+    monkeypatch.setattr(ch, "is_market_locked", lambda db, state: False)
+    monkeypatch.setattr(te, "is_market_locked", lambda db, state: False)
+
+    # 1. Test parsing directly
+    assert te.parse_product_type("롱40") == ProductType.FORTY_X
+    assert te.parse_product_type("롱40배") == ProductType.FORTY_X
+    assert te.parse_product_type("롱40X") == ProductType.FORTY_X
+    assert te.parse_product_type("숏40") == ProductType.FORTY_X_INV
+    assert te.parse_product_type("숏40배") == ProductType.FORTY_X_INV
+    assert te.parse_product_type("숏40X") == ProductType.FORTY_X_INV
+    assert te.parse_product_type("롱10") == ProductType.TEN_X
+    assert te.parse_product_type("숏10") == ProductType.TEN_X_INV
+
+    # 2. Test execution with 10X (no legendary item lock needed)
+    uid = "test_dir_first_user"
+    uname = "방향우선유저"
+    u = te.get_or_create_user(db_session, uid, uname)
+    u.points = 10000000
+    db_session.commit()
+
+    # !매수 롱10 올인
+    rep, evt = ch.handle_chat_command(db_session, uid, uname, "!매수 롱10 올인")
+    assert "10X" in rep
+    assert evt is not None
+    assert evt["data"]["product_type"] == "10X"
+
+    # Sell position
+    ch.handle_chat_command(db_session, uid, uname, "!매도 롱10 전량")
+
+    # !매수 롱 10 올인 (separated)
+    u.points = 10000000
+    db_session.commit()
+    rep2, evt2 = ch.handle_chat_command(db_session, uid, uname, "!매수 롱 10 올인")
+    assert "10X" in rep2
+    assert evt2["data"]["product_type"] == "10X"
+
+    # Sell position
+    ch.handle_chat_command(db_session, uid, uname, "!매도 롱10 전량")
+
+    # !롱10 올인
+    u.points = 10000000
+    db_session.commit()
+    rep3, evt3 = ch.handle_chat_command(db_session, uid, uname, "!롱10 올인")
+    assert "10X" in rep3
+    assert evt3["data"]["product_type"] == "10X"
+
+    # Sell position
+    ch.handle_chat_command(db_session, uid, uname, "!매도 롱10 전량")
+
+    # !매수 숏10 올인
+    u.points = 10000000
+    db_session.commit()
+    rep4, evt4 = ch.handle_chat_command(db_session, uid, uname, "!매수 숏10 올인")
+    assert "10X_INV" in rep4
+    assert evt4["data"]["product_type"] == "10X_INV"
+
+    # Sell position
+    ch.handle_chat_command(db_session, uid, uname, "!매도 숏10 전량")
+
+    # !숏10 올인
+    u.points = 10000000
+    db_session.commit()
+    rep5, evt5 = ch.handle_chat_command(db_session, uid, uname, "!숏10 올인")
+    assert "10X_INV" in rep5
+    assert evt5["data"]["product_type"] == "10X_INV"
+
+
+
 
 
 

@@ -217,6 +217,26 @@ def handle_chat_command(
                 merged_tokens.append(combo)
                 skip_next = 1
                 continue
+
+        # Check direction FIRST, then leverage number (e.g. ['롱', '40', '올인'] -> ['롱40', '올인'], ['!롱', '40', '올인'] -> ['!롱40', '올인'], ['!매수', '롱', '40', '올인'] -> ['!매수', '롱40', '올인'])
+        raw_dir = t[1:] if has_bang else t
+        is_dir = raw_dir in ["롱", "숏", "인버스", "곱버스", "레버", "레버리지"]
+        if is_dir and i + 1 < len(tokens):
+            next_t = tokens[i+1].strip().lower()
+            next2_t = tokens[i+2].strip().lower() if i + 2 < len(tokens) else ""
+            clean_num = next_t.rstrip("배xX")
+            if clean_num in SUPPORTED_LEVERAGE_PREFIXES:
+                if next2_t in ["배", "x", "X"]:
+                    combo = f"!{raw_dir}{clean_num}배" if has_bang else f"{raw_dir}{clean_num}배"
+                    merged_tokens.append(combo)
+                    skip_next = 2
+                    continue
+                else:
+                    combo = f"!{raw_dir}{next_t}" if has_bang else f"{raw_dir}{next_t}"
+                    merged_tokens.append(combo)
+                    skip_next = 1
+                    continue
+
         merged_tokens.append(t)
     tokens = merged_tokens
     cmd = tokens[0].lower()
