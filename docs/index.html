@@ -5355,7 +5355,7 @@
                             <span style="font-size: 11px; color: #94a3b8; font-weight: 700;">줄 1:</span>
                             <strong id="cube-line1-text" style="color: #fff; font-size: 13px; margin-left: 6px;">잠재능력 없음</strong>
                         </div>
-                        <button id="cube-line1-lock-btn" onclick="toggleLineLockWeb(1)" style="background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+                        <button id="cube-line1-lock-btn" onclick="toggleWebCubeLineLock(1)" style="background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
                             🔓 잠금
                         </button>
                     </div>
@@ -5366,7 +5366,7 @@
                             <span style="font-size: 11px; color: #94a3b8; font-weight: 700;">줄 2:</span>
                             <strong id="cube-line2-text" style="color: #fff; font-size: 13px; margin-left: 6px;">잠재능력 없음</strong>
                         </div>
-                        <button id="cube-line2-lock-btn" onclick="toggleLineLockWeb(2)" style="background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+                        <button id="cube-line2-lock-btn" onclick="toggleWebCubeLineLock(2)" style="background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
                             🔓 잠금
                         </button>
                     </div>
@@ -5377,7 +5377,7 @@
                             <span style="font-size: 11px; color: #94a3b8; font-weight: 700;">줄 3:</span>
                             <strong id="cube-line3-text" style="color: #fff; font-size: 13px; margin-left: 6px;">잠재능력 없음</strong>
                         </div>
-                        <button id="cube-line3-lock-btn" onclick="toggleLineLockWeb(3)" style="background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+                        <button id="cube-line3-lock-btn" onclick="toggleWebCubeLineLock(3)" style="background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
                             🔓 잠금
                         </button>
                     </div>
@@ -10906,7 +10906,6 @@
         // =========================================================
         let activeModalTargetEqId = null;
         let returnToInventoryOnClose = false;
-        let isLineLockPending = false;
 
         function openWebStarforceModal(fromInventory = false, eqId = null) {
             if (isGitHubPages || document.body.classList.contains('github-pages-mode')) {
@@ -11432,6 +11431,7 @@
                 });
             }
         }
+        window.toggleLineLockWeb = toggleWebCubeLineLock;
 
         async function toggleWebCubeProtection() {
             if (!activeWebToken) return;
